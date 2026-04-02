@@ -244,6 +244,8 @@ def render_main_triage(
             lines.append(
                 f"- {item['name']} | classification={item['failure_classification']} | retry_count={item['retry_count']}"
             )
+            if item.get("last_error_summary"):
+                lines.append(f"  last_error: {item['last_error_summary']}")
 
     if non_retryable_items:
         lines.append("")
@@ -253,6 +255,8 @@ def render_main_triage(
             lines.append(
                 f"- {item['name']} | classification={item['failure_classification']} | chat_id={item['chat_id']}"
             )
+            if item.get("last_error_summary"):
+                lines.append(f"  last_error: {item['last_error_summary']}")
 
     return "\n".join(lines) + "\n"
 

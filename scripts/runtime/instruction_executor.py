@@ -166,6 +166,10 @@ def summarize_failed_instructions(paths: TaskPaths) -> dict[str, Any]:
     }
     for path in sorted(failed_dir(paths).glob("*.json")):
         instruction = load_instruction(path)
+        dispatch_result_path = result_dir(paths) / path.name
+        dispatch_result = load_instruction(dispatch_result_path) if dispatch_result_path.exists() else {}
+        stderr = str(dispatch_result.get("stderr") or "").strip()
+        last_error_summary = stderr.splitlines()[0] if stderr else None
         classification, retryable = infer_failed_instruction_metadata(
             instruction,
             name=path.name,
@@ -189,6 +193,7 @@ def summarize_failed_instructions(paths: TaskPaths) -> dict[str, Any]:
                 "retry_count": int(instruction.get("_retry_count", 0) or 0),
                 "failure_classification": classification,
                 "retryable": retryable,
+                "last_error_summary": last_error_summary,
             }
         )
     return summary

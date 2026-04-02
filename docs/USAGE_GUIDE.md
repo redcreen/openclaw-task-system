@@ -288,6 +288,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage
 - retryable 失败已经重试了几次
 - 哪些失败是 non-retryable，需要先修目标或配置
 - 如果 retryable 失败已经连续失败，`triage` 会提示先检查宿主网络，不再建议盲目继续重试
+- `triage` 还会直接显示最近一次失败摘要，方便判断是不是网络、目标、还是认证问题
 - 下一步建议执行的命令
 
 如果你想批量处理长期卡住的 blocked `main` 任务，可以用：

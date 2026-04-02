@@ -92,6 +92,15 @@ class MainOpsTests(unittest.TestCase):
                 "_retry_count": 2,
             },
         )
+        dispatch_dir = self.paths.data_dir / "dispatch-results"
+        dispatch_dir.mkdir(parents=True, exist_ok=True)
+        task_state_module.atomic_write_json(
+            dispatch_dir / "retryable.json",
+            {
+                "task_id": "retryable",
+                "stderr": "Network request failed with timeout\nHttpError: timeout",
+            },
+        )
         task_state_module.atomic_write_json(
             failed_dir / "nonretryable.json",
             {
@@ -110,6 +119,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertNotIn("repair --execute-retries --execution-context host", rendered)
         self.assertIn("## Retryable Failed Instructions", rendered)
         self.assertIn("retry_count=2", rendered)
+        self.assertIn("last_error: Network request failed with timeout", rendered)
         self.assertIn("## Non-Retryable Failed Instructions", rendered)
         self.assertIn("chat_id=@example", rendered)
 

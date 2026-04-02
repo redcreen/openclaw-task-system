@@ -105,6 +105,20 @@ class HealthReportTests(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
+        dispatch_dir = self.paths.data_dir / "dispatch-results"
+        dispatch_dir.mkdir(parents=True, exist_ok=True)
+        (dispatch_dir / "retryable.json").write_text(
+            json.dumps(
+                {
+                    "task_id": "retryable",
+                    "stderr": "Network request failed with timeout\nHttpError: timeout",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         (failed_dir / "nonretryable.json").write_text(
             json.dumps(
                 {
@@ -127,6 +141,7 @@ class HealthReportTests(unittest.TestCase):
         self.assertEqual(report["failed_instruction_summary"]["non_retryable"], 1)
         retryable_item = next(item for item in report["failed_instruction_summary"]["items"] if item["task_id"] == "retryable")
         self.assertEqual(retryable_item["retry_count"], 0)
+        self.assertEqual(retryable_item["last_error_summary"], "Network request failed with timeout")
         self.assertIn("- failed_instruction_retryable_count: 1", markdown)
         self.assertIn("- failed_instruction_persistent_retryable_count: 0", markdown)
         self.assertIn("- failed_instruction_non_retryable_count: 1", markdown)
