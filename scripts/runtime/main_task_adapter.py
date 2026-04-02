@@ -101,7 +101,7 @@ def register_main_task(
         },
     )
     if runtime_config.agent_config(context.agent_id).auto_start:
-        return store.start_task(task.task_id)
+        return store.claim_execution_slot(task.task_id)
     return task
 
 

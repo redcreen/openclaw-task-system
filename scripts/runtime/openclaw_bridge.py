@@ -41,6 +41,12 @@ class BridgeDecision:
     task_id: Optional[str]
     classification_reason: str
     confidence: str
+    task_status: Optional[str] = None
+    queue_position: Optional[int] = None
+    ahead_count: int = 0
+    active_count: int = 0
+    running_count: int = 0
+    queued_count: int = 0
 
 
 def build_main_task_context(ctx: OpenClawInboundContext) -> MainTaskContext:
@@ -95,6 +101,12 @@ def register_inbound_task(
             task_id=resumed.task_id,
             classification_reason="resume-blocked-task",
             confidence="high",
+            task_status=resumed.status,
+            queue_position=1 if resumed.status == "running" else None,
+            ahead_count=0 if resumed.status == "running" else 1,
+            active_count=len(store.find_inflight_tasks(agent_id=ctx.agent_id, statuses={"queued", "running"})),
+            running_count=len(store.find_running_tasks(agent_id=ctx.agent_id)),
+            queued_count=len(store.find_queued_tasks(agent_id=ctx.agent_id)),
         )
 
     task = register_main_task(
@@ -102,11 +114,26 @@ def register_inbound_task(
         paths=resolved_paths,
         config=runtime_config,
     )
+    active_tasks = store.find_inflight_tasks(agent_id=ctx.agent_id, statuses={"queued", "running"})
+    ordered_active = sorted(active_tasks, key=lambda item: item.created_at)
+    queue_position = None
+    ahead_count = 0
+    for index, item in enumerate(ordered_active, start=1):
+        if item.task_id == task.task_id:
+            queue_position = index
+            ahead_count = max(index - 1, 0)
+            break
     return BridgeDecision(
         should_register_task=True,
         task_id=task.task_id,
         classification_reason=decision.reason,
         confidence=decision.classification.confidence,
+        task_status=task.status,
+        queue_position=queue_position,
+        ahead_count=ahead_count,
+        active_count=len(active_tasks),
+        running_count=len(store.find_running_tasks(agent_id=ctx.agent_id)),
+        queued_count=len(store.find_queued_tasks(agent_id=ctx.agent_id)),
     )
 
 

@@ -64,6 +64,12 @@ def register_from_payload(
             "task_id": active["task_id"],
             "classification_reason": "existing-active-task",
             "confidence": "high",
+            "task_status": active.get("status"),
+            "queue_position": None,
+            "ahead_count": 0,
+            "active_count": 1,
+            "running_count": 1 if active.get("status") == "running" else 0,
+            "queued_count": 1 if active.get("status") == "queued" else 0,
         }
     decision = register_inbound_task(
         _build_context(payload),
@@ -74,6 +80,12 @@ def register_from_payload(
         "task_id": decision.task_id,
         "classification_reason": decision.classification_reason,
         "confidence": decision.confidence,
+        "task_status": decision.task_status,
+        "queue_position": decision.queue_position,
+        "ahead_count": decision.ahead_count,
+        "active_count": decision.active_count,
+        "running_count": decision.running_count,
+        "queued_count": decision.queued_count,
     }
 
 

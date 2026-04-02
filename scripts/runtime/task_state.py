@@ -188,6 +188,51 @@ class TaskStore:
             task.monitor_state = "normal"
         return self.save_task(task)
 
+    def find_running_tasks(self, *, agent_id: str) -> list[TaskState]:
+        matches = self.find_inflight_tasks(
+            agent_id=agent_id,
+            statuses={STATUS_RUNNING},
+        )
+        return sorted(matches, key=lambda item: item.started_at or item.created_at)
+
+    def find_queued_tasks(self, *, agent_id: str) -> list[TaskState]:
+        matches = self.find_inflight_tasks(
+            agent_id=agent_id,
+            statuses={STATUS_QUEUED},
+        )
+        return sorted(matches, key=lambda item: item.created_at)
+
+    def claim_execution_slot(
+        self,
+        task_id: str,
+        *,
+        user_visible: bool = True,
+    ) -> TaskState:
+        task = self.load_task(task_id)
+        if task.status == STATUS_RUNNING:
+            return task
+        if self.find_running_tasks(agent_id=task.agent_id):
+            return task
+        return self.start_task(task_id, user_visible=user_visible)
+
+    def promote_next_queued_task(
+        self,
+        *,
+        agent_id: str,
+        user_visible: bool = True,
+        meta: Optional[dict[str, Any]] = None,
+    ) -> Optional[TaskState]:
+        if self.find_running_tasks(agent_id=agent_id):
+            return None
+        queued = self.find_queued_tasks(agent_id=agent_id)
+        if not queued:
+            return None
+        promoted = self.start_task(queued[0].task_id, user_visible=user_visible)
+        if meta:
+            promoted.meta.update(meta)
+            promoted = self.save_task(promoted)
+        return promoted
+
     def touch_task(
         self,
         task_id: str,
@@ -216,7 +261,12 @@ class TaskStore:
         task.block_reason = reason
         task.updated_at = ts
         task.last_internal_touch_at = ts
-        return self.save_task(task)
+        saved = self.save_task(task)
+        self.promote_next_queued_task(
+            agent_id=saved.agent_id,
+            meta={"promoted_after": saved.task_id, "promotion_reason": "blocked"},
+        )
+        return saved
 
     def pause_task(self, task_id: str, reason: Optional[str] = None) -> TaskState:
         task = self.load_task(task_id)
@@ -225,7 +275,12 @@ class TaskStore:
         task.block_reason = reason
         task.updated_at = ts
         task.last_internal_touch_at = ts
-        return self.save_task(task)
+        saved = self.save_task(task)
+        self.promote_next_queued_task(
+            agent_id=saved.agent_id,
+            meta={"promoted_after": saved.task_id, "promotion_reason": "paused"},
+        )
+        return saved
 
     def resume_task(
         self,
@@ -237,7 +292,10 @@ class TaskStore:
     ) -> TaskState:
         task = self.load_task(task_id)
         ts = now_iso()
-        task.status = STATUS_RUNNING
+        if self.find_running_tasks(agent_id=task.agent_id):
+            task.status = STATUS_QUEUED
+        else:
+            task.status = STATUS_RUNNING
         if clear_block_reason:
             task.block_reason = None
         task.monitor_state = "normal"
@@ -248,6 +306,7 @@ class TaskStore:
         if progress_note:
             task.meta["last_progress_note"] = progress_note
         task.meta["resumed_at"] = ts
+        task.meta["resume_target_status"] = task.status
         return self.save_task(task)
 
     def complete_task(
@@ -362,10 +421,15 @@ class TaskStore:
         return matches[0] if matches else None
 
     def _finalize_task(self, task: TaskState, *, archive: bool) -> TaskState:
+        agent_id = task.agent_id
         saved = self.save_task(task)
         if archive:
             self.archive_task(saved.task_id)
-            return self.load_task(saved.task_id)
+            saved = self.load_task(saved.task_id)
+        self.promote_next_queued_task(
+            agent_id=agent_id,
+            meta={"promoted_after": saved.task_id, "promotion_reason": saved.status},
+        )
         return saved
 
 

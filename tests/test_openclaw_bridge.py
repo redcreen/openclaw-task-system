@@ -21,15 +21,18 @@ class OpenClawBridgeTests(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def make_context(self, request: str, **kwargs):
+        payload = {
+            "agent_id": "main",
+            "session_key": "feishu:main:chat:test",
+            "channel": "feishu",
+            "account_id": "feishu1-main",
+            "chat_id": "oc_test_chat",
+            "user_id": "ou_test_user",
+            "user_request": request,
+        }
+        payload.update(kwargs)
         return openclaw_bridge.OpenClawInboundContext(
-            agent_id="main",
-            session_key="feishu:main:chat:test",
-            channel="feishu",
-            account_id="feishu1-main",
-            chat_id="oc_test_chat",
-            user_id="ou_test_user",
-            user_request=request,
-            **kwargs,
+            **payload,
         )
 
     def test_register_inbound_task_skips_short_request(self) -> None:
@@ -47,11 +50,44 @@ class OpenClawBridgeTests(unittest.TestCase):
         decision = openclaw_bridge.register_inbound_task(ctx, paths=self.paths)
         self.assertTrue(decision.should_register_task)
         self.assertIsNotNone(decision.task_id)
+        self.assertEqual(decision.task_status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(decision.queue_position, 1)
+        self.assertEqual(decision.ahead_count, 0)
 
         store = task_state_module.TaskStore(paths=self.paths)
         task = store.load_task(decision.task_id)
         self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
         self.assertEqual(task.chat_id, "oc_test_chat")
+
+    def test_second_long_request_queues_until_first_completes(self) -> None:
+        first = openclaw_bridge.register_inbound_task(
+            self.make_context("第一个长任务", estimated_steps=4, needs_verification=True),
+            paths=self.paths,
+        )
+        second = openclaw_bridge.register_inbound_task(
+            self.make_context(
+                "第二个长任务",
+                estimated_steps=4,
+                needs_verification=True,
+                session_key="feishu:main:chat:test-2",
+                chat_id="oc_test_chat_2",
+            ),
+            paths=self.paths,
+        )
+        assert first.task_id is not None
+        assert second.task_id is not None
+
+        store = task_state_module.TaskStore(paths=self.paths)
+        self.assertEqual(store.load_task(first.task_id).status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(store.load_task(second.task_id).status, task_state_module.STATUS_QUEUED)
+        self.assertEqual(second.task_status, task_state_module.STATUS_QUEUED)
+        self.assertEqual(second.queue_position, 2)
+        self.assertEqual(second.ahead_count, 1)
+
+        openclaw_bridge.record_completed(first.task_id, result_summary="done", paths=self.paths)
+        promoted = store.load_task(second.task_id)
+        self.assertEqual(promoted.status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(promoted.meta["promoted_after"], first.task_id)
 
     def test_record_lifecycle_methods(self) -> None:
         ctx = self.make_context(

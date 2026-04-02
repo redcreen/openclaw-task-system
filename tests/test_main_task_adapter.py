@@ -56,6 +56,28 @@ class MainTaskAdapterTests(unittest.TestCase):
         self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
         self.assertEqual(task.agent_id, "main")
 
+    def test_second_task_is_queued_until_first_finishes(self) -> None:
+        first = main_task_adapter.register_main_task(
+            self.build_context("帮我排查第一个较长任务", estimated_steps=4),
+            paths=self.paths,
+        )
+        second = main_task_adapter.register_main_task(
+            self.build_context("帮我排查第二个较长任务", estimated_steps=4),
+            paths=self.paths,
+        )
+
+        self.assertEqual(first.status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(second.status, task_state_module.STATUS_QUEUED)
+
+        finished = main_task_adapter.finish_main_task(first.task_id, result_summary="done", paths=self.paths)
+        self.assertEqual(finished.status, task_state_module.STATUS_DONE)
+
+        store = task_state_module.TaskStore(paths=self.paths)
+        promoted = store.load_task(second.task_id)
+        self.assertEqual(promoted.status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(promoted.meta["promotion_reason"], task_state_module.STATUS_DONE)
+        self.assertEqual(promoted.meta["promoted_after"], first.task_id)
+
     def test_sync_finish_and_block_main_task(self) -> None:
         context = self.build_context(
             "继续处理这个任务",
@@ -87,3 +109,19 @@ class MainTaskAdapterTests(unittest.TestCase):
         failed = main_task_adapter.fail_main_task(task.task_id, "provider timeout", paths=self.paths)
         self.assertEqual(failed.status, task_state_module.STATUS_FAILED)
         self.assertEqual(failed.failure_reason, "provider timeout")
+
+    def test_resume_queues_when_another_task_is_running(self) -> None:
+        first = main_task_adapter.register_main_task(
+            self.build_context("第一个任务", estimated_steps=4),
+            paths=self.paths,
+        )
+        blocked = main_task_adapter.register_main_task(
+            self.build_context("第二个任务", estimated_steps=4),
+            paths=self.paths,
+        )
+        blocked = main_task_adapter.block_main_task(first.task_id, "waiting", paths=self.paths)
+        self.assertEqual(blocked.status, task_state_module.STATUS_BLOCKED)
+
+        resumed = main_task_adapter.resume_main_task(first.task_id, progress_note="继续", paths=self.paths)
+        self.assertEqual(resumed.status, task_state_module.STATUS_QUEUED)
+        self.assertEqual(resumed.meta["resume_target_status"], task_state_module.STATUS_QUEUED)

@@ -366,6 +366,7 @@ async function sendImmediateAck(
     chatId: string;
     taskId: string;
     sessionKey: string;
+    message?: string;
   },
 ): Promise<void> {
   if (!config.sendImmediateAckOnRegister) {
@@ -376,7 +377,7 @@ async function sendImmediateAck(
     return;
   }
   const chatId = String(payload.chatId || "").trim();
-  const message = normalizeText(config.immediateAckTemplate);
+  const message = normalizeText(payload.message || config.immediateAckTemplate);
   if (!chatId || !message) {
     return;
   }
@@ -426,6 +427,46 @@ type PendingReceipt = {
   taskKind: "short" | "long";
   timer: ReturnType<typeof setTimeout> | null;
 };
+
+function toInteger(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return Math.trunc(parsed);
+    }
+  }
+  return null;
+}
+
+function buildImmediateReceiptMessage(
+  config: Required<TaskSystemPluginConfig>,
+  registerResult: Record<string, unknown> | null,
+): string {
+  const fallback = normalizeText(config.immediateAckTemplate);
+  if (!registerResult) {
+    return fallback;
+  }
+  const taskStatus = normalizeText(registerResult.task_status);
+  const queuePosition = toInteger(registerResult.queue_position);
+  const aheadCount = Math.max(toInteger(registerResult.ahead_count) ?? 0, 0);
+  const runningCount = Math.max(toInteger(registerResult.running_count) ?? 0, 0);
+  const activeCount = Math.max(toInteger(registerResult.active_count) ?? 0, 0);
+
+  if (taskStatus === "queued") {
+    const position = queuePosition ?? aheadCount + 1;
+    return `已收到，当前有 ${runningCount} 条任务正在处理；你的请求已进入队列，前面还有 ${aheadCount} 个号，你现在排第 ${position} 位。`;
+  }
+  if (taskStatus === "running" && activeCount > 1) {
+    return `已收到，现在轮到你的请求开始处理了；当前队列里共有 ${activeCount} 条活动任务，我会继续同步真实进展。`;
+  }
+  if (taskStatus === "running") {
+    return "已收到，正在开始处理；如果 30 秒内还没有新的阶段结果，我会先同步当前进展。";
+  }
+  return fallback;
+}
 
 async function sendStatusMessage(
   api: OpenClawPluginApi,
@@ -577,6 +618,7 @@ const taskSystemPlugin = definePluginEntry({
       const shouldSendImmediateAck =
         config.sendImmediateAckOnRegister &&
         ((isLongTask && !isExistingActive) || (!isLongTask && config.sendImmediateAckForShortTasks));
+      const immediateAckMessage = buildImmediateReceiptMessage(config, registerResult);
 
       const existingReceipt = pendingReceipts.get(sessionKey);
       if (existingReceipt?.timer) {
@@ -592,6 +634,7 @@ const taskSystemPlugin = definePluginEntry({
             chatId: ctx.conversationId ?? sessionKey,
             taskId: registerResult.task_id,
             sessionKey,
+            message: immediateAckMessage,
           });
         } else {
           await sendStatusMessage(api, config, {
@@ -599,7 +642,7 @@ const taskSystemPlugin = definePluginEntry({
             accountId: ctx.accountId ?? "",
             chatId: ctx.conversationId ?? sessionKey,
             sessionKey,
-            message: config.immediateAckTemplate,
+            message: immediateAckMessage,
             eventName: "immediate-ack",
           });
         }
