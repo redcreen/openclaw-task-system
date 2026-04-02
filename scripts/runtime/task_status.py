@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Optional
 
@@ -140,6 +141,43 @@ def list_inflight_statuses(
     return [build_status_summary(path.stem, paths=store.paths) for path in store.list_inflight()]
 
 
+def build_system_overview(
+    *,
+    paths: Optional[TaskPaths] = None,
+    config: Optional[TaskSystemConfig] = None,
+    config_path: Optional[Path] = None,
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(paths, config=config, config_path=config_path)
+    store = TaskStore(paths=resolved_paths)
+    inflight_statuses = [build_status_summary(path.stem, paths=resolved_paths) for path in store.list_inflight()]
+
+    inflight_counts = Counter(str(status["status"]) for status in inflight_statuses)
+    delivery_counts = Counter(str(status["delivery"]["state"]) for status in inflight_statuses)
+
+    archived_counts: Counter[str] = Counter()
+    for archived_path in sorted(resolved_paths.archive_dir.glob("*.json")):
+        archived_payload = _load_json_if_exists(archived_path) or {}
+        archived_status = archived_payload.get("status")
+        if archived_status:
+            archived_counts[str(archived_status)] += 1
+
+    return {
+        "active_task_count": len(inflight_statuses),
+        "active_status_counts": dict(sorted(inflight_counts.items())),
+        "active_delivery_counts": dict(sorted(delivery_counts.items())),
+        "archived_task_count": sum(archived_counts.values()),
+        "archived_status_counts": dict(sorted(archived_counts.items())),
+        "outbox_count": len(list((resolved_paths.data_dir / "outbox").glob("*.json"))),
+        "sent_count": len(list((resolved_paths.data_dir / "sent").glob("*.json"))),
+        "delivery_ready_count": len(list((resolved_paths.data_dir / "delivery-ready").glob("*.json"))),
+        "send_instruction_count": len(list((resolved_paths.data_dir / "send-instructions").glob("*.json"))),
+        "processed_instruction_count": len(list((resolved_paths.data_dir / "processed-instructions").glob("*.json"))),
+        "failed_instruction_count": len(list((resolved_paths.data_dir / "failed-instructions").glob("*.json"))),
+        "dispatch_result_count": len(list((resolved_paths.data_dir / "dispatch-results").glob("*.json"))),
+        "active_tasks": inflight_statuses,
+    }
+
+
 def render_status_markdown(
     task_id: str,
     *,
@@ -212,11 +250,53 @@ def render_inflight_markdown(
     return "\n".join(lines) + "\n"
 
 
+def render_overview_markdown(
+    *,
+    paths: Optional[TaskPaths] = None,
+    config: Optional[TaskSystemConfig] = None,
+    config_path: Optional[Path] = None,
+) -> str:
+    overview = build_system_overview(paths=paths, config=config, config_path=config_path)
+    lines = [
+        "# Task System Overview",
+        "",
+        f"- active_task_count: {overview['active_task_count']}",
+        f"- archived_task_count: {overview['archived_task_count']}",
+        f"- outbox_count: {overview['outbox_count']}",
+        f"- sent_count: {overview['sent_count']}",
+        f"- delivery_ready_count: {overview['delivery_ready_count']}",
+        f"- send_instruction_count: {overview['send_instruction_count']}",
+        f"- processed_instruction_count: {overview['processed_instruction_count']}",
+        f"- failed_instruction_count: {overview['failed_instruction_count']}",
+        f"- dispatch_result_count: {overview['dispatch_result_count']}",
+    ]
+    if overview["active_status_counts"]:
+        lines.append(f"- active_status_counts: {json.dumps(overview['active_status_counts'], ensure_ascii=False)}")
+    if overview["active_delivery_counts"]:
+        lines.append(f"- active_delivery_counts: {json.dumps(overview['active_delivery_counts'], ensure_ascii=False)}")
+    if overview["archived_status_counts"]:
+        lines.append(f"- archived_status_counts: {json.dumps(overview['archived_status_counts'], ensure_ascii=False)}")
+    if overview["active_tasks"]:
+        lines.append("")
+        lines.append("## Active Tasks")
+        lines.append("")
+        for status in overview["active_tasks"]:
+            lines.append(
+                f"- {status['task_id']} | {status['status']} | delivery={status['delivery']['state']} | {status['task_label']}"
+            )
+    return "\n".join(lines) + "\n"
+
+
 if __name__ == "__main__":
     import sys
 
     args = sys.argv[1:]
-    usage = "usage: task_status.py <task_id> [--json]\n   or: task_status.py --list [--json]\n   or: task_status.py --json"
+    usage = (
+        "usage: task_status.py <task_id> [--json]\n"
+        "   or: task_status.py --list [--json]\n"
+        "   or: task_status.py --overview [--json]\n"
+        "   or: task_status.py --json"
+    )
     if not args or args == ["--help"] or args == ["-h"]:
         print(usage)
         raise SystemExit(0)
@@ -230,6 +310,13 @@ if __name__ == "__main__":
             print(json.dumps(list_inflight_statuses(), ensure_ascii=False, indent=2))
         else:
             print(render_inflight_markdown(), end="")
+        raise SystemExit(0)
+
+    if args[0] == "--overview":
+        if len(args) > 1 and args[1] == "--json":
+            print(json.dumps(build_system_overview(), ensure_ascii=False, indent=2))
+        else:
+            print(render_overview_markdown(), end="")
         raise SystemExit(0)
 
     task_id = args[0]

@@ -242,6 +242,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 
 - `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py <task_id>`
 - `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py --list`
+- `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py --overview`
 
 状态查询里的 `delivery.state` 现在会直接给出当前投递阶段：
 
