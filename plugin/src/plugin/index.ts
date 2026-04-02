@@ -786,11 +786,11 @@ const taskSystemPlugin = definePluginEntry({
         taskId: registerResult?.task_id ?? null,
       });
       const classificationReason = String(registerResult?.classification_reason || "").trim();
-      const isLongTask = Boolean(registerResult?.should_register_task);
       const isExistingActive = classificationReason === "existing-active-task";
       const shouldSendImmediateAck =
         config.sendImmediateAckOnRegister &&
-        ((isLongTask && !isExistingActive) || (!isLongTask && config.sendImmediateAckForShortTasks));
+        Boolean(registerResult?.should_register_task) &&
+        !isExistingActive;
       const immediateAckMessage = buildImmediateReceiptMessage(config, registerResult);
 
       const existingReceipt = pendingReceipts.get(sessionKey);
@@ -821,31 +821,6 @@ const taskSystemPlugin = definePluginEntry({
         }
       }
 
-      if (!isLongTask && config.shortTaskFollowupTimeoutMs > 0) {
-        const timer = setTimeout(() => {
-          const pending = pendingReceipts.get(sessionKey);
-          if (!pending) {
-            return;
-          }
-          void sendStatusMessage(api, config, {
-            channel: pending.channel,
-            accountId: pending.accountId,
-            chatId: pending.chatId,
-            sessionKey: pending.sessionKey,
-            message: config.shortTaskFollowupTemplate,
-            eventName: "short-task-followup",
-          });
-        }, config.shortTaskFollowupTimeoutMs);
-
-        pendingReceipts.set(sessionKey, {
-          sessionKey,
-          channel: event.channel ?? ctx.channelId ?? "unknown",
-          accountId: ctx.accountId ?? "",
-          chatId: ctx.conversationId ?? sessionKey,
-          taskKind: "short",
-          timer,
-        });
-      }
     });
 
     api.on("before_agent_start", async (event, ctx) => {
