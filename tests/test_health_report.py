@@ -49,6 +49,7 @@ class HealthReportTests(unittest.TestCase):
         self.assertIn("blocked-active-tasks:1", report["issues"])
         self.assertIn("active-stale-delivery:1", report["issues"])
         self.assertEqual(report["overview"]["stale_delivery_task_count"], 1)
+        self.assertTrue(any(entry["severity"] == "warn" for entry in report["issue_entries"]))
 
     def test_render_markdown_includes_status_and_checks(self) -> None:
         task = self.store.register_task(
@@ -64,6 +65,29 @@ class HealthReportTests(unittest.TestCase):
         self.assertIn("# Task System Health", markdown)
         self.assertIn("- status: warn", markdown)
         self.assertIn("## Plugin Checks", markdown)
+        self.assertIn("## Remediation", markdown)
+
+    def test_build_health_report_uses_error_status_for_failed_instructions(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="telegram",
+            chat_id="chat:test",
+            task_label="health failed task",
+        )
+        failed_dir = self.paths.data_dir / "failed-instructions"
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        (failed_dir / f"{task.task_id}.json").write_text(
+            json.dumps({"task_id": task.task_id}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        report = health_report.build_health_report(config_path=self.config_path)
+
+        self.assertEqual(report["status"], "error")
+        self.assertIn("failed-instructions:1", report["issues"])
+        failed_issue = next(entry for entry in report["issue_entries"] if entry["code"] == "failed-instructions:1")
+        self.assertEqual(failed_issue["severity"], "error")
 
 
 if __name__ == "__main__":

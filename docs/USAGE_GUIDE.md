@@ -287,6 +287,14 @@ python3 workspace/openclaw-task-system/scripts/runtime/delivery_reconcile.py --a
 python3 workspace/openclaw-task-system/scripts/runtime/health_report.py
 ```
 
+现在健康报告会区分：
+
+- `ok`
+- `warn`
+- `error`
+
+并且会为每类问题给出直接可执行的修复建议。
+
 ## 7. 使用注意事项
 
 - 任务系统的目标是提供真相，不是生成更漂亮的话术

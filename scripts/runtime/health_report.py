@@ -11,33 +11,82 @@ from plugin_doctor import run_checks
 from task_status import build_system_overview
 
 
+def _issue_entry(code: str, severity: str, count: int, remediation: str) -> dict[str, object]:
+    return {
+        "code": code,
+        "severity": severity,
+        "count": count,
+        "remediation": remediation,
+    }
+
+
 def build_health_report(*, config_path: Optional[Path] = None) -> dict[str, object]:
     overview = build_system_overview(config_path=config_path)
     stale_findings = reconcile_delivery_artifacts(config_path=config_path, apply_changes=False)
     plugin_checks = run_checks()
 
     failing_plugin_checks = [check.name for check in plugin_checks if not check.ok]
-    health_issues: list[str] = []
+    issue_entries: list[dict[str, object]] = []
 
     if failing_plugin_checks:
-        health_issues.append(f"plugin-checks-failed:{','.join(failing_plugin_checks)}")
+        issue_entries.append(
+            _issue_entry(
+                code=f"plugin-checks-failed:{','.join(failing_plugin_checks)}",
+                severity="error",
+                count=len(failing_plugin_checks),
+                remediation="Run `python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py` and fix missing plugin paths/config.",
+            )
+        )
     if overview["failed_instruction_count"]:
-        health_issues.append(f"failed-instructions:{overview['failed_instruction_count']}")
+        issue_entries.append(
+            _issue_entry(
+                code=f"failed-instructions:{overview['failed_instruction_count']}",
+                severity="error",
+                count=int(overview["failed_instruction_count"]),
+                remediation="Inspect `data/failed-instructions/` and corresponding `dispatch-results/`, then retry with `instruction_executor.py --execute` after fixing transport/auth.",
+            )
+        )
     if overview["active_stale_delivery_task_count"]:
-        health_issues.append(f"active-stale-delivery:{overview['active_stale_delivery_task_count']}")
+        issue_entries.append(
+            _issue_entry(
+                code=f"active-stale-delivery:{overview['active_stale_delivery_task_count']}",
+                severity="warn",
+                count=int(overview["active_stale_delivery_task_count"]),
+                remediation="Run `delivery_reconcile.py` to inspect residue; if confirmed safe, run `delivery_reconcile.py --apply`.",
+            )
+        )
     if overview["stale_delivery_task_count"]:
-        health_issues.append(f"global-stale-delivery:{overview['stale_delivery_task_count']}")
-    if overview["active_status_counts"].get("blocked", 0):
-        health_issues.append(f"blocked-active-tasks:{overview['active_status_counts']['blocked']}")
+        issue_entries.append(
+            _issue_entry(
+                code=f"global-stale-delivery:{overview['stale_delivery_task_count']}",
+                severity="warn",
+                count=int(overview["stale_delivery_task_count"]),
+                remediation="Clean old delivery residue with `delivery_reconcile.py --apply` to keep health signals accurate.",
+            )
+        )
+    blocked_count = int(overview["active_status_counts"].get("blocked", 0))
+    if blocked_count:
+        issue_entries.append(
+            _issue_entry(
+                code=f"blocked-active-tasks:{blocked_count}",
+                severity="warn",
+                count=blocked_count,
+                remediation="Inspect blocked tasks with `task_status.py --overview` and resume or fail them explicitly through the host flow.",
+            )
+        )
 
-    if health_issues:
+    severities = {entry["severity"] for entry in issue_entries}
+    if "error" in severities:
+        status = "error"
+    elif "warn" in severities:
         status = "warn"
     else:
         status = "ok"
 
     return {
         "status": status,
-        "issues": health_issues,
+        "issues": [str(entry["code"]) for entry in issue_entries],
+        "issue_entries": issue_entries,
         "overview": overview,
         "stale_findings": stale_findings,
         "plugin_checks": [
@@ -78,6 +127,13 @@ def render_markdown(report: dict[str, object]) -> str:
     for check in report["plugin_checks"]:
         status = "ok" if check["ok"] else "missing"
         lines.append(f"- {check['name']}: {status} ({check['detail']})")
+
+    if report["issue_entries"]:
+        lines.append("")
+        lines.append("## Remediation")
+        lines.append("")
+        for issue in report["issue_entries"]:
+            lines.append(f"- [{issue['severity']}] {issue['code']}: {issue['remediation']}")
 
     if report["stale_findings"]:
         lines.append("")
