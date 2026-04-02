@@ -240,6 +240,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 - `python3 workspace/openclaw-task-system/scripts/runtime/stable_acceptance.py`
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py list`
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health`
+- `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair`
 
 推荐状态查看入口：
 
@@ -248,6 +249,26 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 - `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py --overview`
 - `python3 workspace/openclaw-task-system/scripts/runtime/delivery_reconcile.py`
 - `python3 workspace/openclaw-task-system/scripts/runtime/health_report.py`
+
+如果健康检查出现 `warn / error`，推荐先跑统一修复入口：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair
+```
+
+这条命令会先做安全的中间投递残留清理。
+
+如果还希望顺手重试 retryable 的失败指令，再用：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair --execute-retries --execution-context host
+```
+
+说明：
+
+- `repair` 默认不会真实外发失败指令，只做安全清理
+- `--execute-retries` 只会重试被标记为 retryable 的失败指令
+- `--execution-context host` 适合你在真实宿主环境下跑恢复动作
 
 状态查询里的 `delivery.state` 现在会直接给出当前投递阶段：
 
@@ -283,6 +304,8 @@ python3 workspace/openclaw-task-system/scripts/runtime/delivery_reconcile.py
 ```bash
 python3 workspace/openclaw-task-system/scripts/runtime/delivery_reconcile.py --apply
 ```
+
+现在执行器在把指令归档到 `processed-instructions/` 或 `failed-instructions/` 时，也会自动尝试清理同一任务的中间投递残留。
 
 如果想一次看任务系统当前健康状态、插件检查、失败指令和残留投递，使用：
 

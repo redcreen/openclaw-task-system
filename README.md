@@ -195,6 +195,12 @@
 - `main` 运维入口：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py list`
 
+- `main` 健康检查：
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health`
+
+- 健康问题统一修复入口：
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair`
+
 ## 下一步建议
 
 下一阶段建议直接在这个目录内继续推进：

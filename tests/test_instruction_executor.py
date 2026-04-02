@@ -177,6 +177,31 @@ class InstructionExecutorTests(unittest.TestCase):
         self.assertEqual(payload["execution_context"], "host")
         self.assertEqual(payload["requested_execution_context"], "host")
 
+    def test_execute_all_cleans_stale_delivery_artifacts_after_archive(self) -> None:
+        self.write_instruction(
+            "task_agent.json",
+            {
+                "schema": "openclaw.task-system.send-instruction.v1",
+                "task_id": "task_agent",
+                "agent_id": "main",
+                "session_key": "agent:main:main",
+                "channel": "agent",
+                "chat_id": "chat:test",
+                "message": "internal note",
+            },
+        )
+        sent_path = self.paths.data_dir / "sent" / "task_agent.json"
+        sent_path.parent.mkdir(parents=True, exist_ok=True)
+        sent_path.write_text(json.dumps({"task_id": "task_agent"}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        ready_path = self.paths.data_dir / "delivery-ready" / "task_agent.json"
+        ready_path.parent.mkdir(parents=True, exist_ok=True)
+        ready_path.write_text(json.dumps({"task_id": "task_agent"}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        instruction_executor.execute_all(paths=self.paths, execute=True, execution_context="host")
+
+        self.assertFalse(sent_path.exists())
+        self.assertFalse(ready_path.exists())
+
     def test_execute_all_archives_successful_instruction_when_execute_enabled(self) -> None:
         mock_bin = self.temp_dir / "mock-openclaw"
         mock_log = self.temp_dir / "mock-openclaw.log"

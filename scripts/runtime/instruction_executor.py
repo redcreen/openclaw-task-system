@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+from delivery_reconcile import reconcile_delivery_artifacts
 from task_config import load_task_system_config
 from task_state import TaskPaths, atomic_write_json, default_paths
 
@@ -165,6 +166,9 @@ def archive_instruction(
     archived_payload = payload or load_instruction(source)
     atomic_write_json(target, archived_payload)
     source.unlink(missing_ok=True)
+    task_id = str(archived_payload.get("task_id") or "").strip()
+    if task_id:
+        reconcile_delivery_artifacts(paths=paths, apply_changes=True, task_ids=[task_id])
     return target
 
 

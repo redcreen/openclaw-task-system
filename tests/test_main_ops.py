@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from runtime_loader import load_runtime_module, task_state_module
 
@@ -69,6 +70,40 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertIn("# Main Ops Health", rendered)
         self.assertIn("- main_blocked_task_count: 1", rendered)
+
+    def test_repair_system_cleans_stale_delivery_artifacts(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main",
+            channel="telegram",
+            chat_id="chat:main",
+            task_label="repair target",
+        )
+        processed_dir = self.paths.data_dir / "processed-instructions"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        task_state_module.atomic_write_json(processed_dir / f"{task.task_id}.json", {"task_id": task.task_id})
+        stale_path = self.paths.data_dir / "sent" / f"{task.task_id}.json"
+        stale_path.parent.mkdir(parents=True, exist_ok=True)
+        stale_path.write_text("{}", encoding="utf-8")
+
+        result = main_ops.repair_system(paths=self.paths)
+
+        self.assertEqual(result["health_before"]["status"], "warn")
+        self.assertFalse(stale_path.exists())
+        self.assertEqual(result["health_after"]["status"], "ok")
+        self.assertEqual(len(result["stale_cleanup"]), 1)
+
+    def test_repair_system_can_retry_failed_instructions(self) -> None:
+        with patch.object(main_ops, "retry_failed_instructions", return_value=[{"name": "failed.json"}]) as retry_mock:
+            result = main_ops.repair_system(
+                paths=self.paths,
+                execute_retries=True,
+                openclaw_bin="/tmp/openclaw",
+                execution_context="host",
+            )
+
+        retry_mock.assert_called_once()
+        self.assertEqual(result["retry_results"], [{"name": "failed.json"}])
 
 
 if __name__ == "__main__":

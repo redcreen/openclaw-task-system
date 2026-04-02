@@ -6,7 +6,9 @@ from argparse import ArgumentParser
 from pathlib import Path
 from typing import Optional
 
+from delivery_reconcile import reconcile_delivery_artifacts
 from health_report import build_health_report
+from instruction_executor import retry_failed_instructions
 from main_task_adapter import block_main_task, fail_main_task, finish_main_task, resume_main_task
 from task_config import load_task_system_config
 from task_status import list_inflight_statuses, render_overview_markdown, render_status_markdown
@@ -76,6 +78,34 @@ def render_main_health(
     return "\n".join(lines) + "\n"
 
 
+def repair_system(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    execute_retries: bool = False,
+    openclaw_bin: Optional[str] = None,
+    execution_context: str = "local",
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    health_before = build_health_report(config_path=config_path, paths=resolved_paths)
+    stale_cleanup = reconcile_delivery_artifacts(paths=resolved_paths, apply_changes=True)
+    retry_results: list[dict[str, object]] = []
+    if execute_retries:
+        config = load_task_system_config(config_path=config_path)
+        retry_results = retry_failed_instructions(
+            paths=resolved_paths,
+            openclaw_bin=openclaw_bin or config.delivery.openclaw_bin,
+            execution_context=execution_context,
+        )
+    health_after = build_health_report(config_path=config_path, paths=resolved_paths)
+    return {
+        "health_before": health_before,
+        "stale_cleanup": stale_cleanup,
+        "retry_results": retry_results,
+        "health_after": health_after,
+    }
+
+
 def main() -> None:
     parser = ArgumentParser(description="Operate and inspect main-agent tasks.")
     parser.add_argument("--config", help="Optional task system config path.")
@@ -103,6 +133,14 @@ def main() -> None:
 
     subparsers.add_parser("overview", help="Show task system overview.")
     subparsers.add_parser("health", help="Show main-oriented health summary.")
+    repair_parser = subparsers.add_parser("repair", help="Clean stale delivery state and optionally retry failed sends.")
+    repair_parser.add_argument("--execute-retries", action="store_true", help="Retry retryable failed instructions.")
+    repair_parser.add_argument("--openclaw-bin", default=None, help="Override openclaw binary for retry execution.")
+    repair_parser.add_argument(
+        "--execution-context",
+        default="local",
+        help="Execution context label to write into retry dispatch results.",
+    )
 
     args = parser.parse_args()
     config_path = Path(args.config).expanduser() if args.config else None
@@ -135,6 +173,16 @@ def main() -> None:
         return
     if args.command == "health":
         print(render_main_health(config_path=config_path), end="")
+        return
+    if args.command == "repair":
+        result = repair_system(
+            config_path=config_path,
+            paths=paths,
+            execute_retries=args.execute_retries,
+            openclaw_bin=args.openclaw_bin,
+            execution_context=args.execution_context,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 
 

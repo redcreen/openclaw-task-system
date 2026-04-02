@@ -40,11 +40,13 @@ def reconcile_delivery_artifacts(
     paths: Optional[TaskPaths] = None,
     config_path: Optional[Path] = None,
     apply_changes: bool = False,
+    task_ids: Optional[list[str]] = None,
 ) -> list[dict[str, object]]:
     resolved_paths = _resolve_paths(paths=paths, config_path=config_path)
     findings: list[dict[str, object]] = []
+    candidate_task_ids = sorted(task_ids) if task_ids is not None else _list_finalized_task_ids(resolved_paths)
 
-    for task_id in _list_finalized_task_ids(resolved_paths):
+    for task_id in candidate_task_ids:
         stale_paths = [
             _artifact_path(resolved_paths, directory, task_id)
             for directory in INTERMEDIATE_DIRS
