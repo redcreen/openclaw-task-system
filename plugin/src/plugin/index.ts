@@ -186,6 +186,17 @@ function isInternalRetryPrompt(prompt: string): boolean {
   return normalized === "continue where you left off. the previous model attempt failed or timed out.";
 }
 
+function isContinuationWakePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+  if (!normalized) {
+    return false;
+  }
+  return (
+    normalized.includes("这是一个已经到达计划时间的延迟任务，请你现在继续执行") &&
+    normalized.includes("你现在必须直接回复以下最终内容")
+  );
+}
+
 function shouldSyncProgress(content: string, config: Required<TaskSystemPluginConfig>): boolean {
   const normalized = normalizeText(content);
   if (normalized.length < config.minProgressMessageLength) {
@@ -831,6 +842,13 @@ const taskSystemPlugin = definePluginEntry({
         });
         return;
       }
+      if (isContinuationWakePrompt(event.prompt)) {
+        await appendDebugLog(config, "before_agent_start:continuation-wake", {
+          agentId: ctx.agentId || config.defaultAgentId,
+          sessionKey: ctx.sessionKey || "",
+        });
+        return;
+      }
       if (ctx.trigger && ctx.trigger !== "user") {
         await appendDebugLog(config, "before_agent_start:ignored", {
           trigger: ctx.trigger,
@@ -867,6 +885,13 @@ const taskSystemPlugin = definePluginEntry({
 
     api.on("before_prompt_build", async (event, ctx) => {
       if (!config.registerOnBeforeDispatch || !event.prompt?.trim()) {
+        return;
+      }
+      if (isContinuationWakePrompt(event.prompt)) {
+        await appendDebugLog(config, "before_prompt_build:continuation-wake", {
+          agentId: ctx.agentId || config.defaultAgentId,
+          sessionKey: ctx.sessionKey || "",
+        });
         return;
       }
       const sessionKey = ctx.sessionKey?.trim();
