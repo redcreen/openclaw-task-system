@@ -487,11 +487,19 @@ const taskSystemPlugin = definePluginEntry({
         user_id: event.senderId ?? ctx.senderId ?? "",
         user_request: event.body || event.content,
       });
+      await appendDebugLog(config, "immediate-ack:decision", {
+        sessionKey,
+        channel: event.channel ?? ctx.channelId ?? "unknown",
+        shouldRegisterTask: registerResult?.should_register_task ?? null,
+        classificationReason: registerResult?.classification_reason ?? null,
+        taskId: registerResult?.task_id ?? null,
+      });
       if (
-        registerResult?.should_register_task === true &&
-        registerResult?.classification_reason === "long-task" &&
+        registerResult &&
+        Boolean(registerResult.should_register_task) &&
         typeof registerResult.task_id === "string" &&
-        registerResult.task_id.trim()
+        registerResult.task_id.trim() &&
+        String(registerResult.classification_reason || "").trim() !== "existing-active-task"
       ) {
         await sendImmediateAck(api, config, {
           channel: event.channel ?? ctx.channelId ?? "unknown",
