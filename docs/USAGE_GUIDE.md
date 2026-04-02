@@ -237,6 +237,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 推荐测试入口：
 
 - `bash workspace/openclaw-task-system/scripts/run_tests.sh`
+- `python3 workspace/openclaw-task-system/scripts/runtime/stable_acceptance.py`
 
 推荐状态查看入口：
 

@@ -51,6 +51,7 @@ def failed_dir(paths: TaskPaths) -> Path:
 
 
 def ensure_dirs(paths: TaskPaths) -> None:
+    instruction_dir(paths).mkdir(parents=True, exist_ok=True)
     result_dir(paths).mkdir(parents=True, exist_ok=True)
     processed_dir(paths).mkdir(parents=True, exist_ok=True)
     failed_dir(paths).mkdir(parents=True, exist_ok=True)
@@ -363,6 +364,7 @@ def retry_failed_instructions(
     import time
 
     results: list[dict[str, Any]] = []
+    ensure_dirs(paths)
     failed_dir_path = failed_dir(paths)
 
     if not failed_dir_path.exists():

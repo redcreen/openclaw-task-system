@@ -189,6 +189,9 @@
 - 运行 `main` 第一阶段总验收：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_acceptance.py`
 
+- 运行稳定使用总验收：
+  `python3 workspace/openclaw-task-system/scripts/runtime/stable_acceptance.py`
+
 ## 下一步建议
 
 下一阶段建议直接在这个目录内继续推进：
