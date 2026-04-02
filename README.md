@@ -153,6 +153,9 @@
 - 查看当前进行中的任务：
   `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py --list`
 
+- 查看系统健康总览：
+  `python3 workspace/openclaw-task-system/scripts/runtime/health_report.py`
+
 - OpenClaw 插件入口：
   `workspace/openclaw-task-system/plugin/index.ts`
 

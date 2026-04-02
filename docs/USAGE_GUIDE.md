@@ -244,6 +244,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 - `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py --list`
 - `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py --overview`
 - `python3 workspace/openclaw-task-system/scripts/runtime/delivery_reconcile.py`
+- `python3 workspace/openclaw-task-system/scripts/runtime/health_report.py`
 
 状态查询里的 `delivery.state` 现在会直接给出当前投递阶段：
 
@@ -278,6 +279,12 @@ python3 workspace/openclaw-task-system/scripts/runtime/delivery_reconcile.py
 
 ```bash
 python3 workspace/openclaw-task-system/scripts/runtime/delivery_reconcile.py --apply
+```
+
+如果想一次看任务系统当前健康状态、插件检查、失败指令和残留投递，使用：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/health_report.py
 ```
 
 ## 7. 使用注意事项
