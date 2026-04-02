@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 
 type TaskSystemPluginConfig = {
   enabled?: boolean;
+  taskMessagePrefix?: string;
   openclawBin?: string;
   pythonBin?: string;
   runtimeRoot?: string;
@@ -35,6 +36,10 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
   const value = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   return {
     enabled: value.enabled !== false,
+    taskMessagePrefix:
+      typeof value.taskMessagePrefix === "string"
+        ? value.taskMessagePrefix
+        : "[task] ",
     openclawBin:
       typeof value.openclawBin === "string" && value.openclawBin.trim()
         ? value.openclawBin.trim()
@@ -88,6 +93,18 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
         ? Math.max(1000, Math.trunc(value.continuationPollMs))
         : 3000,
   };
+}
+
+function withTaskPrefix(config: Required<TaskSystemPluginConfig>, message: string): string {
+  const normalized = normalizeText(message);
+  if (!normalized) {
+    return normalized;
+  }
+  const prefix = typeof config.taskMessagePrefix === "string" ? config.taskMessagePrefix : "";
+  if (!prefix) {
+    return normalized;
+  }
+  return `${prefix}${normalized}`;
 }
 
 function buildHooksScriptPath(config: Required<TaskSystemPluginConfig>): string {
@@ -523,7 +540,7 @@ async function sendImmediateAck(
     return;
   }
   const chatId = String(payload.chatId || "").trim();
-  const message = normalizeText(payload.message || config.immediateAckTemplate);
+  const message = withTaskPrefix(config, payload.message || config.immediateAckTemplate);
   if (!chatId || !message) {
     return;
   }
@@ -640,7 +657,7 @@ async function sendStatusMessage(
     return;
   }
   const chatId = String(payload.chatId || "").trim();
-  const message = normalizeText(payload.message);
+  const message = withTaskPrefix(config, payload.message);
   if (!chatId || !message) {
     return;
   }
