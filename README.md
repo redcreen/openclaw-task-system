@@ -201,6 +201,9 @@
 - 健康问题统一修复入口：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair`
 
+- 当前问题分诊入口：
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage`
+
 ## 下一步建议
 
 下一阶段建议直接在这个目录内继续推进：

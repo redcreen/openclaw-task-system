@@ -78,6 +78,57 @@ def render_main_health(
     return "\n".join(lines) + "\n"
 
 
+def render_main_triage(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> str:
+    report = build_health_report(config_path=config_path, paths=paths)
+    overview = report["overview"]
+    blocked_main = [
+        task for task in overview["active_tasks"] if task["agent_id"] == "main" and task["status"] == "blocked"
+    ]
+    failed_summary = report["failed_instruction_summary"]
+
+    lines = [
+        "# Main Ops Triage",
+        "",
+        f"- status: {report['status']}",
+        f"- blocked_main_task_count: {len(blocked_main)}",
+        f"- retryable_failed_instruction_count: {failed_summary['retryable']}",
+        f"- non_retryable_failed_instruction_count: {failed_summary['non_retryable']}",
+        f"- unknown_failed_instruction_count: {failed_summary['unknown']}",
+        "",
+        "## Next Actions",
+        "",
+    ]
+
+    if blocked_main:
+        task = blocked_main[0]
+        lines.append(
+            f"- Resume blocked main task: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resume {task['task_id']} --note \"继续推进并同步真实进展\"`"
+        )
+        lines.append(
+            f"- Or fail it explicitly: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py fail {task['task_id']} --reason \"manual close after triage\"`"
+        )
+    else:
+        lines.append("- No blocked main task requires manual action.")
+
+    if failed_summary["retryable"]:
+        lines.append(
+            "- Retry retryable failed instructions on host: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair --execute-retries --execution-context host`"
+        )
+    else:
+        lines.append("- No retryable failed instructions are waiting.")
+
+    if failed_summary["non_retryable"]:
+        lines.append("- Review non-retryable failures in `data/failed-instructions/` and correct target/auth/config before retrying.")
+    else:
+        lines.append("- No non-retryable failed instructions are waiting.")
+
+    return "\n".join(lines) + "\n"
+
+
 def repair_system(
     *,
     config_path: Optional[Path] = None,
@@ -137,6 +188,7 @@ def main() -> None:
 
     subparsers.add_parser("overview", help="Show task system overview.")
     subparsers.add_parser("health", help="Show main-oriented health summary.")
+    subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
     repair_parser = subparsers.add_parser("repair", help="Clean stale delivery state and optionally retry failed sends.")
     repair_parser.add_argument("--execute-retries", action="store_true", help="Retry retryable failed instructions.")
     repair_parser.add_argument("--openclaw-bin", default=None, help="Override openclaw binary for retry execution.")
@@ -177,6 +229,9 @@ def main() -> None:
         return
     if args.command == "health":
         print(render_main_health(config_path=config_path), end="")
+        return
+    if args.command == "triage":
+        print(render_main_triage(config_path=config_path, paths=paths), end="")
         return
     if args.command == "repair":
         result = repair_system(

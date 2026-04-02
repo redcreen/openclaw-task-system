@@ -71,6 +71,32 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("# Main Ops Health", rendered)
         self.assertIn("- main_blocked_task_count: 1", rendered)
 
+    def test_render_main_triage_includes_resume_and_retry_actions(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main",
+            channel="telegram",
+            chat_id="chat:main",
+            task_label="blocked main task",
+        )
+        self.store.block_task(task.task_id, "waiting")
+        failed_dir = self.paths.data_dir / "failed-instructions"
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        task_state_module.atomic_write_json(
+            failed_dir / "retryable.json",
+            {
+                "task_id": "retryable",
+                "_last_failure_classification": "transport-retryable",
+                "_last_failure_retryable": True,
+            },
+        )
+
+        rendered = main_ops.render_main_triage(paths=self.paths)
+
+        self.assertIn("# Main Ops Triage", rendered)
+        self.assertIn(task.task_id, rendered)
+        self.assertIn("repair --execute-retries --execution-context host", rendered)
+
     def test_repair_system_cleans_stale_delivery_artifacts(self) -> None:
         task = self.store.register_task(
             agent_id="main",

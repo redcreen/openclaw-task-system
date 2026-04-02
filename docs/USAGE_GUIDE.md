@@ -241,6 +241,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py list`
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health`
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair`
+- `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage`
 
 推荐状态查看入口：
 
@@ -271,6 +272,18 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair --exec
 - `--execute-retries` 只会重试被标记为 retryable 的失败指令
 - `--execution-context host` 适合你在真实宿主环境下跑恢复动作
 - `health_report.py` 现在会区分失败指令里的 `retryable / non-retryable / unknown`
+
+如果你不想自己读健康报告并判断下一步，直接用：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage
+```
+
+它会按当前真实状态给出：
+
+- 是否有 blocked 的 `main` 任务
+- 是否有 retryable 的失败指令
+- 下一步建议执行的命令
 
 状态查询里的 `delivery.state` 现在会直接给出当前投递阶段：
 
