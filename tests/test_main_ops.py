@@ -293,6 +293,101 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertEqual(cleared["removed"], 1)
 
+    def test_stop_main_queue_cancels_running_task_and_promotes_next(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:1",
+            channel="telegram",
+            chat_id="chat:main:1",
+            task_label="running task",
+        )
+        self.store.start_task(first.task_id)
+        second = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:2",
+            channel="telegram",
+            chat_id="chat:main:2",
+            task_label="queued task",
+        )
+
+        with patch.object(
+            main_ops,
+            "_cancel_host_session",
+            return_value={
+                "ok": True,
+                "stdout": "cancelled",
+                "stderr": "",
+                "returncode": 0,
+                "command": ["openclaw", "tasks", "cancel", "session:main:1"],
+            },
+        ):
+            result = main_ops.stop_main_queue(paths=self.paths, reason="manual stop")
+
+        self.assertEqual(result["action"], "stopped-current")
+        self.assertEqual(result["remaining_running_count"], 1)
+        self.assertEqual(result["remaining_queued_count"], 0)
+        promoted = self.store.load_task(second.task_id)
+        self.assertEqual(promoted.status, task_state_module.STATUS_RUNNING)
+
+    def test_stop_main_queue_cancels_queue_head_when_nothing_running(self) -> None:
+        queued = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:q1",
+            channel="telegram",
+            chat_id="chat:main:q1",
+            task_label="queued head",
+        )
+        self.store.register_task(
+            agent_id="main",
+            session_key="session:main:q2",
+            channel="telegram",
+            chat_id="chat:main:q2",
+            task_label="queued tail",
+        )
+
+        result = main_ops.stop_main_queue(paths=self.paths, reason="manual stop")
+
+        self.assertEqual(result["action"], "stopped-queued-head")
+        self.assertEqual(result["remaining_queued_count"], 0)
+        self.assertEqual(result["remaining_running_count"], 1)
+        self.assertTrue((self.paths.archive_dir / f"{queued.task_id}.json").exists())
+
+    def test_stop_all_main_queue_cancels_running_and_queued_tasks(self) -> None:
+        running = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:run",
+            channel="telegram",
+            chat_id="chat:main:run",
+            task_label="running task",
+        )
+        self.store.start_task(running.task_id)
+        queued = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:queued",
+            channel="telegram",
+            chat_id="chat:main:queued",
+            task_label="queued task",
+        )
+
+        with patch.object(
+            main_ops,
+            "_cancel_host_session",
+            return_value={
+                "ok": True,
+                "stdout": "cancelled",
+                "stderr": "",
+                "returncode": 0,
+                "command": ["openclaw", "tasks", "cancel", "session:main:run"],
+            },
+        ):
+            result = main_ops.stop_all_main_queue(paths=self.paths, reason="stop all")
+
+        self.assertEqual(result["action"], "stopped-all")
+        self.assertEqual(result["cancelled_count"], 2)
+        self.assertEqual(result["remaining_active_count"], 0)
+        self.assertTrue((self.paths.archive_dir / f"{running.task_id}.json").exists())
+        self.assertTrue((self.paths.archive_dir / f"{queued.task_id}.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

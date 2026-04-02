@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from argparse import ArgumentParser
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +19,7 @@ from instruction_executor import (
 from main_task_adapter import block_main_task, fail_main_task, finish_main_task, resume_main_task
 from task_config import load_task_system_config
 from task_status import list_inflight_statuses, render_overview_markdown, render_status_markdown
-from task_state import TaskPaths, default_paths
+from task_state import STATUS_QUEUED, STATUS_RUNNING, TaskPaths, TaskStore, default_paths
 
 
 def _resolve_paths(config_path: Optional[Path], *, paths: Optional[TaskPaths] = None) -> TaskPaths:
@@ -386,6 +387,133 @@ def repair_system(
     }
 
 
+def _cancel_host_session(
+    *,
+    session_key: str,
+    openclaw_bin: str,
+) -> dict[str, object]:
+    command = [openclaw_bin, "tasks", "cancel", session_key]
+    result = subprocess.run(command, capture_output=True, text=True)
+    return {
+        "command": command,
+        "returncode": result.returncode,
+        "stdout": result.stdout.strip(),
+        "stderr": result.stderr.strip(),
+        "ok": result.returncode == 0,
+    }
+
+
+def stop_main_queue(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    openclaw_bin: Optional[str] = None,
+    reason: str = "user requested stop",
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=resolved_paths)
+    running_tasks = store.find_running_tasks(agent_id="main")
+    queued_tasks = store.find_queued_tasks(agent_id="main")
+
+    selected = running_tasks[0] if running_tasks else (queued_tasks[0] if queued_tasks else None)
+    if selected is None:
+        return {
+            "action": "noop",
+            "reason": "no-main-task-to-stop",
+            "remaining_running_count": 0,
+            "remaining_queued_count": 0,
+            "remaining_active_count": 0,
+            "suggestion": "当前没有可停止的 main 任务。",
+        }
+
+    host_cancel = None
+    if selected.status == STATUS_RUNNING:
+        host_cancel = _cancel_host_session(
+            session_key=selected.session_key,
+            openclaw_bin=openclaw_bin or config.delivery.openclaw_bin,
+        )
+        if not host_cancel["ok"]:
+            return {
+                "action": "host-cancel-failed",
+                "task_id": selected.task_id,
+                "status": selected.status,
+                "host_cancel": host_cancel,
+            }
+
+    cancelled = store.cancel_task(selected.task_id, reason, archive=True)
+    remaining_running = store.find_running_tasks(agent_id="main")
+    remaining_queued = store.find_queued_tasks(agent_id="main")
+    return {
+        "action": "stopped-current" if selected.status == STATUS_RUNNING else "stopped-queued-head",
+        "task_id": cancelled.task_id,
+        "stopped_status": selected.status,
+        "host_cancel": host_cancel,
+        "remaining_running_count": len(remaining_running),
+        "remaining_queued_count": len(remaining_queued),
+        "remaining_active_count": len(remaining_running) + len(remaining_queued),
+        "next_running_task_id": remaining_running[0].task_id if remaining_running else None,
+        "suggestion": (
+            f"已停止 1 个任务；当前前面还有 {len(remaining_running) + len(remaining_queued)} 个号。"
+            " 如果希望停止全部，请回复“停止全部”。"
+        ),
+    }
+
+
+def stop_all_main_queue(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    openclaw_bin: Optional[str] = None,
+    reason: str = "user requested stop all",
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=resolved_paths)
+
+    queued_tasks = store.find_queued_tasks(agent_id="main")
+    running_tasks = store.find_running_tasks(agent_id="main")
+    cancelled_tasks: list[dict[str, object]] = []
+    host_cancels: list[dict[str, object]] = []
+
+    for task in queued_tasks:
+        cancelled = store.cancel_task(task.task_id, reason, archive=True)
+        cancelled_tasks.append(
+            {
+                "task_id": cancelled.task_id,
+                "status": STATUS_QUEUED,
+            }
+        )
+
+    for task in running_tasks:
+        host_cancel = _cancel_host_session(
+            session_key=task.session_key,
+            openclaw_bin=openclaw_bin or config.delivery.openclaw_bin,
+        )
+        host_cancels.append({"task_id": task.task_id, **host_cancel})
+        if host_cancel["ok"]:
+            cancelled = store.cancel_task(task.task_id, reason, archive=True)
+            cancelled_tasks.append(
+                {
+                    "task_id": cancelled.task_id,
+                    "status": STATUS_RUNNING,
+                }
+            )
+
+    remaining_running = store.find_running_tasks(agent_id="main")
+    remaining_queued = store.find_queued_tasks(agent_id="main")
+    return {
+        "action": "stopped-all",
+        "cancelled_count": len(cancelled_tasks),
+        "cancelled_tasks": cancelled_tasks,
+        "host_cancels": host_cancels,
+        "remaining_running_count": len(remaining_running),
+        "remaining_queued_count": len(remaining_queued),
+        "remaining_active_count": len(remaining_running) + len(remaining_queued),
+        "suggestion": "已停止当前执行任务，并清空剩余队列。",
+    }
+
+
 def main() -> None:
     parser = ArgumentParser(description="Operate and inspect main-agent tasks.")
     parser.add_argument("--config", help="Optional task system config path.")
@@ -410,6 +538,12 @@ def main() -> None:
     complete_parser = subparsers.add_parser("complete", help="Mark a main task completed.")
     complete_parser.add_argument("task_id")
     complete_parser.add_argument("--summary", default=None)
+    stop_parser = subparsers.add_parser("stop", help="Stop the current running main task or the head of the queue.")
+    stop_parser.add_argument("--reason", default="user requested stop")
+    stop_parser.add_argument("--openclaw-bin", default=None)
+    stop_all_parser = subparsers.add_parser("stop-all", help="Stop the running main task and clear the remaining queue.")
+    stop_all_parser.add_argument("--reason", default="user requested stop all")
+    stop_all_parser.add_argument("--openclaw-bin", default=None)
 
     subparsers.add_parser("overview", help="Show task system overview.")
     subparsers.add_parser("health", help="Show main-oriented health summary.")
@@ -488,6 +622,24 @@ def main() -> None:
     if args.command == "complete":
         task = finish_main_task(args.task_id, result_summary=args.summary, paths=paths)
         print(json.dumps(task.to_dict(), ensure_ascii=False, indent=2))
+        return
+    if args.command == "stop":
+        result = stop_main_queue(
+            config_path=config_path,
+            paths=paths,
+            openclaw_bin=args.openclaw_bin,
+            reason=args.reason,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    if args.command == "stop-all":
+        result = stop_all_main_queue(
+            config_path=config_path,
+            paths=paths,
+            openclaw_bin=args.openclaw_bin,
+            reason=args.reason,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return
     if args.command == "overview":
         print(render_overview_markdown(config_path=config_path), end="")
