@@ -243,6 +243,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 - `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py <task_id>`
 - `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py --list`
 - `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py --overview`
+- `python3 workspace/openclaw-task-system/scripts/runtime/delivery_reconcile.py`
 
 状态查询里的 `delivery.state` 现在会直接给出当前投递阶段：
 
@@ -254,6 +255,18 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 - `processed`
 - `skipped`
 - `failed`
+
+如果要检查历史遗留的中间投递产物，比如任务已经进入 `processed-instructions/` 或 `failed-instructions/`，但仍残留 `sent/`、`delivery-ready/`、`send-instructions/`，使用：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/delivery_reconcile.py
+```
+
+如果确认要清理这些残留文件，再执行：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/delivery_reconcile.py --apply
+```
 
 ## 7. 使用注意事项
 
