@@ -43,8 +43,8 @@ class ContinuationPlan:
 
 
 DELAYED_REPLY_PATTERNS = (
-    re.compile(r"(?P<delay>\d+)\s*分钟后回复我(?P<message>.+)"),
-    re.compile(r"(?P<delay>\d+)\s*秒后回复我(?P<message>.+)"),
+    re.compile(r"^\s*(?P<delay>\d+)\s*分钟后回复我(?P<message>.+?)\s*$"),
+    re.compile(r"^\s*(?P<delay>\d+)\s*秒后回复我(?P<message>.+?)\s*$"),
 )
 
 
@@ -62,7 +62,7 @@ def parse_delayed_reply_request(
         return None
 
     for pattern in DELAYED_REPLY_PATTERNS:
-        matched = pattern.search(normalized)
+        matched = pattern.fullmatch(normalized)
         if not matched:
             continue
         delay = int(matched.group("delay"))
