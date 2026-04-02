@@ -79,6 +79,7 @@ class TaskStateTests(unittest.TestCase):
         self.assertTrue(self.store.archive_path(task.task_id).exists())
         archived = self.store.load_task(task.task_id)
         self.assertEqual(archived.meta["result"], "ok")
+        self.assertEqual(archived.last_user_visible_update_at, archived.updated_at)
 
     def test_fail_task_archives_failure_reason(self) -> None:
         task = self.store.register_task(
@@ -92,6 +93,7 @@ class TaskStateTests(unittest.TestCase):
         self.assertEqual(failed.status, task_state_module.STATUS_FAILED)
         self.assertEqual(failed.failure_reason, "provider timeout")
         self.assertTrue(self.store.archive_path(task.task_id).exists())
+        self.assertEqual(failed.last_user_visible_update_at, failed.updated_at)
 
     def test_resume_task_reopens_blocked_task(self) -> None:
         task = self.store.register_task(

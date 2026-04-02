@@ -260,6 +260,10 @@ class OpenClawHooksTests(unittest.TestCase):
         )
         self.assertTrue(finalized["updated"])
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
+        self.assertEqual(
+            finalized["task"]["last_user_visible_update_at"],
+            finalized["task"]["updated_at"],
+        )
 
 
 if __name__ == "__main__":

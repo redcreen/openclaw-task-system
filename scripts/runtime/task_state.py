@@ -249,23 +249,36 @@ class TaskStore:
         task.meta["resumed_at"] = ts
         return self.save_task(task)
 
-    def complete_task(self, task_id: str, *, archive: bool = True, meta: Optional[dict[str, Any]] = None) -> TaskState:
+    def complete_task(
+        self,
+        task_id: str,
+        *,
+        archive: bool = True,
+        meta: Optional[dict[str, Any]] = None,
+        user_visible: bool = True,
+    ) -> TaskState:
         task = self.load_task(task_id)
         ts = now_iso()
         task.status = STATUS_DONE
         task.updated_at = ts
         task.last_internal_touch_at = ts
+        if user_visible:
+            task.last_user_visible_update_at = ts
+            task.monitor_state = "normal"
         if meta:
             task.meta.update(meta)
         return self._finalize_task(task, archive=archive)
 
-    def fail_task(self, task_id: str, reason: str, *, archive: bool = True) -> TaskState:
+    def fail_task(self, task_id: str, reason: str, *, archive: bool = True, user_visible: bool = True) -> TaskState:
         task = self.load_task(task_id)
         ts = now_iso()
         task.status = STATUS_FAILED
         task.failure_reason = reason
         task.updated_at = ts
         task.last_internal_touch_at = ts
+        if user_visible:
+            task.last_user_visible_update_at = ts
+            task.monitor_state = "normal"
         return self._finalize_task(task, archive=archive)
 
     def archive_task(self, task_id: str, *, remove_inflight: bool = True) -> TaskState:
