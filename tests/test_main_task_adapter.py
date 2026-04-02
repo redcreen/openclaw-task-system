@@ -40,11 +40,11 @@ class MainTaskAdapterTests(unittest.TestCase):
         self.assertTrue(decision.should_register)
         self.assertEqual(decision.reason, "long-task")
 
-    def test_decide_main_task_skips_short_task(self) -> None:
+    def test_decide_main_task_observes_short_task(self) -> None:
         context = self.build_context("看一下")
         decision = main_task_adapter.decide_main_task(context)
-        self.assertFalse(decision.should_register)
-        self.assertEqual(decision.reason, "short-task")
+        self.assertTrue(decision.should_register)
+        self.assertEqual(decision.reason, "observed-task")
 
     def test_decide_main_task_promotes_delayed_reply_to_continuation_task(self) -> None:
         context = self.build_context("1分钟后回复我ok1")

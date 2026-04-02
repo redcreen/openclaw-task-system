@@ -83,8 +83,8 @@ def decide_main_task(
         estimated_steps_threshold=policy.estimated_steps_threshold,
         keywords=policy.keywords,
     )
-    should_register = classification.is_long_task
-    reason = "long-task" if should_register else "short-task"
+    should_register = True
+    reason = "long-task" if classification.is_long_task else "observed-task"
     return MainTaskDecision(
         classification=classification,
         should_register=should_register,

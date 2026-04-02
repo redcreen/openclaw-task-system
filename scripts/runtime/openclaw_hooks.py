@@ -52,27 +52,6 @@ def register_from_payload(
     *,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
-    active = resolve_active_task_from_payload(
-        {
-            "agent_id": payload["agent_id"],
-            "session_key": payload["session_key"],
-        },
-        config_path=config_path,
-    )
-    if active["found"]:
-        return {
-            "should_register_task": True,
-            "task_id": active["task_id"],
-            "classification_reason": "existing-active-task",
-            "confidence": "high",
-            "task_status": active.get("status"),
-            "queue_position": None,
-            "ahead_count": 0,
-            "active_count": 1,
-            "running_count": 1 if active.get("status") == "running" else 0,
-            "queued_count": 1 if active.get("status") == "queued" else 0,
-            "continuation_due_at": None,
-        }
     decision = register_inbound_task(
         _build_context(payload),
         config_path=config_path,
