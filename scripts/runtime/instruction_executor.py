@@ -100,6 +100,7 @@ def write_dispatch_result(
     paths: TaskPaths,
     executed: bool,
     execution_context: str,
+    requested_execution_context: Optional[str] = None,
     exit_code: Optional[int] = None,
     stdout: Optional[str] = None,
     stderr: Optional[str] = None,
@@ -117,6 +118,7 @@ def write_dispatch_result(
         "action": decision.action,
         "reason": decision.reason,
         "execution_context": execution_context,
+        "requested_execution_context": requested_execution_context or execution_context,
         "command": decision.command,
         "executed": executed,
         "exit_code": exit_code,
@@ -166,11 +168,13 @@ def execute_instruction(
             paths=paths,
             executed=False,
             execution_context=result_execution_context,
+            requested_execution_context=execution_context,
         )
         return {
             "decision": decision.__dict__,
             "result_path": str(result_path),
             "execution_context": result_execution_context,
+            "requested_execution_context": execution_context,
         }
 
     archived_instruction_path: Optional[str] = None
@@ -213,6 +217,7 @@ def execute_instruction(
         paths=paths,
         executed=True,
         execution_context=execution_context,
+        requested_execution_context=execution_context,
         exit_code=last_exit_code,
         stdout=last_stdout,
         stderr=last_stderr,
@@ -232,6 +237,7 @@ def execute_instruction(
         "archived_instruction_path": archived_instruction_path,
         "retries": attempt,
         "execution_context": execution_context,
+        "requested_execution_context": execution_context,
     }
 
 

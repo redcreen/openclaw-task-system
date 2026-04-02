@@ -86,6 +86,7 @@ class WatchdogCycleTests(unittest.TestCase):
         self.assertFalse(dispatch_payload["executed"])
         self.assertEqual(dispatch_payload["action"], "send")
         self.assertEqual(dispatch_payload["execution_context"], "dry-run")
+        self.assertEqual(dispatch_payload["requested_execution_context"], "host")
 
 
 if __name__ == "__main__":

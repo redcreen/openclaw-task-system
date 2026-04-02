@@ -9,6 +9,83 @@ from task_config import TaskSystemConfig, load_task_system_config
 from task_state import TaskPaths, TaskStore, default_paths
 
 
+def _artifact_path(paths: TaskPaths, directory: str, task_id: str) -> Path:
+    return paths.data_dir / directory / f"{task_id}.json"
+
+
+def _load_json_if_exists(path: Path) -> Optional[dict[str, object]]:
+    if not path.exists():
+        return None
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _resolve_delivery_state(
+    *,
+    outbox_exists: bool,
+    sent_exists: bool,
+    delivery_ready_exists: bool,
+    send_instruction_exists: bool,
+    processed_instruction_exists: bool,
+    failed_instruction_exists: bool,
+    dispatch_result: Optional[dict[str, object]],
+) -> str:
+    if processed_instruction_exists:
+        action = dispatch_result.get("action") if dispatch_result else None
+        if action == "skip":
+            return "skipped"
+        return "processed"
+    if failed_instruction_exists:
+        return "failed"
+    if send_instruction_exists:
+        return "pending-send"
+    if delivery_ready_exists:
+        return "prepared"
+    if sent_exists:
+        return "sent"
+    if outbox_exists:
+        return "queued"
+    return "not-requested"
+
+
+def build_delivery_summary(task_id: str, *, paths: TaskPaths) -> dict[str, object]:
+    outbox_path = _artifact_path(paths, "outbox", task_id)
+    sent_path = _artifact_path(paths, "sent", task_id)
+    delivery_ready_path = _artifact_path(paths, "delivery-ready", task_id)
+    send_instruction_path = _artifact_path(paths, "send-instructions", task_id)
+    dispatch_result_path = _artifact_path(paths, "dispatch-results", task_id)
+    processed_instruction_path = _artifact_path(paths, "processed-instructions", task_id)
+    failed_instruction_path = _artifact_path(paths, "failed-instructions", task_id)
+
+    dispatch_result = _load_json_if_exists(dispatch_result_path)
+    delivery_state = _resolve_delivery_state(
+        outbox_exists=outbox_path.exists(),
+        sent_exists=sent_path.exists(),
+        delivery_ready_exists=delivery_ready_path.exists(),
+        send_instruction_exists=send_instruction_path.exists(),
+        processed_instruction_exists=processed_instruction_path.exists(),
+        failed_instruction_exists=failed_instruction_path.exists(),
+        dispatch_result=dispatch_result,
+    )
+    return {
+        "state": delivery_state,
+        "outbox_exists": outbox_path.exists(),
+        "sent_exists": sent_path.exists(),
+        "delivery_ready_exists": delivery_ready_path.exists(),
+        "send_instruction_exists": send_instruction_path.exists(),
+        "processed_instruction_exists": processed_instruction_path.exists(),
+        "failed_instruction_exists": failed_instruction_path.exists(),
+        "dispatch_result_exists": dispatch_result_path.exists(),
+        "dispatch_action": dispatch_result.get("action") if dispatch_result else None,
+        "dispatch_reason": dispatch_result.get("reason") if dispatch_result else None,
+        "dispatch_execution_context": dispatch_result.get("execution_context") if dispatch_result else None,
+        "dispatch_requested_execution_context": (
+            dispatch_result.get("requested_execution_context") if dispatch_result else None
+        ),
+        "dispatch_exit_code": dispatch_result.get("exit_code") if dispatch_result else None,
+    }
+
+
 def _resolve_paths(
     paths: Optional[TaskPaths] = None,
     *,
@@ -28,7 +105,8 @@ def build_status_summary(
     config: Optional[TaskSystemConfig] = None,
     config_path: Optional[Path] = None,
 ) -> dict[str, object]:
-    store = TaskStore(paths=_resolve_paths(paths, config=config, config_path=config_path))
+    resolved_paths = _resolve_paths(paths, config=config, config_path=config_path)
+    store = TaskStore(paths=resolved_paths)
     task = store.load_task(task_id)
     return {
         "task_id": task.task_id,
@@ -48,6 +126,7 @@ def build_status_summary(
         "block_reason": task.block_reason,
         "failure_reason": task.failure_reason,
         "monitor_state": task.monitor_state,
+        "delivery": build_delivery_summary(task_id, paths=resolved_paths),
     }
 
 
@@ -85,7 +164,29 @@ def render_status_markdown(
         f"- last_internal_touch_at: {status['last_internal_touch_at']}",
         f"- last_monitor_notify_at: {status['last_monitor_notify_at']}",
         f"- notify_count: {status['notify_count']}",
+        f"- delivery.state: {status['delivery']['state']}",
+        f"- delivery.outbox_exists: {status['delivery']['outbox_exists']}",
+        f"- delivery.sent_exists: {status['delivery']['sent_exists']}",
+        f"- delivery.delivery_ready_exists: {status['delivery']['delivery_ready_exists']}",
+        f"- delivery.send_instruction_exists: {status['delivery']['send_instruction_exists']}",
+        f"- delivery.processed_instruction_exists: {status['delivery']['processed_instruction_exists']}",
+        f"- delivery.failed_instruction_exists: {status['delivery']['failed_instruction_exists']}",
+        f"- delivery.dispatch_result_exists: {status['delivery']['dispatch_result_exists']}",
     ]
+    if status["delivery"]["dispatch_action"]:
+        lines.append(f"- delivery.dispatch_action: {status['delivery']['dispatch_action']}")
+    if status["delivery"]["dispatch_reason"]:
+        lines.append(f"- delivery.dispatch_reason: {status['delivery']['dispatch_reason']}")
+    if status["delivery"]["dispatch_execution_context"]:
+        lines.append(
+            f"- delivery.dispatch_execution_context: {status['delivery']['dispatch_execution_context']}"
+        )
+    if status["delivery"]["dispatch_requested_execution_context"]:
+        lines.append(
+            f"- delivery.dispatch_requested_execution_context: {status['delivery']['dispatch_requested_execution_context']}"
+        )
+    if status["delivery"]["dispatch_exit_code"] is not None:
+        lines.append(f"- delivery.dispatch_exit_code: {status['delivery']['dispatch_exit_code']}")
     if status["block_reason"]:
         lines.append(f"- block_reason: {status['block_reason']}")
     if status["failure_reason"]:
@@ -105,7 +206,9 @@ def render_inflight_markdown(
 
     lines = ["# Active Tasks", ""]
     for status in statuses:
-        lines.append(f"- {status['task_id']} | {status['status']} | {status['task_label']}")
+        lines.append(
+            f"- {status['task_id']} | {status['status']} | delivery={status['delivery']['state']} | {status['task_label']}"
+        )
     return "\n".join(lines) + "\n"
 
 

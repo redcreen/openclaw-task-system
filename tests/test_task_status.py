@@ -34,6 +34,9 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(summary["task_id"], task.task_id)
         self.assertEqual(summary["status"], task_state_module.STATUS_RUNNING)
         self.assertEqual(summary["task_label"], "status task")
+        self.assertIn("delivery", summary)
+        self.assertEqual(summary["delivery"]["state"], "not-requested")
+        self.assertFalse(summary["delivery"]["dispatch_result_exists"])
 
     def test_render_status_markdown_includes_key_lines(self) -> None:
         task = self.store.register_task(
@@ -46,6 +49,8 @@ class TaskStatusTests(unittest.TestCase):
         markdown = task_status.render_status_markdown(task.task_id, paths=self.paths)
         self.assertIn(f"# Task Status: {task.task_id}", markdown)
         self.assertIn("- status: queued", markdown)
+        self.assertIn("- delivery.state: not-requested", markdown)
+        self.assertIn("- delivery.outbox_exists: False", markdown)
 
     def test_list_inflight_statuses_returns_registered_task(self) -> None:
         task = self.store.register_task(
@@ -70,6 +75,7 @@ class TaskStatusTests(unittest.TestCase):
         markdown = task_status.render_inflight_markdown(paths=self.paths)
         self.assertIn("# Active Tasks", markdown)
         self.assertIn(task.task_id, markdown)
+        self.assertIn("delivery=not-requested", markdown)
 
     def test_build_status_summary_can_resolve_paths_from_config_file(self) -> None:
         task = self.store.register_task(
@@ -88,3 +94,109 @@ class TaskStatusTests(unittest.TestCase):
         )
         summary = task_status.build_status_summary(task.task_id, config_path=config_path)
         self.assertEqual(summary["task_id"], task.task_id)
+
+    def test_build_status_summary_includes_delivery_artifacts(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="telegram",
+            chat_id="chat:test",
+            task_label="status delivery task",
+        )
+        dispatch_dir = self.paths.data_dir / "dispatch-results"
+        dispatch_dir.mkdir(parents=True, exist_ok=True)
+        (dispatch_dir / f"{task.task_id}.json").write_text(
+            json.dumps(
+                {
+                    "schema": "openclaw.task-system.dispatch-result.v1",
+                    "task_id": task.task_id,
+                    "action": "send",
+                    "reason": "supported",
+                    "execution_context": "dry-run",
+                    "requested_execution_context": "host",
+                    "exit_code": None,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        summary = task_status.build_status_summary(task.task_id, paths=self.paths)
+        self.assertTrue(summary["delivery"]["dispatch_result_exists"])
+        self.assertEqual(summary["delivery"]["state"], "not-requested")
+        self.assertEqual(summary["delivery"]["dispatch_action"], "send")
+        self.assertEqual(summary["delivery"]["dispatch_execution_context"], "dry-run")
+        self.assertEqual(summary["delivery"]["dispatch_requested_execution_context"], "host")
+
+    def test_build_status_summary_reports_processed_delivery_state(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="telegram",
+            chat_id="chat:test",
+            task_label="status processed task",
+        )
+        processed_dir = self.paths.data_dir / "processed-instructions"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        (processed_dir / f"{task.task_id}.json").write_text(
+            json.dumps({"task_id": task.task_id}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        dispatch_dir = self.paths.data_dir / "dispatch-results"
+        dispatch_dir.mkdir(parents=True, exist_ok=True)
+        (dispatch_dir / f"{task.task_id}.json").write_text(
+            json.dumps(
+                {
+                    "schema": "openclaw.task-system.dispatch-result.v1",
+                    "task_id": task.task_id,
+                    "action": "send",
+                    "reason": "supported",
+                    "execution_context": "host",
+                    "requested_execution_context": "host",
+                    "exit_code": 0,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        summary = task_status.build_status_summary(task.task_id, paths=self.paths)
+        self.assertEqual(summary["delivery"]["state"], "processed")
+
+    def test_build_status_summary_reports_skipped_delivery_state(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="agent",
+            chat_id="chat:test",
+            task_label="status skipped task",
+        )
+        processed_dir = self.paths.data_dir / "processed-instructions"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        (processed_dir / f"{task.task_id}.json").write_text(
+            json.dumps({"task_id": task.task_id}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        dispatch_dir = self.paths.data_dir / "dispatch-results"
+        dispatch_dir.mkdir(parents=True, exist_ok=True)
+        (dispatch_dir / f"{task.task_id}.json").write_text(
+            json.dumps(
+                {
+                    "schema": "openclaw.task-system.dispatch-result.v1",
+                    "task_id": task.task_id,
+                    "action": "skip",
+                    "reason": "internal-agent-channel",
+                    "execution_context": "local",
+                    "requested_execution_context": "host",
+                    "exit_code": None,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        summary = task_status.build_status_summary(task.task_id, paths=self.paths)
+        self.assertEqual(summary["delivery"]["state"], "skipped")

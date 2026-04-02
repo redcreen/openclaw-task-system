@@ -171,6 +171,8 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 - dry-run 不会移走原始指令文件
 - `dispatch-results/*.json` 现在会带 `execution_context`
   常见值包括 `dry-run`、`local`、`host`
+- 同时还会带 `requested_execution_context`
+  用来表示“本次原本想按什么上下文执行”
 
 如果需要显式指定二进制，可用：
 
@@ -240,6 +242,17 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 
 - `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py <task_id>`
 - `python3 workspace/openclaw-task-system/scripts/runtime/task_status.py --list`
+
+状态查询里的 `delivery.state` 现在会直接给出当前投递阶段：
+
+- `not-requested`
+- `queued`
+- `sent`
+- `prepared`
+- `pending-send`
+- `processed`
+- `skipped`
+- `failed`
 
 ## 7. 使用注意事项
 

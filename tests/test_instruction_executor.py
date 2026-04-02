@@ -112,6 +112,7 @@ class InstructionExecutorTests(unittest.TestCase):
         self.assertEqual(payload["action"], "send")
         self.assertEqual(payload["command"][0], "/mock/openclaw")
         self.assertEqual(payload["execution_context"], "dry-run")
+        self.assertEqual(payload["requested_execution_context"], "local")
 
     def test_execute_all_marks_agent_channel_as_skip(self) -> None:
         self.write_instruction(
@@ -131,6 +132,7 @@ class InstructionExecutorTests(unittest.TestCase):
         self.assertEqual(payload["action"], "skip")
         self.assertEqual(payload["reason"], "internal-agent-channel")
         self.assertEqual(payload["execution_context"], "dry-run")
+        self.assertEqual(payload["requested_execution_context"], "local")
 
     def test_execute_all_archives_successful_instruction_when_execute_enabled(self) -> None:
         mock_bin = self.temp_dir / "mock-openclaw"
@@ -177,6 +179,7 @@ class InstructionExecutorTests(unittest.TestCase):
         self.assertEqual(dispatch_payload["exit_code"], 0)
         self.assertEqual(dispatch_payload["stdout"], "sent\n")
         self.assertEqual(dispatch_payload["execution_context"], "host")
+        self.assertEqual(dispatch_payload["requested_execution_context"], "host")
         self.assertEqual(mock_log.read_text(encoding="utf-8").splitlines(), ["message", "send", "--channel", "telegram", "--target", "chat:test", "--message", "notify message"])
 
     def test_execute_all_archives_failed_instruction_when_command_fails(self) -> None:
@@ -222,3 +225,4 @@ class InstructionExecutorTests(unittest.TestCase):
         self.assertEqual(dispatch_payload["exit_code"], 7)
         self.assertEqual(dispatch_payload["stderr"], "send failed\n")
         self.assertEqual(dispatch_payload["execution_context"], "local")
+        self.assertEqual(dispatch_payload["requested_execution_context"], "local")
