@@ -182,8 +182,32 @@ def build_system_overview(
 
     inflight_counts = Counter(str(status["status"]) for status in inflight_statuses)
     delivery_counts = Counter(str(status["delivery"]["state"]) for status in inflight_statuses)
-    stale_delivery_task_count = sum(1 for status in inflight_statuses if status["delivery"]["stale_intermediate_exists"])
-    stale_delivery_artifact_count = sum(int(status["delivery"]["stale_intermediate_count"]) for status in inflight_statuses)
+    active_stale_delivery_task_count = sum(
+        1 for status in inflight_statuses if status["delivery"]["stale_intermediate_exists"]
+    )
+    active_stale_delivery_artifact_count = sum(
+        int(status["delivery"]["stale_intermediate_count"]) for status in inflight_statuses
+    )
+
+    finalized_task_ids: set[str] = set()
+    for directory in FINAL_INSTRUCTION_DIRS:
+        base = resolved_paths.data_dir / directory
+        if not base.exists():
+            continue
+        for path in base.glob("*.json"):
+            finalized_task_ids.add(path.stem)
+    stale_delivery_task_count = 0
+    stale_delivery_artifact_count = 0
+    for task_id in finalized_task_ids:
+        has_final_artifact = any(_artifact_path(resolved_paths, directory, task_id).exists() for directory in FINAL_INSTRUCTION_DIRS)
+        if not has_final_artifact:
+            continue
+        stale_count = sum(
+            1 for directory in INTERMEDIATE_DELIVERY_DIRS if _artifact_path(resolved_paths, directory, task_id).exists()
+        )
+        if stale_count > 0:
+            stale_delivery_task_count += 1
+            stale_delivery_artifact_count += stale_count
 
     archived_counts: Counter[str] = Counter()
     for archived_path in sorted(resolved_paths.archive_dir.glob("*.json")):
@@ -196,6 +220,8 @@ def build_system_overview(
         "active_task_count": len(inflight_statuses),
         "active_status_counts": dict(sorted(inflight_counts.items())),
         "active_delivery_counts": dict(sorted(delivery_counts.items())),
+        "active_stale_delivery_task_count": active_stale_delivery_task_count,
+        "active_stale_delivery_artifact_count": active_stale_delivery_artifact_count,
         "stale_delivery_task_count": stale_delivery_task_count,
         "stale_delivery_artifact_count": stale_delivery_artifact_count,
         "archived_task_count": sum(archived_counts.values()),
@@ -304,6 +330,8 @@ def render_overview_markdown(
         f"- processed_instruction_count: {overview['processed_instruction_count']}",
         f"- failed_instruction_count: {overview['failed_instruction_count']}",
         f"- dispatch_result_count: {overview['dispatch_result_count']}",
+        f"- active_stale_delivery_task_count: {overview['active_stale_delivery_task_count']}",
+        f"- active_stale_delivery_artifact_count: {overview['active_stale_delivery_artifact_count']}",
         f"- stale_delivery_task_count: {overview['stale_delivery_task_count']}",
         f"- stale_delivery_artifact_count: {overview['stale_delivery_artifact_count']}",
     ]

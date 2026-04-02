@@ -97,13 +97,27 @@ class TaskStatusTests(unittest.TestCase):
             task_label="overview completed task",
         )
         self.store.complete_task(completed.task_id)
+        processed_dir = self.paths.data_dir / "processed-instructions"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        (processed_dir / f"{completed.task_id}.json").write_text(
+            json.dumps({"task_id": completed.task_id}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        sent_dir = self.paths.data_dir / "sent"
+        sent_dir.mkdir(parents=True, exist_ok=True)
+        (sent_dir / f"{completed.task_id}.json").write_text(
+            json.dumps({"task_id": completed.task_id}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
         overview = task_status.build_system_overview(paths=self.paths)
         self.assertEqual(overview["active_task_count"], 1)
         self.assertEqual(overview["archived_task_count"], 1)
         self.assertEqual(overview["active_status_counts"], {"running": 1})
         self.assertEqual(overview["active_delivery_counts"], {"not-requested": 1})
-        self.assertEqual(overview["stale_delivery_task_count"], 0)
-        self.assertEqual(overview["stale_delivery_artifact_count"], 0)
+        self.assertEqual(overview["active_stale_delivery_task_count"], 0)
+        self.assertEqual(overview["active_stale_delivery_artifact_count"], 0)
+        self.assertEqual(overview["stale_delivery_task_count"], 1)
+        self.assertEqual(overview["stale_delivery_artifact_count"], 1)
         self.assertEqual(overview["archived_status_counts"], {"done": 1})
 
     def test_render_overview_markdown_includes_counts(self) -> None:
@@ -118,6 +132,7 @@ class TaskStatusTests(unittest.TestCase):
         markdown = task_status.render_overview_markdown(paths=self.paths)
         self.assertIn("# Task System Overview", markdown)
         self.assertIn("- active_task_count: 1", markdown)
+        self.assertIn("- active_stale_delivery_task_count: 0", markdown)
         self.assertIn("- stale_delivery_task_count: 0", markdown)
         self.assertIn("- active_status_counts: {\"running\": 1}", markdown)
         self.assertIn(task.task_id, markdown)

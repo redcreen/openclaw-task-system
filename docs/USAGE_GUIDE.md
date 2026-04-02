@@ -263,6 +263,8 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 
 总览里也会汇总：
 
+- `active_stale_delivery_task_count`
+- `active_stale_delivery_artifact_count`
 - `stale_delivery_task_count`
 - `stale_delivery_artifact_count`
 
