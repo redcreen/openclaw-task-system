@@ -101,7 +101,10 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py
 - `defaultAgentId`
 - `registerOnBeforeDispatch`
 - `sendImmediateAckOnRegister`
+- `sendImmediateAckForShortTasks`
 - `immediateAckTemplate`
+- `shortTaskFollowupTimeoutMs`
+- `shortTaskFollowupTemplate`
 - `syncProgressOnMessageSending`
 - `finalizeOnAgentEnd`
 - `minProgressMessageLength`
@@ -112,10 +115,11 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py
 - `config/task_system.example.json`
 - `config/openclaw_plugin.example.json`
 
-推荐的长任务用户体验是：
+推荐的任务交互节奏是：
 
-- 长任务首次注册后，立即回一条“已收到，开始处理”
-- 如果 30 秒内没有新的阶段结果，watchdog 自动回一条“已收到，仍在处理中”
+- 所有消息首次进入时，先回一条“已收到，开始处理”
+- 短任务如果在 `shortTaskFollowupTimeoutMs` 内还没结束，再补一条“仍在处理中”
+- 长任务如果 30 秒内没有新的阶段结果，再由 watchdog 自动补一条“仍在处理中”
 - 后续继续按真实阶段进展回写，直到 `done / failed / blocked`
 
 ## 5. 运维使用方式

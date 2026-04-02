@@ -29,9 +29,21 @@
       "label": "Immediate Ack On Register",
       "help": "Immediately send a short acknowledgement when a new long task is first registered."
     },
+    "sendImmediateAckForShortTasks": {
+      "label": "Immediate Ack For Short Tasks",
+      "help": "Also send the same lightweight acknowledgement for requests that are not promoted to long tasks."
+    },
     "immediateAckTemplate": {
       "label": "Immediate Ack Template",
       "help": "Short visible acknowledgement sent right after first long-task registration."
+    },
+    "shortTaskFollowupTimeoutMs": {
+      "label": "Short Task Followup Timeout",
+      "help": "How long to wait before sending a delayed 'still processing' note for slow short tasks."
+    },
+    "shortTaskFollowupTemplate": {
+      "label": "Short Task Followup Template",
+      "help": "Delayed status message for short tasks that still have not returned within the configured timeout."
     },
     "syncProgressOnMessageSending": {
       "label": "Sync Progress On Send",
@@ -70,7 +82,10 @@
       "defaultAgentId": { "type": "string" },
       "registerOnBeforeDispatch": { "type": "boolean" },
       "sendImmediateAckOnRegister": { "type": "boolean" },
+      "sendImmediateAckForShortTasks": { "type": "boolean" },
       "immediateAckTemplate": { "type": "string" },
+      "shortTaskFollowupTimeoutMs": { "type": "integer", "minimum": 1000 },
+      "shortTaskFollowupTemplate": { "type": "string" },
       "syncProgressOnMessageSending": { "type": "boolean" },
       "finalizeOnAgentEnd": { "type": "boolean" },
       "minProgressMessageLength": { "type": "integer", "minimum": 1 },

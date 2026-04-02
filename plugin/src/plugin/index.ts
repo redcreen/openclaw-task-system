@@ -16,7 +16,10 @@ type TaskSystemPluginConfig = {
   defaultAgentId?: string;
   registerOnBeforeDispatch?: boolean;
   sendImmediateAckOnRegister?: boolean;
+  sendImmediateAckForShortTasks?: boolean;
   immediateAckTemplate?: string;
+  shortTaskFollowupTimeoutMs?: number;
+  shortTaskFollowupTemplate?: string;
   syncProgressOnMessageSending?: boolean;
   finalizeOnAgentEnd?: boolean;
   minProgressMessageLength?: number;
@@ -45,10 +48,19 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
         : "main",
     registerOnBeforeDispatch: value.registerOnBeforeDispatch !== false,
     sendImmediateAckOnRegister: value.sendImmediateAckOnRegister !== false,
+    sendImmediateAckForShortTasks: value.sendImmediateAckForShortTasks !== false,
     immediateAckTemplate:
       typeof value.immediateAckTemplate === "string" && value.immediateAckTemplate.trim()
         ? value.immediateAckTemplate.trim()
         : "已收到，正在开始处理；如果 30 秒内还没有新的阶段结果，我会先同步当前进展。",
+    shortTaskFollowupTimeoutMs:
+      typeof value.shortTaskFollowupTimeoutMs === "number" && Number.isFinite(value.shortTaskFollowupTimeoutMs)
+        ? Math.max(1000, Math.trunc(value.shortTaskFollowupTimeoutMs))
+        : 30000,
+    shortTaskFollowupTemplate:
+      typeof value.shortTaskFollowupTemplate === "string" && value.shortTaskFollowupTemplate.trim()
+        ? value.shortTaskFollowupTemplate.trim()
+        : "已收到你的消息，当前仍在处理中；稍后给你正式结果。",
     syncProgressOnMessageSending: value.syncProgressOnMessageSending !== false,
     finalizeOnAgentEnd: value.finalizeOnAgentEnd !== false,
     minProgressMessageLength:
@@ -406,6 +418,70 @@ async function sendImmediateAck(
   }
 }
 
+type PendingReceipt = {
+  sessionKey: string;
+  channel: string;
+  accountId?: string;
+  chatId: string;
+  taskKind: "short" | "long";
+  timer: ReturnType<typeof setTimeout> | null;
+};
+
+async function sendStatusMessage(
+  api: OpenClawPluginApi,
+  config: Required<TaskSystemPluginConfig>,
+  payload: {
+    channel: string;
+    accountId?: string;
+    chatId: string;
+    sessionKey: string;
+    message: string;
+    eventName: string;
+  },
+): Promise<void> {
+  const channel = String(payload.channel || "").trim().toLowerCase();
+  if (!channel || channel === "agent") {
+    return;
+  }
+  const chatId = String(payload.chatId || "").trim();
+  const message = normalizeText(payload.message);
+  if (!chatId || !message) {
+    return;
+  }
+  try {
+    const adapter = await api.runtime.channel.outbound.loadAdapter(channel);
+    if (!adapter?.sendText) {
+      await appendDebugLog(config, `${payload.eventName}:adapter-unavailable`, {
+        channel,
+        chatId,
+        sessionKey: payload.sessionKey,
+      });
+      return;
+    }
+    await adapter.sendText({
+      cfg: api.config,
+      to: chatId,
+      text: message,
+      accountId: payload.accountId || "",
+    });
+    await appendDebugLog(config, `${payload.eventName}:sent`, {
+      channel,
+      chatId,
+      sessionKey: payload.sessionKey,
+      message,
+    });
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    await appendDebugLog(config, `${payload.eventName}:error`, {
+      channel,
+      chatId,
+      sessionKey: payload.sessionKey,
+      error: messageText,
+    });
+    api.logger.warn(`[task-system] ${payload.eventName} failed for ${channel}:${chatId}: ${messageText}`);
+  }
+}
+
 function extractTextFromUnknown(value: unknown): string[] {
   if (typeof value === "string") {
     const normalized = normalizeText(value);
@@ -461,6 +537,7 @@ const taskSystemPlugin = definePluginEntry({
   register(api: OpenClawPluginApi) {
     const config = normalizeConfig(api.pluginConfig);
     let hostDeliveryTimer: ReturnType<typeof setInterval> | null = null;
+    const pendingReceipts = new Map<string, PendingReceipt>();
     if (!config.enabled) {
       api.logger.info("[task-system] plugin loaded in disabled mode");
       return;
@@ -494,19 +571,63 @@ const taskSystemPlugin = definePluginEntry({
         classificationReason: registerResult?.classification_reason ?? null,
         taskId: registerResult?.task_id ?? null,
       });
-      if (
-        registerResult &&
-        Boolean(registerResult.should_register_task) &&
-        typeof registerResult.task_id === "string" &&
-        registerResult.task_id.trim() &&
-        String(registerResult.classification_reason || "").trim() !== "existing-active-task"
-      ) {
-        await sendImmediateAck(api, config, {
+      const classificationReason = String(registerResult?.classification_reason || "").trim();
+      const isLongTask = Boolean(registerResult?.should_register_task);
+      const isExistingActive = classificationReason === "existing-active-task";
+      const shouldSendImmediateAck =
+        config.sendImmediateAckOnRegister &&
+        ((isLongTask && !isExistingActive) || (!isLongTask && config.sendImmediateAckForShortTasks));
+
+      const existingReceipt = pendingReceipts.get(sessionKey);
+      if (existingReceipt?.timer) {
+        clearTimeout(existingReceipt.timer);
+      }
+      pendingReceipts.delete(sessionKey);
+
+      if (shouldSendImmediateAck) {
+        if (isLongTask && typeof registerResult?.task_id === "string" && registerResult.task_id.trim()) {
+          await sendImmediateAck(api, config, {
+            channel: event.channel ?? ctx.channelId ?? "unknown",
+            accountId: ctx.accountId ?? "",
+            chatId: ctx.conversationId ?? sessionKey,
+            taskId: registerResult.task_id,
+            sessionKey,
+          });
+        } else {
+          await sendStatusMessage(api, config, {
+            channel: event.channel ?? ctx.channelId ?? "unknown",
+            accountId: ctx.accountId ?? "",
+            chatId: ctx.conversationId ?? sessionKey,
+            sessionKey,
+            message: config.immediateAckTemplate,
+            eventName: "immediate-ack",
+          });
+        }
+      }
+
+      if (!isLongTask && config.shortTaskFollowupTimeoutMs > 0) {
+        const timer = setTimeout(() => {
+          const pending = pendingReceipts.get(sessionKey);
+          if (!pending) {
+            return;
+          }
+          void sendStatusMessage(api, config, {
+            channel: pending.channel,
+            accountId: pending.accountId,
+            chatId: pending.chatId,
+            sessionKey: pending.sessionKey,
+            message: config.shortTaskFollowupTemplate,
+            eventName: "short-task-followup",
+          });
+        }, config.shortTaskFollowupTimeoutMs);
+
+        pendingReceipts.set(sessionKey, {
+          sessionKey,
           channel: event.channel ?? ctx.channelId ?? "unknown",
           accountId: ctx.accountId ?? "",
           chatId: ctx.conversationId ?? sessionKey,
-          taskId: registerResult.task_id,
-          sessionKey,
+          taskKind: "short",
+          timer,
         });
       }
     });
@@ -660,6 +781,11 @@ const taskSystemPlugin = definePluginEntry({
       if (!config.finalizeOnAgentEnd || !ctx.sessionKey?.trim()) {
         return;
       }
+      const pendingReceipt = pendingReceipts.get(ctx.sessionKey);
+      if (pendingReceipt?.timer) {
+        clearTimeout(pendingReceipt.timer);
+      }
+      pendingReceipts.delete(ctx.sessionKey);
       await appendDebugLog(config, "agent_end", {
         agentId: ctx.agentId || config.defaultAgentId,
         sessionKey: ctx.sessionKey,
@@ -691,6 +817,12 @@ const taskSystemPlugin = definePluginEntry({
           clearInterval(hostDeliveryTimer);
           hostDeliveryTimer = null;
         }
+        for (const pending of pendingReceipts.values()) {
+          if (pending.timer) {
+            clearTimeout(pending.timer);
+          }
+        }
+        pendingReceipts.clear();
       },
     });
 
