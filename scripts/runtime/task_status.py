@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from task_config import TaskSystemConfig, load_task_system_config
-from task_state import TaskPaths, TaskStore, default_paths
+from task_state import ACTIVE_STATUSES, STATUS_RUNNING, TaskPaths, TaskStore, default_paths
 
 FINAL_INSTRUCTION_DIRS = ("processed-instructions", "failed-instructions")
 INTERMEDIATE_DELIVERY_DIRS = ("outbox", "sent", "delivery-ready", "send-instructions")
@@ -128,15 +128,8 @@ def _resolve_paths(
     return runtime_config.build_paths() or default_paths()
 
 
-def build_status_summary(
-    task_id: str,
-    *,
-    paths: Optional[TaskPaths] = None,
-    config: Optional[TaskSystemConfig] = None,
-    config_path: Optional[Path] = None,
-) -> dict[str, object]:
-    resolved_paths = _resolve_paths(paths, config=config, config_path=config_path)
-    store = TaskStore(paths=resolved_paths)
+def _build_base_status_summary(task_id: str, *, paths: TaskPaths) -> dict[str, object]:
+    store = TaskStore(paths=paths)
     task = store.load_task(task_id)
     return {
         "task_id": task.task_id,
@@ -156,8 +149,78 @@ def build_status_summary(
         "block_reason": task.block_reason,
         "failure_reason": task.failure_reason,
         "monitor_state": task.monitor_state,
-        "delivery": build_delivery_summary(task_id, paths=resolved_paths),
+        "delivery": build_delivery_summary(task_id, paths=paths),
     }
+
+
+def _queue_sort_key(status: dict[str, object]) -> tuple[int, str, str]:
+    state = str(status["status"])
+    priority = 0 if state == STATUS_RUNNING else 1
+    anchor = str(status["started_at"] or status["created_at"] or "")
+    return (priority, anchor, str(status["task_id"]))
+
+
+def build_queue_snapshot(
+    *,
+    paths: Optional[TaskPaths] = None,
+    config: Optional[TaskSystemConfig] = None,
+    config_path: Optional[Path] = None,
+    agent_id: Optional[str] = None,
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(paths, config=config, config_path=config_path)
+    store = TaskStore(paths=resolved_paths)
+    statuses = [
+        status
+        for status in (_build_base_status_summary(path.stem, paths=resolved_paths) for path in store.list_inflight())
+        if str(status["status"]) in ACTIVE_STATUSES and (agent_id is None or status["agent_id"] == agent_id)
+    ]
+    ordered = sorted(statuses, key=_queue_sort_key)
+    items: list[dict[str, object]] = []
+    running_count = sum(1 for status in ordered if status["status"] == STATUS_RUNNING)
+    queued_count = sum(1 for status in ordered if status["status"] != STATUS_RUNNING)
+    for index, status in enumerate(ordered, start=1):
+        items.append(
+            {
+                "task_id": status["task_id"],
+                "agent_id": status["agent_id"],
+                "session_key": status["session_key"],
+                "status": status["status"],
+                "position": index,
+                "ahead_count": index - 1,
+                "is_running": status["status"] == STATUS_RUNNING,
+                "task_label": status["task_label"],
+            }
+        )
+    return {
+        "active_count": len(ordered),
+        "running_count": running_count,
+        "queued_count": queued_count,
+        "items": items,
+    }
+
+
+def build_status_summary(
+    task_id: str,
+    *,
+    paths: Optional[TaskPaths] = None,
+    config: Optional[TaskSystemConfig] = None,
+    config_path: Optional[Path] = None,
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(paths, config=config, config_path=config_path)
+    task = _build_base_status_summary(task_id, paths=resolved_paths)
+    queue_snapshot = build_queue_snapshot(paths=resolved_paths)
+    queue_entry = next((entry for entry in queue_snapshot["items"] if entry["task_id"] == task["task_id"]), None)
+    queue_summary = {
+        "task_id": task["task_id"],
+        "position": queue_entry["position"] if queue_entry else None,
+        "ahead_count": queue_entry["ahead_count"] if queue_entry else 0,
+        "is_running": queue_entry["is_running"] if queue_entry else False,
+        "active_count": queue_snapshot["active_count"],
+        "running_count": queue_snapshot["running_count"],
+        "queued_count": queue_snapshot["queued_count"],
+    }
+    task["queue"] = queue_summary
+    return task
 
 
 def list_inflight_statuses(
@@ -166,8 +229,9 @@ def list_inflight_statuses(
     config: Optional[TaskSystemConfig] = None,
     config_path: Optional[Path] = None,
 ) -> list[dict[str, object]]:
-    store = TaskStore(paths=_resolve_paths(paths, config=config, config_path=config_path))
-    return [build_status_summary(path.stem, paths=store.paths) for path in store.list_inflight()]
+    resolved_paths = _resolve_paths(paths, config=config, config_path=config_path)
+    store = TaskStore(paths=resolved_paths)
+    return [build_status_summary(path.stem, paths=resolved_paths) for path in store.list_inflight()]
 
 
 def build_system_overview(
@@ -262,6 +326,12 @@ def render_status_markdown(
         f"- last_internal_touch_at: {status['last_internal_touch_at']}",
         f"- last_monitor_notify_at: {status['last_monitor_notify_at']}",
         f"- notify_count: {status['notify_count']}",
+        f"- queue.position: {status['queue']['position']}",
+        f"- queue.ahead_count: {status['queue']['ahead_count']}",
+        f"- queue.is_running: {status['queue']['is_running']}",
+        f"- queue.active_count: {status['queue']['active_count']}",
+        f"- queue.running_count: {status['queue']['running_count']}",
+        f"- queue.queued_count: {status['queue']['queued_count']}",
         f"- delivery.state: {status['delivery']['state']}",
         f"- delivery.outbox_exists: {status['delivery']['outbox_exists']}",
         f"- delivery.sent_exists: {status['delivery']['sent_exists']}",
@@ -349,7 +419,7 @@ def render_overview_markdown(
         lines.append("")
         for status in overview["active_tasks"]:
             lines.append(
-                f"- {status['task_id']} | {status['status']} | delivery={status['delivery']['state']} | {status['task_label']}"
+                f"- {status['task_id']} | {status['status']} | pos={status['queue']['position']} | delivery={status['delivery']['state']} | {status['task_label']}"
             )
     return "\n".join(lines) + "\n"
 

@@ -18,8 +18,9 @@ STATUS_BLOCKED = "blocked"
 STATUS_PAUSED = "paused"
 STATUS_DONE = "done"
 STATUS_FAILED = "failed"
+STATUS_CANCELLED = "cancelled"
 
-TERMINAL_STATUSES = {STATUS_DONE, STATUS_FAILED}
+TERMINAL_STATUSES = {STATUS_DONE, STATUS_FAILED, STATUS_CANCELLED}
 ACTIVE_STATUSES = {STATUS_QUEUED, STATUS_RUNNING}
 RECOVERABLE_STATUSES = {STATUS_BLOCKED, STATUS_PAUSED}
 
@@ -279,6 +280,27 @@ class TaskStore:
         if user_visible:
             task.last_user_visible_update_at = ts
             task.monitor_state = "normal"
+        return self._finalize_task(task, archive=archive)
+
+    def cancel_task(
+        self,
+        task_id: str,
+        reason: str,
+        *,
+        archive: bool = True,
+        user_visible: bool = True,
+    ) -> TaskState:
+        task = self.load_task(task_id)
+        ts = now_iso()
+        task.status = STATUS_CANCELLED
+        task.failure_reason = reason
+        task.updated_at = ts
+        task.last_internal_touch_at = ts
+        if user_visible:
+            task.last_user_visible_update_at = ts
+            task.monitor_state = "normal"
+        task.meta["cancelled_at"] = ts
+        task.meta["cancel_reason"] = reason
         return self._finalize_task(task, archive=archive)
 
     def archive_task(self, task_id: str, *, remove_inflight: bool = True) -> TaskState:

@@ -35,6 +35,7 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(summary["status"], task_state_module.STATUS_RUNNING)
         self.assertEqual(summary["task_label"], "status task")
         self.assertIn("delivery", summary)
+        self.assertIn("queue", summary)
         self.assertEqual(summary["delivery"]["state"], "not-requested")
         self.assertFalse(summary["delivery"]["stale_intermediate_exists"])
         self.assertEqual(summary["delivery"]["stale_intermediate_count"], 0)
@@ -51,6 +52,7 @@ class TaskStatusTests(unittest.TestCase):
         markdown = task_status.render_status_markdown(task.task_id, paths=self.paths)
         self.assertIn(f"# Task Status: {task.task_id}", markdown)
         self.assertIn("- status: queued", markdown)
+        self.assertIn("- queue.position: 1", markdown)
         self.assertIn("- delivery.state: not-requested", markdown)
         self.assertIn("- delivery.stale_intermediate_exists: False", markdown)
         self.assertIn("- delivery.outbox_exists: False", markdown)
@@ -121,6 +123,32 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(overview["archived_status_counts"], {"done": 1})
         self.assertEqual(overview["resolved_failed_instruction_count"], 0)
 
+    def test_build_status_summary_reports_queue_position(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:first",
+            channel="telegram",
+            chat_id="chat:first",
+            task_label="first task",
+        )
+        self.store.start_task(first.task_id)
+        second = self.store.register_task(
+            agent_id="main",
+            session_key="session:second",
+            channel="telegram",
+            chat_id="chat:second",
+            task_label="second task",
+        )
+        first_summary = task_status.build_status_summary(first.task_id, paths=self.paths)
+        second_summary = task_status.build_status_summary(second.task_id, paths=self.paths)
+        self.assertEqual(first_summary["queue"]["position"], 1)
+        self.assertTrue(first_summary["queue"]["is_running"])
+        self.assertEqual(second_summary["queue"]["position"], 2)
+        self.assertEqual(second_summary["queue"]["ahead_count"], 1)
+        self.assertEqual(second_summary["queue"]["active_count"], 2)
+        self.assertEqual(second_summary["queue"]["running_count"], 1)
+        self.assertEqual(second_summary["queue"]["queued_count"], 1)
+
     def test_render_overview_markdown_includes_counts(self) -> None:
         task = self.store.register_task(
             agent_id="main",
@@ -137,6 +165,7 @@ class TaskStatusTests(unittest.TestCase):
         self.assertIn("- stale_delivery_task_count: 0", markdown)
         self.assertIn("- resolved_failed_instruction_count: 0", markdown)
         self.assertIn("- active_status_counts: {\"running\": 1}", markdown)
+        self.assertIn("pos=1", markdown)
         self.assertIn(task.task_id, markdown)
 
     def test_build_status_summary_can_resolve_paths_from_config_file(self) -> None:

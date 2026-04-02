@@ -109,6 +109,20 @@ class TaskStateTests(unittest.TestCase):
         self.assertIsNone(resumed.block_reason)
         self.assertEqual(resumed.meta["last_progress_note"], "继续执行")
 
+    def test_cancel_task_archives_cancel_reason(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="feishu",
+            chat_id="chat:test",
+            task_label="cancel task",
+        )
+        cancelled = self.store.cancel_task(task.task_id, "stopped by user")
+        self.assertEqual(cancelled.status, task_state_module.STATUS_CANCELLED)
+        self.assertEqual(cancelled.failure_reason, "stopped by user")
+        self.assertEqual(cancelled.meta["cancel_reason"], "stopped by user")
+        self.assertTrue(self.store.archive_path(task.task_id).exists())
+
 
 if __name__ == "__main__":
     unittest.main()
