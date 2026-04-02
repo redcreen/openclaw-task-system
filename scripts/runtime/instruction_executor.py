@@ -177,6 +177,7 @@ def summarize_failed_instructions(paths: TaskPaths) -> dict[str, Any]:
                 "task_id": instruction.get("task_id"),
                 "channel": instruction.get("channel"),
                 "chat_id": instruction.get("chat_id"),
+                "retry_count": int(instruction.get("_retry_count", 0) or 0),
                 "failure_classification": classification,
                 "retryable": retryable,
             }

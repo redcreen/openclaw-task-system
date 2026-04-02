@@ -126,6 +126,27 @@ def render_main_triage(
     else:
         lines.append("- No non-retryable failed instructions are waiting.")
 
+    retryable_items = [item for item in failed_summary["items"] if item["retryable"]]
+    non_retryable_items = [item for item in failed_summary["items"] if item["retryable"] is False]
+
+    if retryable_items:
+        lines.append("")
+        lines.append("## Retryable Failed Instructions")
+        lines.append("")
+        for item in retryable_items:
+            lines.append(
+                f"- {item['name']} | classification={item['failure_classification']} | retry_count={item['retry_count']}"
+            )
+
+    if non_retryable_items:
+        lines.append("")
+        lines.append("## Non-Retryable Failed Instructions")
+        lines.append("")
+        for item in non_retryable_items:
+            lines.append(
+                f"- {item['name']} | classification={item['failure_classification']} | chat_id={item['chat_id']}"
+            )
+
     return "\n".join(lines) + "\n"
 
 

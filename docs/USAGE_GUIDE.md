@@ -283,6 +283,8 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage
 
 - 是否有 blocked 的 `main` 任务
 - 是否有 retryable 的失败指令
+- retryable 失败已经重试了几次
+- 哪些失败是 non-retryable，需要先修目标或配置
 - 下一步建议执行的命令
 
 状态查询里的 `delivery.state` 现在会直接给出当前投递阶段：

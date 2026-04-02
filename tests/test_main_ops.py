@@ -88,6 +88,16 @@ class MainOpsTests(unittest.TestCase):
                 "task_id": "retryable",
                 "_last_failure_classification": "transport-retryable",
                 "_last_failure_retryable": True,
+                "_retry_count": 2,
+            },
+        )
+        task_state_module.atomic_write_json(
+            failed_dir / "nonretryable.json",
+            {
+                "task_id": "nonretryable",
+                "chat_id": "@example",
+                "_last_failure_classification": "auth",
+                "_last_failure_retryable": False,
             },
         )
 
@@ -96,6 +106,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("# Main Ops Triage", rendered)
         self.assertIn(task.task_id, rendered)
         self.assertIn("repair --execute-retries --execution-context host", rendered)
+        self.assertIn("## Retryable Failed Instructions", rendered)
+        self.assertIn("retry_count=2", rendered)
+        self.assertIn("## Non-Retryable Failed Instructions", rendered)
+        self.assertIn("chat_id=@example", rendered)
 
     def test_repair_system_cleans_stale_delivery_artifacts(self) -> None:
         task = self.store.register_task(

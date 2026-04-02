@@ -124,6 +124,8 @@ class HealthReportTests(unittest.TestCase):
 
         self.assertEqual(report["failed_instruction_summary"]["retryable"], 1)
         self.assertEqual(report["failed_instruction_summary"]["non_retryable"], 1)
+        retryable_item = next(item for item in report["failed_instruction_summary"]["items"] if item["task_id"] == "retryable")
+        self.assertEqual(retryable_item["retry_count"], 0)
         self.assertIn("- failed_instruction_retryable_count: 1", markdown)
         self.assertIn("- failed_instruction_non_retryable_count: 1", markdown)
         self.assertIn("## Failed Instructions", markdown)
