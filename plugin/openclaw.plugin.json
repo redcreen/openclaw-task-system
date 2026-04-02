@@ -25,6 +25,14 @@
       "label": "Register On Dispatch",
       "help": "Register long tasks during before_dispatch."
     },
+    "sendImmediateAckOnRegister": {
+      "label": "Immediate Ack On Register",
+      "help": "Immediately send a short acknowledgement when a new long task is first registered."
+    },
+    "immediateAckTemplate": {
+      "label": "Immediate Ack Template",
+      "help": "Short visible acknowledgement sent right after first long-task registration."
+    },
     "syncProgressOnMessageSending": {
       "label": "Sync Progress On Send",
       "help": "Touch active task progress whenever OpenClaw is about to send a visible message."
@@ -61,6 +69,8 @@
       "debugLogPath": { "type": "string" },
       "defaultAgentId": { "type": "string" },
       "registerOnBeforeDispatch": { "type": "boolean" },
+      "sendImmediateAckOnRegister": { "type": "boolean" },
+      "immediateAckTemplate": { "type": "string" },
       "syncProgressOnMessageSending": { "type": "boolean" },
       "finalizeOnAgentEnd": { "type": "boolean" },
       "minProgressMessageLength": { "type": "integer", "minimum": 1 },

@@ -68,6 +68,8 @@ openclaw plugins install --link /Users/redcreen/.openclaw/workspace/openclaw-tas
           "configPath": "/Users/redcreen/.openclaw/workspace/openclaw-task-system/config/task_system.json",
           "defaultAgentId": "main",
           "registerOnBeforeDispatch": true,
+          "sendImmediateAckOnRegister": true,
+          "immediateAckTemplate": "已收到，正在开始处理；如果 30 秒内还没有新的阶段结果，我会先同步当前进展。",
           "syncProgressOnMessageSending": true,
           "finalizeOnAgentEnd": true,
           "enableHostFeishuDelivery": true,
@@ -85,6 +87,7 @@ openclaw plugins install --link /Users/redcreen/.openclaw/workspace/openclaw-tas
 当前插件第一阶段会做三件事：
 
 - 在 `before_dispatch` 期间注册长任务候选
+- 在首次识别成长任务时立刻回一条“已收到，开始处理”的确认
 - 在 `message_sending` 期间为当前活动任务回写进展
 - 在 `agent_end` 期间自动完成或失败收口
 - 在插件内部轮询 `send-instructions/`，把 `feishu` 通知直接投递回宿主会话

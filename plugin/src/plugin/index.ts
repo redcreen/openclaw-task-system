@@ -15,6 +15,8 @@ type TaskSystemPluginConfig = {
   debugLogPath?: string;
   defaultAgentId?: string;
   registerOnBeforeDispatch?: boolean;
+  sendImmediateAckOnRegister?: boolean;
+  immediateAckTemplate?: string;
   syncProgressOnMessageSending?: boolean;
   finalizeOnAgentEnd?: boolean;
   minProgressMessageLength?: number;
@@ -42,6 +44,11 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
         ? value.defaultAgentId.trim()
         : "main",
     registerOnBeforeDispatch: value.registerOnBeforeDispatch !== false,
+    sendImmediateAckOnRegister: value.sendImmediateAckOnRegister !== false,
+    immediateAckTemplate:
+      typeof value.immediateAckTemplate === "string" && value.immediateAckTemplate.trim()
+        ? value.immediateAckTemplate.trim()
+        : "已收到，正在开始处理；如果 30 秒内还没有新的阶段结果，我会先同步当前进展。",
     syncProgressOnMessageSending: value.syncProgressOnMessageSending !== false,
     finalizeOnAgentEnd: value.finalizeOnAgentEnd !== false,
     minProgressMessageLength:
@@ -338,6 +345,67 @@ async function processHostDeliveryQueue(api: OpenClawPluginApi, config: Required
   }
 }
 
+async function sendImmediateAck(
+  api: OpenClawPluginApi,
+  config: Required<TaskSystemPluginConfig>,
+  payload: {
+    channel: string;
+    accountId?: string;
+    chatId: string;
+    taskId: string;
+    sessionKey: string;
+  },
+): Promise<void> {
+  if (!config.sendImmediateAckOnRegister) {
+    return;
+  }
+  const channel = String(payload.channel || "").trim().toLowerCase();
+  if (!channel || channel === "agent") {
+    return;
+  }
+  const chatId = String(payload.chatId || "").trim();
+  const message = normalizeText(config.immediateAckTemplate);
+  if (!chatId || !message) {
+    return;
+  }
+
+  try {
+    const adapter = await api.runtime.channel.outbound.loadAdapter(channel);
+    if (!adapter?.sendText) {
+      await appendDebugLog(config, "immediate-ack:adapter-unavailable", {
+        channel,
+        taskId: payload.taskId,
+        sessionKey: payload.sessionKey,
+      });
+      return;
+    }
+
+    await adapter.sendText({
+      cfg: api.config,
+      to: chatId,
+      text: message,
+      accountId: payload.accountId || "",
+    });
+    await appendDebugLog(config, "immediate-ack:sent", {
+      channel,
+      chatId,
+      taskId: payload.taskId,
+      sessionKey: payload.sessionKey,
+      message,
+    });
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    await appendDebugLog(config, "immediate-ack:error", {
+      channel,
+      chatId,
+      taskId: payload.taskId,
+      sessionKey: payload.sessionKey,
+      error: messageText,
+    });
+    api.logger.warn(`[task-system] immediate ack failed for ${channel}:${chatId}: ${messageText}`);
+  }
+}
+
 function extractTextFromUnknown(value: unknown): string[] {
   if (typeof value === "string") {
     const normalized = normalizeText(value);
@@ -410,7 +478,7 @@ const taskSystemPlugin = definePluginEntry({
         channel: event.channel ?? ctx.channelId ?? "unknown",
         content: normalizeText(event.content).slice(0, 240),
       });
-      await callHook(api, config, "register", {
+      const registerResult = await callHook(api, config, "register", {
         agent_id: agentId,
         session_key: sessionKey,
         channel: event.channel ?? ctx.channelId ?? "unknown",
@@ -419,6 +487,20 @@ const taskSystemPlugin = definePluginEntry({
         user_id: event.senderId ?? ctx.senderId ?? "",
         user_request: event.body || event.content,
       });
+      if (
+        registerResult?.should_register_task === true &&
+        registerResult?.classification_reason === "long-task" &&
+        typeof registerResult.task_id === "string" &&
+        registerResult.task_id.trim()
+      ) {
+        await sendImmediateAck(api, config, {
+          channel: event.channel ?? ctx.channelId ?? "unknown",
+          accountId: ctx.accountId ?? "",
+          chatId: ctx.conversationId ?? sessionKey,
+          taskId: registerResult.task_id,
+          sessionKey,
+        });
+      }
     });
 
     api.on("before_agent_start", async (event, ctx) => {

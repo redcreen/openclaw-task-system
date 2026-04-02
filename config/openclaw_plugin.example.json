@@ -11,6 +11,8 @@
           "debugLogPath": "/Users/redcreen/.openclaw/workspace/openclaw-task-system/data/plugin-debug.log",
           "defaultAgentId": "main",
           "registerOnBeforeDispatch": true,
+          "sendImmediateAckOnRegister": true,
+          "immediateAckTemplate": "已收到，正在开始处理；如果 30 秒内还没有新的阶段结果，我会先同步当前进展。",
           "syncProgressOnMessageSending": true,
           "finalizeOnAgentEnd": true,
           "enableHostFeishuDelivery": true,

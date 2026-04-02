@@ -83,6 +83,12 @@
 - `docs/OPENCLAW_INTEGRATION_PLAN.md`
 - `docs/OPENCLAW_INTEGRATION_EXAMPLE.md`
 
+当前插件默认支持的长任务交互节奏是：
+
+- 第一次识别成长任务后，立即回复“已收到，开始处理”
+- 30 秒内如果还没有新的阶段结果，watchdog 自动补一条“已收到，仍在处理中”
+- 有真实阶段结果时继续回写，直到最终收口
+
 ### `tests/`
 
 本系统的自动化测试统一放这里。

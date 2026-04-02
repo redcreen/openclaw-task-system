@@ -47,6 +47,7 @@ class SilenceMonitorTests(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertTrue(findings[0].should_notify)
         self.assertEqual(findings[0].reason, "first-overdue")
+        self.assertIn("已收到你的任务", silence_monitor.fallback_message(findings[0]))
 
     def test_recently_notified_task_does_not_repeat_within_resend_window(self) -> None:
         task = self.make_running_task()
