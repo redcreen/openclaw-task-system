@@ -134,6 +134,29 @@ class InstructionExecutorTests(unittest.TestCase):
         self.assertEqual(payload["execution_context"], "dry-run")
         self.assertEqual(payload["requested_execution_context"], "local")
 
+    def test_execute_all_archives_skipped_instruction_when_execute_enabled(self) -> None:
+        self.write_instruction(
+            "task_agent.json",
+            {
+                "schema": "openclaw.task-system.send-instruction.v1",
+                "task_id": "task_agent",
+                "agent_id": "main",
+                "session_key": "agent:main:main",
+                "channel": "agent",
+                "chat_id": "chat:test",
+                "message": "internal note",
+            },
+        )
+        results = instruction_executor.execute_all(paths=self.paths, execute=True, execution_context="host")
+        self.assertEqual(len(results), 1)
+        self.assertFalse((self.paths.data_dir / "send-instructions" / "task_agent.json").exists())
+        self.assertTrue((self.paths.data_dir / "processed-instructions" / "task_agent.json").exists())
+        payload = json.loads((self.paths.data_dir / "dispatch-results" / "task_agent.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["action"], "skip")
+        self.assertEqual(payload["reason"], "internal-agent-channel")
+        self.assertEqual(payload["execution_context"], "host")
+        self.assertEqual(payload["requested_execution_context"], "host")
+
     def test_execute_all_archives_successful_instruction_when_execute_enabled(self) -> None:
         mock_bin = self.temp_dir / "mock-openclaw"
         mock_log = self.temp_dir / "mock-openclaw.log"

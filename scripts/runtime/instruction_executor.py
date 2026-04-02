@@ -159,7 +159,7 @@ def execute_instruction(
     import time
 
     decision = build_dispatch_decision(instruction, openclaw_bin=openclaw_bin)
-    if not execute or decision.action != "send":
+    if not execute:
         result_execution_context = "dry-run" if not execute else execution_context
         result_path = write_dispatch_result(
             instruction,
@@ -174,6 +174,33 @@ def execute_instruction(
             "decision": decision.__dict__,
             "result_path": str(result_path),
             "execution_context": result_execution_context,
+            "requested_execution_context": execution_context,
+        }
+
+    if decision.action != "send":
+        result_path = write_dispatch_result(
+            instruction,
+            decision,
+            name=name,
+            paths=paths,
+            executed=False,
+            execution_context=execution_context,
+            requested_execution_context=execution_context,
+        )
+        archived_instruction_path: Optional[str] = None
+        if source_path is not None:
+            archived_path = archive_instruction(
+                source_path,
+                name=name,
+                paths=paths,
+                succeeded=True,
+            )
+            archived_instruction_path = str(archived_path)
+        return {
+            "decision": decision.__dict__,
+            "result_path": str(result_path),
+            "archived_instruction_path": archived_instruction_path,
+            "execution_context": execution_context,
             "requested_execution_context": execution_context,
         }
 

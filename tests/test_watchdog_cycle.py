@@ -51,8 +51,10 @@ class WatchdogCycleTests(unittest.TestCase):
         self.assertEqual(len(result["send_instructions"]), 1)
 
         instruction_path = self.paths.data_dir / "send-instructions" / f"{task.task_id}.json"
-        self.assertTrue(instruction_path.exists())
-        payload = json.loads(instruction_path.read_text(encoding="utf-8"))
+        processed_path = self.paths.data_dir / "processed-instructions" / f"{task.task_id}.json"
+        self.assertFalse(instruction_path.exists())
+        self.assertTrue(processed_path.exists())
+        payload = json.loads(processed_path.read_text(encoding="utf-8"))
         self.assertEqual(payload["task_id"], task.task_id)
         self.assertEqual(payload["channel"], "feishu")
 
