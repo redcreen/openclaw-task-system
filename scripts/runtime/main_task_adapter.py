@@ -57,6 +57,19 @@ def decide_main_task(
             reason="agent-disabled",
         )
 
+    continuation = detect_continuation_plan(context)
+    if continuation is not None:
+        classification = TaskClassification(
+            is_long_task=True,
+            confidence="high",
+            reasons=["continuation-plan", continuation.kind],
+        )
+        return MainTaskDecision(
+            classification=classification,
+            should_register=True,
+            reason="continuation-task",
+        )
+
     policy = agent_config.classification
     classification = classify_main_task(
         context.user_request,

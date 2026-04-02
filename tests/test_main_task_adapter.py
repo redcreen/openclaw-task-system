@@ -46,6 +46,12 @@ class MainTaskAdapterTests(unittest.TestCase):
         self.assertFalse(decision.should_register)
         self.assertEqual(decision.reason, "short-task")
 
+    def test_decide_main_task_promotes_delayed_reply_to_continuation_task(self) -> None:
+        context = self.build_context("1分钟后回复我ok1")
+        decision = main_task_adapter.decide_main_task(context)
+        self.assertTrue(decision.should_register)
+        self.assertEqual(decision.reason, "continuation-task")
+
     def test_register_main_task_creates_running_task(self) -> None:
         context = self.build_context(
             "帮我整理配置并验证一下",
