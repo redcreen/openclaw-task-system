@@ -196,6 +196,47 @@ class MainOpsTests(unittest.TestCase):
         archived_path = self.paths.archive_dir / f"{task.task_id}.json"
         self.assertTrue(archived_path.exists())
 
+    def test_resolve_main_failures_can_select_non_retryable_without_apply(self) -> None:
+        failed_dir = self.paths.data_dir / "failed-instructions"
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        task_state_module.atomic_write_json(
+            failed_dir / "nonretryable.json",
+            {
+                "task_id": "nonretryable",
+                "_last_failure_classification": "transport-nonretryable",
+                "_last_failure_retryable": False,
+            },
+        )
+
+        result = main_ops.resolve_main_failures(paths=self.paths, include_non_retryable=True)
+
+        self.assertEqual(result["resolved_count"], 1)
+        self.assertFalse(result["findings"][0]["applied"])
+
+    def test_resolve_main_failures_can_apply_persistent_retryable_resolution(self) -> None:
+        failed_dir = self.paths.data_dir / "failed-instructions"
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        task_state_module.atomic_write_json(
+            failed_dir / "retryable.json",
+            {
+                "task_id": "retryable",
+                "_last_failure_classification": "transport-retryable",
+                "_last_failure_retryable": True,
+                "_retry_count": 2,
+            },
+        )
+
+        result = main_ops.resolve_main_failures(
+            paths=self.paths,
+            include_persistent_retryable=True,
+            apply_changes=True,
+            reason="cleanup",
+        )
+
+        self.assertEqual(result["resolved_count"], 1)
+        resolved_path = self.paths.data_dir / "resolved-failed-instructions" / "retryable.json"
+        self.assertTrue(resolved_path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

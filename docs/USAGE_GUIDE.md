@@ -243,6 +243,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair`
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage`
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py sweep`
+- `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resolve-failures`
 
 推荐状态查看入口：
 
@@ -299,6 +300,25 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py sweep --fail-
 
 - `sweep` 默认只是检查，不会改状态
 - 只有显式传 `--fail-stale-blocked-after-minutes` 才会把超过阈值的 blocked 任务收口成 `failed`
+
+如果你想把“已经确认不再需要继续重试”的失败指令从当前告警里收口出来，可以用：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resolve-failures --non-retryable
+```
+
+这条命令默认也是只检查，不会改状态。  
+如果确认要应用，例如把持续 retryable 失败或 non-retryable 失败移出当前活动失败集，再用：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resolve-failures --persistent-retryable --apply --reason "manual resolution after network triage"
+```
+
+或：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resolve-failures --non-retryable --apply --reason "manual resolution for invalid target"
+```
 
 状态查询里的 `delivery.state` 现在会直接给出当前投递阶段：
 

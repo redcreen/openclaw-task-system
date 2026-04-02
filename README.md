@@ -207,6 +207,9 @@
 - 陈旧 blocked 任务批处理入口：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py sweep`
 
+- 失败指令收口入口：
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resolve-failures`
+
 ## 下一步建议
 
 下一阶段建议直接在这个目录内继续推进：

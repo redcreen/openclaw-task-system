@@ -403,3 +403,63 @@ class InstructionExecutorTests(unittest.TestCase):
         payload = json.loads(failed_path.read_text(encoding="utf-8"))
         self.assertEqual(payload["_last_failure_classification"], "transport-retryable")
         self.assertTrue(payload["_last_failure_retryable"])
+
+    def test_resolve_failed_instructions_can_select_without_applying(self) -> None:
+        failed_path = self.paths.data_dir / "failed-instructions" / "task_no_retry.json"
+        failed_path.parent.mkdir(parents=True, exist_ok=True)
+        failed_path.write_text(
+            json.dumps(
+                {
+                    "task_id": "task_no_retry",
+                    "_last_failure_classification": "transport-nonretryable",
+                    "_last_failure_retryable": False,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        findings = instruction_executor.resolve_failed_instructions(
+            paths=self.paths,
+            include_non_retryable=True,
+            apply_changes=False,
+        )
+
+        self.assertEqual(len(findings), 1)
+        self.assertFalse(findings[0]["applied"])
+        self.assertTrue(failed_path.exists())
+
+    def test_resolve_failed_instructions_can_move_selected_failure(self) -> None:
+        failed_path = self.paths.data_dir / "failed-instructions" / "task_retry.json"
+        failed_path.parent.mkdir(parents=True, exist_ok=True)
+        failed_path.write_text(
+            json.dumps(
+                {
+                    "task_id": "task_retry",
+                    "_last_failure_classification": "transport-retryable",
+                    "_last_failure_retryable": True,
+                    "_retry_count": 2,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        findings = instruction_executor.resolve_failed_instructions(
+            paths=self.paths,
+            include_persistent_retryable=True,
+            min_retry_count=1,
+            apply_changes=True,
+            reason="cleanup",
+        )
+
+        self.assertEqual(len(findings), 1)
+        self.assertFalse(failed_path.exists())
+        resolved_path = self.paths.data_dir / "resolved-failed-instructions" / "task_retry.json"
+        self.assertTrue(resolved_path.exists())
+        payload = json.loads(resolved_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["_resolved_reason"], "cleanup")

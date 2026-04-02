@@ -9,7 +9,11 @@ from typing import Optional
 
 from delivery_reconcile import reconcile_delivery_artifacts
 from health_report import build_health_report
-from instruction_executor import annotate_failed_instruction_metadata, retry_failed_instructions
+from instruction_executor import (
+    annotate_failed_instruction_metadata,
+    resolve_failed_instructions,
+    retry_failed_instructions,
+)
 from main_task_adapter import block_main_task, fail_main_task, finish_main_task, resume_main_task
 from task_config import load_task_system_config
 from task_status import list_inflight_statuses, render_overview_markdown, render_status_markdown
@@ -134,6 +138,34 @@ def sweep_main_tasks(
     return {
         "blocked_main_task_count": len(blocked_tasks),
         "actions": actions,
+    }
+
+
+def resolve_main_failures(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    task_ids: Optional[list[str]] = None,
+    include_non_retryable: bool = False,
+    include_persistent_retryable: bool = False,
+    min_retry_count: int = 1,
+    apply_changes: bool = False,
+    reason: str = "manual failed instruction resolution",
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    findings = resolve_failed_instructions(
+        paths=resolved_paths,
+        task_ids=task_ids,
+        include_non_retryable=include_non_retryable,
+        include_persistent_retryable=include_persistent_retryable,
+        min_retry_count=min_retry_count,
+        apply_changes=apply_changes,
+        reason=reason,
+    )
+    return {
+        "apply_changes": apply_changes,
+        "resolved_count": len(findings),
+        "findings": findings,
     }
 
 
@@ -305,6 +337,26 @@ def main() -> None:
         default="automatic stale blocked cleanup",
         help="Reason recorded when failing stale blocked tasks.",
     )
+    resolve_parser = subparsers.add_parser("resolve-failures", help="Inspect or resolve failed instructions.")
+    resolve_parser.add_argument("--task-id", action="append", default=None, help="Specific failed task id to resolve.")
+    resolve_parser.add_argument("--non-retryable", action="store_true", help="Select non-retryable failed instructions.")
+    resolve_parser.add_argument(
+        "--persistent-retryable",
+        action="store_true",
+        help="Select retryable failed instructions that already retried at least once.",
+    )
+    resolve_parser.add_argument(
+        "--min-retry-count",
+        type=int,
+        default=1,
+        help="Minimum retry count used with --persistent-retryable.",
+    )
+    resolve_parser.add_argument("--apply", action="store_true", help="Actually move selected failures out of active failed-instructions.")
+    resolve_parser.add_argument(
+        "--reason",
+        default="manual failed instruction resolution",
+        help="Reason recorded when applying failed instruction resolution.",
+    )
 
     args = parser.parse_args()
     config_path = Path(args.config).expanduser() if args.config else None
@@ -356,6 +408,19 @@ def main() -> None:
             config_path=config_path,
             paths=paths,
             fail_stale_blocked_after_minutes=args.fail_stale_blocked_after_minutes,
+            reason=args.reason,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    if args.command == "resolve-failures":
+        result = resolve_main_failures(
+            config_path=config_path,
+            paths=paths,
+            task_ids=args.task_id,
+            include_non_retryable=args.non_retryable,
+            include_persistent_retryable=args.persistent_retryable,
+            min_retry_count=args.min_retry_count,
+            apply_changes=args.apply,
             reason=args.reason,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))

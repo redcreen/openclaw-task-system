@@ -6,6 +6,7 @@ import os
 import subprocess
 from argparse import ArgumentParser
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -51,11 +52,16 @@ def failed_dir(paths: TaskPaths) -> Path:
     return paths.data_dir / "failed-instructions"
 
 
+def resolved_failed_dir(paths: TaskPaths) -> Path:
+    return paths.data_dir / "resolved-failed-instructions"
+
+
 def ensure_dirs(paths: TaskPaths) -> None:
     instruction_dir(paths).mkdir(parents=True, exist_ok=True)
     result_dir(paths).mkdir(parents=True, exist_ok=True)
     processed_dir(paths).mkdir(parents=True, exist_ok=True)
     failed_dir(paths).mkdir(parents=True, exist_ok=True)
+    resolved_failed_dir(paths).mkdir(parents=True, exist_ok=True)
 
 
 def load_instruction(path: Path) -> dict[str, Any]:
@@ -186,6 +192,64 @@ def summarize_failed_instructions(paths: TaskPaths) -> dict[str, Any]:
             }
         )
     return summary
+
+
+def resolve_failed_instructions(
+    *,
+    paths: TaskPaths,
+    task_ids: Optional[list[str]] = None,
+    include_non_retryable: bool = False,
+    include_persistent_retryable: bool = False,
+    min_retry_count: int = 1,
+    apply_changes: bool = False,
+    reason: str = "manual failed instruction resolution",
+) -> list[dict[str, Any]]:
+    ensure_dirs(paths)
+    wanted_task_ids = set(task_ids or [])
+    findings: list[dict[str, Any]] = []
+
+    for path in sorted(failed_dir(paths).glob("*.json")):
+        instruction = load_instruction(path)
+        task_id = str(instruction.get("task_id") or "")
+        classification, retryable = infer_failed_instruction_metadata(
+            instruction,
+            name=path.name,
+            paths=paths,
+        )
+        retry_count = int(instruction.get("_retry_count", 0) or 0)
+
+        selected = False
+        if wanted_task_ids and task_id in wanted_task_ids:
+            selected = True
+        if include_non_retryable and retryable is False:
+            selected = True
+        if include_persistent_retryable and retryable and retry_count >= min_retry_count:
+            selected = True
+        if not selected:
+            continue
+
+        entry = {
+            "name": path.name,
+            "task_id": task_id,
+            "failure_classification": classification,
+            "retryable": retryable,
+            "retry_count": retry_count,
+            "applied": apply_changes,
+        }
+
+        if apply_changes:
+            payload = dict(instruction)
+            payload["_resolved_at"] = datetime.now(timezone.utc).isoformat()
+            payload["_resolved_reason"] = reason
+            payload["_resolved_from"] = "failed-instructions"
+            target = resolved_failed_dir(paths) / path.name
+            atomic_write_json(target, payload)
+            path.unlink(missing_ok=True)
+            entry["resolved_path"] = str(target)
+
+        findings.append(entry)
+
+    return findings
 
 
 def build_dispatch_decision(
