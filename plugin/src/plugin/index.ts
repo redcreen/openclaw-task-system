@@ -149,7 +149,13 @@ function buildSessionKey(channelId: string, conversationId?: string): string {
   return `${channelId}:${suffix}`;
 }
 
-function normalizeText(value: string): string {
+function normalizeText(value: unknown): string {
+  if (typeof value !== "string") {
+    if (value === null || value === undefined) {
+      return "";
+    }
+    return String(value).replace(/\s+/g, " ").trim();
+  }
   return value.replace(/\s+/g, " ").trim();
 }
 
