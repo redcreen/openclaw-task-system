@@ -777,6 +777,7 @@ const taskSystemPlugin = definePluginEntry({
         chat_id: ctx.conversationId ?? sessionKey,
         user_id: event.senderId ?? ctx.senderId ?? "",
         user_request: event.body || event.content,
+        observe_only: true,
       });
       await appendDebugLog(config, "immediate-ack:decision", {
         sessionKey,
@@ -864,14 +865,9 @@ const taskSystemPlugin = definePluginEntry({
         trigger: ctx.trigger || "unknown",
         prompt: normalizeText(event.prompt).slice(0, 240),
       });
-      await callHook(api, config, "register", {
+      await callHook(api, config, "activate-latest", {
         agent_id: agentId,
         session_key: sessionKey,
-        channel: ctx.channelId || "agent",
-        account_id: ctx.accountId ?? "",
-        chat_id: ctx.sessionId || sessionKey,
-        user_id: "",
-        user_request: event.prompt,
       });
     });
 
@@ -900,15 +896,6 @@ const taskSystemPlugin = definePluginEntry({
         sessionKey,
         trigger: ctx.trigger || "unknown",
         prompt: normalizeText(event.prompt).slice(0, 240),
-      });
-      await callHook(api, config, "register", {
-        agent_id: agentId,
-        session_key: sessionKey,
-        channel: ctx.channelId || "agent",
-        account_id: ctx.accountId ?? "",
-        chat_id: ctx.sessionId || sessionKey,
-        user_id: "",
-        user_request: event.prompt,
       });
     });
 

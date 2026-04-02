@@ -49,6 +49,30 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertTrue(result["should_register_task"])
         self.assertIsNotNone(result["task_id"])
 
+    def test_activate_latest_promotes_observed_task(self) -> None:
+        registered = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:activate",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:activate",
+                "user_id": "ou_test",
+                "user_request": "看一下",
+                "observe_only": True,
+            }
+        )
+        self.assertEqual(registered["task_status"], task_state_module.STATUS_RECEIVED)
+        activated = openclaw_hooks.activate_latest_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:activate",
+            }
+        )
+        self.assertTrue(activated["updated"])
+        self.assertEqual(activated["reason"], "promoted-observed-task")
+        self.assertEqual(activated["task"]["status"], task_state_module.STATUS_RUNNING)
+
     def test_progress_from_payload_updates_task(self) -> None:
         registration = openclaw_hooks.register_from_payload(
             {

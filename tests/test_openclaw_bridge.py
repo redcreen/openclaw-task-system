@@ -37,11 +37,11 @@ class OpenClawBridgeTests(unittest.TestCase):
 
     def test_register_inbound_task_observes_short_request(self) -> None:
         ctx = self.make_context("看一下")
-        decision = openclaw_bridge.register_inbound_task(ctx, paths=self.paths)
+        decision = openclaw_bridge.register_inbound_task(ctx, paths=self.paths, observe_only=True)
         self.assertTrue(decision.should_register_task)
         self.assertIsNotNone(decision.task_id)
         self.assertEqual(decision.classification_reason, "observed-task")
-        self.assertEqual(decision.task_status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(decision.task_status, task_state_module.STATUS_RECEIVED)
 
     def test_register_inbound_task_registers_long_request(self) -> None:
         ctx = self.make_context(

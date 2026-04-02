@@ -28,6 +28,17 @@ class TaskStateTests(unittest.TestCase):
         self.assertEqual(task.status, task_state_module.STATUS_QUEUED)
         self.assertTrue(self.store.inflight_path(task.task_id).exists())
 
+    def test_observe_task_creates_received_task(self) -> None:
+        task = self.store.observe_task(
+            agent_id="main",
+            session_key="session:observe",
+            channel="feishu",
+            chat_id="chat:observe",
+            task_label="observe task",
+        )
+        self.assertEqual(task.status, task_state_module.STATUS_RECEIVED)
+        self.assertTrue(self.store.inflight_path(task.task_id).exists())
+
     def test_start_task_marks_running(self) -> None:
         task = self.store.register_task(
             agent_id="main",

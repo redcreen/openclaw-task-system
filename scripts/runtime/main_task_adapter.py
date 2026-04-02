@@ -97,10 +97,11 @@ def register_main_task(
     *,
     paths: Optional[TaskPaths] = None,
     config: Optional[TaskSystemConfig] = None,
+    observe_only: bool = False,
 ) -> TaskState:
     runtime_config = config or load_task_system_config()
     store = TaskStore(paths=paths or runtime_config.build_paths() or default_paths())
-    task = store.register_task(
+    task = store.observe_task(
         agent_id=context.agent_id,
         session_key=context.session_key,
         channel=context.channel,
@@ -131,7 +132,7 @@ def register_main_task(
             },
             reason="scheduled continuation wait",
         )
-    if runtime_config.agent_config(context.agent_id).auto_start:
+    if runtime_config.agent_config(context.agent_id).auto_start and not observe_only:
         return store.claim_execution_slot(task.task_id)
     return task
 

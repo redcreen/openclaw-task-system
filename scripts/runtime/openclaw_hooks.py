@@ -55,6 +55,7 @@ def register_from_payload(
     decision = register_inbound_task(
         _build_context(payload),
         config_path=config_path,
+        observe_only=bool(payload.get("observe_only", False)),
     )
     return {
         "should_register_task": decision.should_register_task,
@@ -69,6 +70,29 @@ def register_from_payload(
         "queued_count": decision.queued_count,
         "continuation_due_at": decision.continuation_due_at,
     }
+
+
+def activate_latest_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    active = store.find_latest_active_task(
+        agent_id=payload["agent_id"],
+        session_key=payload["session_key"],
+    )
+    if active:
+        return {"updated": True, "task": active.to_dict(), "reason": "existing-active-task"}
+    observed = store.find_latest_observed_task(
+        agent_id=payload["agent_id"],
+        session_key=payload["session_key"],
+    )
+    if not observed:
+        return {"updated": False, "reason": "no-observed-task"}
+    claimed = store.claim_execution_slot(observed.task_id)
+    return {"updated": True, "task": claimed.to_dict(), "reason": "promoted-observed-task"}
 
 
 def claim_due_continuations_from_payload(
@@ -390,6 +414,8 @@ def finalize_active_from_payload(
 def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Path] = None) -> dict[str, Any]:
     if command == "register":
         return register_from_payload(payload, config_path=config_path)
+    if command == "activate-latest":
+        return activate_latest_from_payload(payload, config_path=config_path)
     if command == "claim-due-continuations":
         return claim_due_continuations_from_payload(payload, config_path=config_path)
     if command == "fulfill-due-continuation":

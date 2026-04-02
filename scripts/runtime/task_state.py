@@ -12,6 +12,7 @@ from typing import Any, Optional
 
 TASK_SCHEMA = "openclaw.task-system.task.v1"
 
+STATUS_RECEIVED = "received"
 STATUS_QUEUED = "queued"
 STATUS_RUNNING = "running"
 STATUS_BLOCKED = "blocked"
@@ -22,6 +23,7 @@ STATUS_CANCELLED = "cancelled"
 
 TERMINAL_STATUSES = {STATUS_DONE, STATUS_FAILED, STATUS_CANCELLED}
 ACTIVE_STATUSES = {STATUS_QUEUED, STATUS_RUNNING}
+OBSERVED_STATUSES = {STATUS_RECEIVED}
 RECOVERABLE_STATUSES = {STATUS_BLOCKED, STATUS_PAUSED}
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -96,7 +98,7 @@ class TaskState:
     chat_id: str = ""
     user_id: Optional[str] = None
     task_label: str = ""
-    status: str = STATUS_QUEUED
+    status: str = STATUS_RECEIVED
     block_reason: Optional[str] = None
     failure_reason: Optional[str] = None
     monitor_state: str = "normal"
@@ -156,6 +158,59 @@ class TaskStore:
         run_id: Optional[str] = None,
         meta: Optional[dict[str, Any]] = None,
     ) -> TaskState:
+        return self._create_task(
+            agent_id=agent_id,
+            session_key=session_key,
+            channel=channel,
+            account_id=account_id,
+            chat_id=chat_id,
+            task_label=task_label,
+            user_id=user_id,
+            run_id=run_id,
+            meta=meta,
+            status=STATUS_QUEUED,
+        )
+
+    def observe_task(
+        self,
+        *,
+        agent_id: str,
+        session_key: str,
+        channel: str,
+        account_id: Optional[str] = None,
+        chat_id: str,
+        task_label: str,
+        user_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        meta: Optional[dict[str, Any]] = None,
+    ) -> TaskState:
+        return self._create_task(
+            agent_id=agent_id,
+            session_key=session_key,
+            channel=channel,
+            account_id=account_id,
+            chat_id=chat_id,
+            task_label=task_label,
+            user_id=user_id,
+            run_id=run_id,
+            meta=meta,
+            status=STATUS_RECEIVED,
+        )
+
+    def _create_task(
+        self,
+        *,
+        agent_id: str,
+        session_key: str,
+        channel: str,
+        account_id: Optional[str],
+        chat_id: str,
+        task_label: str,
+        user_id: Optional[str],
+        run_id: Optional[str],
+        meta: Optional[dict[str, Any]],
+        status: str,
+    ) -> TaskState:
         ts = now_iso()
         task = TaskState(
             task_id=self.new_task_id(),
@@ -167,7 +222,7 @@ class TaskStore:
             chat_id=chat_id,
             user_id=user_id,
             task_label=task_label,
-            status=STATUS_QUEUED,
+            status=status,
             created_at=ts,
             updated_at=ts,
             last_user_visible_update_at=ts,
@@ -212,6 +267,12 @@ class TaskStore:
         if task.status == STATUS_RUNNING:
             return task
         if self.find_running_tasks(agent_id=task.agent_id):
+            if task.status != STATUS_QUEUED:
+                ts = now_iso()
+                task.status = STATUS_QUEUED
+                task.updated_at = ts
+                task.last_internal_touch_at = ts
+                return self.save_task(task)
             return task
         return self.start_task(task_id, user_visible=user_visible)
 
@@ -443,6 +504,19 @@ class TaskStore:
             agent_id=agent_id,
             session_key=session_key,
             statuses=RECOVERABLE_STATUSES,
+        )
+        return matches[0] if matches else None
+
+    def find_latest_observed_task(
+        self,
+        *,
+        agent_id: str,
+        session_key: str,
+    ) -> Optional[TaskState]:
+        matches = self.find_inflight_tasks(
+            agent_id=agent_id,
+            session_key=session_key,
+            statuses=OBSERVED_STATUSES,
         )
         return matches[0] if matches else None
 

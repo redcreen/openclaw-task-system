@@ -74,6 +74,7 @@ def register_inbound_task(
     paths: Optional[TaskPaths] = None,
     config: Optional[TaskSystemConfig] = None,
     config_path: Optional[Path] = None,
+    observe_only: bool = False,
 ) -> BridgeDecision:
     runtime_config = config or load_task_system_config(config_path=config_path)
     resolved_paths = paths or runtime_config.build_paths() or default_paths()
@@ -139,6 +140,7 @@ def register_inbound_task(
         main_ctx,
         paths=resolved_paths,
         config=runtime_config,
+        observe_only=observe_only,
     )
     active_tasks = store.find_inflight_tasks(agent_id=ctx.agent_id, statuses={"queued", "running"})
     ordered_active = sorted(active_tasks, key=lambda item: item.created_at)
