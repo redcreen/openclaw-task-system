@@ -247,6 +247,36 @@ class MainOpsTests(unittest.TestCase):
         resolved_path = self.paths.data_dir / "resolved-failed-instructions" / "retryable.json"
         self.assertTrue(resolved_path.exists())
 
+    def test_render_delivery_diagnose_includes_probe_command(self) -> None:
+        failed_dir = self.paths.data_dir / "failed-instructions"
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        task_state_module.atomic_write_json(
+            failed_dir / "retryable.json",
+            {
+                "task_id": "retryable",
+                "channel": "telegram",
+                "chat_id": "8705812936",
+                "_last_failure_classification": "transport-retryable",
+                "_last_failure_retryable": True,
+                "_retry_count": 1,
+            },
+        )
+        dispatch_dir = self.paths.data_dir / "dispatch-results"
+        dispatch_dir.mkdir(parents=True, exist_ok=True)
+        task_state_module.atomic_write_json(
+            dispatch_dir / "retryable.json",
+            {
+                "task_id": "retryable",
+                "stderr": "Network request failed with timeout",
+            },
+        )
+
+        rendered = main_ops.render_delivery_diagnose(paths=self.paths)
+
+        self.assertIn("# Delivery Diagnose", rendered)
+        self.assertIn("message send --channel telegram --target 8705812936", rendered)
+        self.assertIn("last_error: Network request failed with timeout", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

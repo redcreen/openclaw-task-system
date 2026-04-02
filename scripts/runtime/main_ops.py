@@ -169,6 +169,70 @@ def resolve_main_failures(
     }
 
 
+def render_delivery_diagnose(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> str:
+    report = build_health_report(config_path=config_path, paths=paths)
+    config = load_task_system_config(config_path=config_path)
+    failed_summary = report["failed_instruction_summary"]
+    retryable_items = [item for item in failed_summary["items"] if item["retryable"]]
+
+    lines = [
+        "# Delivery Diagnose",
+        "",
+        f"- openclaw_bin: {config.delivery.openclaw_bin}",
+        f"- retryable_failed_instruction_count: {failed_summary['retryable']}",
+        f"- persistent_retryable_failed_instruction_count: {failed_summary['persistent_retryable']}",
+    ]
+
+    if not retryable_items:
+        lines.extend(
+            [
+                "",
+                "## Status",
+                "",
+                "- No retryable delivery failure needs host diagnosis.",
+            ]
+        )
+        return "\n".join(lines) + "\n"
+
+    probe = retryable_items[0]
+    probe_target = probe.get("chat_id") or "<chat-id>"
+    probe_channel = probe.get("channel") or "telegram"
+
+    lines.extend(
+        [
+            "",
+            "## Probe Target",
+            "",
+            f"- task_id: {probe.get('task_id')}",
+            f"- channel: {probe_channel}",
+            f"- chat_id: {probe_target}",
+            f"- retry_count: {probe.get('retry_count')}",
+        ]
+    )
+    if probe.get("last_error_summary"):
+        lines.append(f"- last_error: {probe['last_error_summary']}")
+
+    probe_command = (
+        f"{config.delivery.openclaw_bin} message send --channel {probe_channel} "
+        f"--target {probe_target} --message \"task system network probe\""
+    )
+    lines.extend(
+        [
+            "",
+            "## Suggested Checks",
+            "",
+            f"- Run host probe command: `{probe_command}`",
+            "- If the probe fails with the same network message, investigate the host network path or Telegram connectivity before retrying task-system delivery.",
+            "- If the probe succeeds, rerun `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair --execute-retries --execution-context host`.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 def render_main_triage(
     *,
     config_path: Optional[Path] = None,
@@ -321,6 +385,7 @@ def main() -> None:
     subparsers.add_parser("overview", help="Show task system overview.")
     subparsers.add_parser("health", help="Show main-oriented health summary.")
     subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
+    subparsers.add_parser("diagnose-delivery", help="Show host-side delivery diagnosis steps for retryable failures.")
     repair_parser = subparsers.add_parser("repair", help="Clean stale delivery state and optionally retry failed sends.")
     repair_parser.add_argument("--execute-retries", action="store_true", help="Retry retryable failed instructions.")
     repair_parser.add_argument("--openclaw-bin", default=None, help="Override openclaw binary for retry execution.")
@@ -396,6 +461,9 @@ def main() -> None:
         return
     if args.command == "triage":
         print(render_main_triage(config_path=config_path, paths=paths), end="")
+        return
+    if args.command == "diagnose-delivery":
+        print(render_delivery_diagnose(config_path=config_path, paths=paths), end="")
         return
     if args.command == "repair":
         result = repair_system(
