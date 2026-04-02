@@ -142,6 +142,7 @@ class HealthReportTests(unittest.TestCase):
         retryable_item = next(item for item in report["failed_instruction_summary"]["items"] if item["task_id"] == "retryable")
         self.assertEqual(retryable_item["retry_count"], 0)
         self.assertEqual(retryable_item["last_error_summary"], "Network request failed with timeout")
+        self.assertIn("- resolved_failed_instruction_count: 0", markdown)
         self.assertIn("- failed_instruction_retryable_count: 1", markdown)
         self.assertIn("- failed_instruction_persistent_retryable_count: 0", markdown)
         self.assertIn("- failed_instruction_non_retryable_count: 1", markdown)

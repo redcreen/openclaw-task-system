@@ -119,6 +119,7 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(overview["stale_delivery_task_count"], 1)
         self.assertEqual(overview["stale_delivery_artifact_count"], 1)
         self.assertEqual(overview["archived_status_counts"], {"done": 1})
+        self.assertEqual(overview["resolved_failed_instruction_count"], 0)
 
     def test_render_overview_markdown_includes_counts(self) -> None:
         task = self.store.register_task(
@@ -134,6 +135,7 @@ class TaskStatusTests(unittest.TestCase):
         self.assertIn("- active_task_count: 1", markdown)
         self.assertIn("- active_stale_delivery_task_count: 0", markdown)
         self.assertIn("- stale_delivery_task_count: 0", markdown)
+        self.assertIn("- resolved_failed_instruction_count: 0", markdown)
         self.assertIn("- active_status_counts: {\"running\": 1}", markdown)
         self.assertIn(task.task_id, markdown)
 

@@ -129,6 +129,7 @@ def render_markdown(report: dict[str, object]) -> str:
             f"- active_task_count: {overview['active_task_count']}",
             f"- blocked_active_tasks: {overview['active_status_counts'].get('blocked', 0)}",
             f"- failed_instruction_count: {overview['failed_instruction_count']}",
+            f"- resolved_failed_instruction_count: {overview['resolved_failed_instruction_count']}",
             f"- failed_instruction_retryable_count: {report['failed_instruction_summary']['retryable']}",
             f"- failed_instruction_persistent_retryable_count: {report['failed_instruction_summary']['persistent_retryable']}",
             f"- failed_instruction_non_retryable_count: {report['failed_instruction_summary']['non_retryable']}",

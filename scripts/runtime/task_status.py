@@ -232,6 +232,7 @@ def build_system_overview(
         "send_instruction_count": len(list((resolved_paths.data_dir / "send-instructions").glob("*.json"))),
         "processed_instruction_count": len(list((resolved_paths.data_dir / "processed-instructions").glob("*.json"))),
         "failed_instruction_count": len(list((resolved_paths.data_dir / "failed-instructions").glob("*.json"))),
+        "resolved_failed_instruction_count": len(list((resolved_paths.data_dir / "resolved-failed-instructions").glob("*.json"))),
         "dispatch_result_count": len(list((resolved_paths.data_dir / "dispatch-results").glob("*.json"))),
         "active_tasks": inflight_statuses,
     }
@@ -329,6 +330,7 @@ def render_overview_markdown(
         f"- send_instruction_count: {overview['send_instruction_count']}",
         f"- processed_instruction_count: {overview['processed_instruction_count']}",
         f"- failed_instruction_count: {overview['failed_instruction_count']}",
+        f"- resolved_failed_instruction_count: {overview['resolved_failed_instruction_count']}",
         f"- dispatch_result_count: {overview['dispatch_result_count']}",
         f"- active_stale_delivery_task_count: {overview['active_stale_delivery_task_count']}",
         f"- active_stale_delivery_artifact_count: {overview['active_stale_delivery_artifact_count']}",

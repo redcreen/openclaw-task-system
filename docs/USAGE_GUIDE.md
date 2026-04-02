@@ -334,6 +334,12 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py diagnose-deli
 - 最近一次失败摘要
 - 一条建议直接在宿主运行的 `openclaw message send ...` 探测命令
 
+状态总览和健康报告现在也会显示：
+
+- `resolved_failed_instruction_count`
+
+用来表示已经通过 `resolve-failures --apply` 收口的失败项数量。
+
 状态查询里的 `delivery.state` 现在会直接给出当前投递阶段：
 
 - `not-requested`
