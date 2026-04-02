@@ -8,6 +8,7 @@ from typing import Optional
 
 from delivery_reconcile import reconcile_delivery_artifacts
 from plugin_doctor import run_checks
+from task_state import TaskPaths
 from task_status import build_system_overview
 
 
@@ -20,9 +21,13 @@ def _issue_entry(code: str, severity: str, count: int, remediation: str) -> dict
     }
 
 
-def build_health_report(*, config_path: Optional[Path] = None) -> dict[str, object]:
-    overview = build_system_overview(config_path=config_path)
-    stale_findings = reconcile_delivery_artifacts(config_path=config_path, apply_changes=False)
+def build_health_report(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> dict[str, object]:
+    overview = build_system_overview(config_path=config_path, paths=paths)
+    stale_findings = reconcile_delivery_artifacts(config_path=config_path, paths=paths, apply_changes=False)
     plugin_checks = run_checks()
 
     failing_plugin_checks = [check.name for check in plugin_checks if not check.ok]

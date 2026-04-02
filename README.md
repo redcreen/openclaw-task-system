@@ -192,6 +192,9 @@
 - 运行稳定使用总验收：
   `python3 workspace/openclaw-task-system/scripts/runtime/stable_acceptance.py`
 
+- `main` 运维入口：
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py list`
+
 ## 下一步建议
 
 下一阶段建议直接在这个目录内继续推进：

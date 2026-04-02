@@ -238,6 +238,8 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 
 - `bash workspace/openclaw-task-system/scripts/run_tests.sh`
 - `python3 workspace/openclaw-task-system/scripts/runtime/stable_acceptance.py`
+- `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py list`
+- `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health`
 
 推荐状态查看入口：
 
