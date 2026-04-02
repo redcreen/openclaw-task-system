@@ -137,6 +137,27 @@ class SilenceMonitorTests(unittest.TestCase):
         payload = outbox_path.read_text(encoding="utf-8")
         self.assertIn("标记为阻塞", payload)
 
+    def test_fallback_message_includes_continuation_wake_status(self) -> None:
+        finding = silence_monitor.SilenceFinding(
+            task_id="task_1",
+            agent_id="main",
+            session_key="session:test",
+            channel="telegram",
+            chat_id="8705812936",
+            status=task_state_module.STATUS_RUNNING,
+            silence_seconds=45,
+            last_user_visible_update_at=task_state_module.now_iso(),
+            should_notify=True,
+            reason="first-overdue",
+            continuation_wake_state="dispatched",
+            continuation_wake_attempt_count=1,
+            continuation_last_wake_at=task_state_module.now_iso(),
+            continuation_wake_message="已唤醒 agent，等待最终回复送达",
+        )
+        message = silence_monitor.fallback_message(finding)
+        self.assertIn("已尝试唤醒 agent 1 次", message)
+        self.assertIn("已唤醒 agent", message)
+
 
 if __name__ == "__main__":
     unittest.main()

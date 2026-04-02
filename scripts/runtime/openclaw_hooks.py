@@ -133,6 +133,7 @@ def claim_due_continuations_from_payload(
                 "account_id": task.account_id,
                 "chat_id": task.chat_id,
                 "reply_text": ((task.meta.get("continuation_payload") or {}).get("reply_text") if isinstance(task.meta.get("continuation_payload"), dict) else None),
+                "continuation_payload": task.meta.get("continuation_payload") if isinstance(task.meta.get("continuation_payload"), dict) else None,
             }
         )
     return {
@@ -197,6 +198,39 @@ def fulfill_due_continuation_from_payload(
         }
 
     return {"updated": False, "reason": "no-due-continuation-match"}
+
+
+def mark_continuation_wake_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    task = store.load_task(payload["task_id"], allow_archive=False)
+    ts = datetime.now(timezone.utc).astimezone().isoformat()
+    meta = dict(task.meta)
+    attempts = int(meta.get("continuation_wake_attempt_count") or 0)
+    state = str(payload.get("state") or "").strip() or "attempting"
+    if state == "attempting":
+        attempts += 1
+        meta["continuation_wake_attempt_count"] = attempts
+        meta["continuation_last_wake_at"] = ts
+    meta["continuation_wake_state"] = state
+    note = str(payload.get("message") or "").strip()
+    if note:
+        meta["continuation_wake_message"] = note[:240]
+    touched = store.touch_task(
+        task.task_id,
+        user_visible=False,
+        meta=meta,
+    )
+    return {
+        "updated": True,
+        "task": touched.to_dict(),
+        "attempt_count": int(touched.meta.get("continuation_wake_attempt_count") or 0),
+        "wake_state": touched.meta.get("continuation_wake_state"),
+    }
 
 
 def resolve_active_task_from_payload(
@@ -378,6 +412,8 @@ def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Pat
         return claim_due_continuations_from_payload(payload, config_path=config_path)
     if command == "fulfill-due-continuation":
         return fulfill_due_continuation_from_payload(payload, config_path=config_path)
+    if command == "continuation-wake":
+        return mark_continuation_wake_from_payload(payload, config_path=config_path)
     if command == "resolve-active":
         return resolve_active_task_from_payload(payload, config_path=config_path)
     if command == "progress":
@@ -407,7 +443,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     usage = (
         "usage: openclaw_hooks.py "
-        "<register|claim-due-continuations|fulfill-due-continuation|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active> "
+        "<register|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active> "
         "<payload.json> [config.json]"
     )
     if args and args[0] in {"-h", "--help"}:

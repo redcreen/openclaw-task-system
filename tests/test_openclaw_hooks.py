@@ -313,6 +313,42 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertFalse(fulfilled["updated"])
         self.assertEqual(fulfilled["reason"], "no-due-continuation-match")
 
+    def test_mark_continuation_wake_tracks_attempts(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:wake",
+                "channel": "telegram",
+                "account_id": "default",
+                "chat_id": "tg:test",
+                "user_request": "1分钟后回复我ok1",
+            }
+        )
+        task_id = registration["task_id"]
+        assert task_id is not None
+
+        marked = openclaw_hooks.mark_continuation_wake_from_payload(
+            {
+                "task_id": task_id,
+                "state": "attempting",
+                "message": "已触发到点唤醒",
+            }
+        )
+        self.assertTrue(marked["updated"])
+        self.assertEqual(marked["attempt_count"], 1)
+        self.assertEqual(marked["wake_state"], "attempting")
+
+        dispatched = openclaw_hooks.mark_continuation_wake_from_payload(
+            {
+                "task_id": task_id,
+                "state": "dispatched",
+                "message": "已唤醒 agent",
+            }
+        )
+        self.assertTrue(dispatched["updated"])
+        self.assertEqual(dispatched["attempt_count"], 1)
+        self.assertEqual(dispatched["wake_state"], "dispatched")
+
     def test_claim_due_continuations_returns_scheduled_delayed_reply(self) -> None:
         registration = openclaw_hooks.register_from_payload(
             {

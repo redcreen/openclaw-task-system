@@ -110,6 +110,7 @@ def register_main_task(
         task_label=context.user_request[:80],
         meta={
           "source": "main-task-adapter",
+          "original_user_request": context.user_request,
           "estimated_steps": context.estimated_steps,
           "touches_multiple_files": context.touches_multiple_files,
           "involves_delegation": context.involves_delegation,
@@ -126,6 +127,7 @@ def register_main_task(
             payload={
                 "reply_text": continuation.reply_text,
                 "wait_seconds": continuation.wait_seconds,
+                "original_user_request": context.user_request,
             },
             reason="scheduled continuation wait",
         )

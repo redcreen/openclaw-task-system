@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 
 type TaskSystemPluginConfig = {
   enabled?: boolean;
+  openclawBin?: string;
   pythonBin?: string;
   runtimeRoot?: string;
   configPath?: string;
@@ -34,6 +35,10 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
   const value = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   return {
     enabled: value.enabled !== false,
+    openclawBin:
+      typeof value.openclawBin === "string" && value.openclawBin.trim()
+        ? value.openclawBin.trim()
+        : "/Users/redcreen/.local/bin/openclaw",
     pythonBin: typeof value.pythonBin === "string" && value.pythonBin.trim() ? value.pythonBin.trim() : "python3",
     runtimeRoot:
       typeof value.runtimeRoot === "string" && value.runtimeRoot.trim()
@@ -400,27 +405,84 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
     const taskId = normalizeText(String(payload.task_id || ""));
     const sessionKey = normalizeText(String(payload.session_key || ""));
     const replyText = normalizeText(String(payload.reply_text || ""));
+    const originalUserRequest = normalizeText(
+      String(
+        (payload.continuation_payload &&
+          typeof payload.continuation_payload === "object" &&
+          (payload.continuation_payload as Record<string, unknown>).original_user_request) ||
+          "",
+      ),
+    );
     if (!channel || !chatId || !taskId || !replyText) {
       continue;
     }
     try {
-      await sendStatusMessage(api, config, {
-        channel,
-        accountId: normalizeText(String(payload.account_id || "")),
-        chatId,
-        sessionKey,
-        message: replyText,
-        eventName: "continuation-delivery",
-      });
-      await callHook(api, config, "completed", {
+      const wakePrompt = [
+        "这是一个已经到达计划时间的延迟任务，请你现在继续执行。",
+        originalUserRequest ? `原始用户请求：${originalUserRequest}` : "",
+        `你现在必须直接回复以下最终内容：${replyText}`,
+        "不要重复计划，不要解释原因，只输出最终回复内容。",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const wakeStart = await callHook(api, config, "continuation-wake", {
         task_id: taskId,
-        result_summary: `continuation reply sent: ${replyText}`.slice(0, 240),
+        state: "attempting",
+        message: "已触发到点唤醒，等待 agent 返回结果",
+      });
+      await appendDebugLog(config, "continuation-wake:start", {
+        taskId,
+        sessionKey,
+        attemptCount: wakeStart?.attempt_count ?? null,
+        channel,
+        chatId,
+      });
+      const args = [
+        "agent",
+        "--agent",
+        normalizeText(String(payload.agent_id || "")) || config.defaultAgentId,
+        "--message",
+        wakePrompt,
+        "--deliver",
+        "--reply-channel",
+        channel,
+        "--reply-to",
+        chatId,
+      ];
+      const accountId = normalizeText(String(payload.account_id || ""));
+      if (accountId) {
+        args.push("--reply-account", accountId);
+      }
+      const result = await execFileAsync(config.openclawBin, args, {
+        cwd: config.runtimeRoot,
+        env: process.env,
+      });
+      await callHook(api, config, "continuation-wake", {
+        task_id: taskId,
+        state: "dispatched",
+        message: "已唤醒 agent，等待最终回复送达",
+      });
+      await appendDebugLog(config, "continuation-wake:ok", {
+        taskId,
+        sessionKey,
+        stdout: normalizeText(result.stdout || "").slice(0, 240),
+        stderr: normalizeText(result.stderr || "").slice(0, 240),
       });
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
+      await callHook(api, config, "continuation-wake", {
+        task_id: taskId,
+        state: "failed",
+        message: `唤醒 agent 失败：${messageText}`.slice(0, 240),
+      });
       await callHook(api, config, "blocked", {
         task_id: taskId,
-        reason: `continuation delivery failed: ${messageText}`.slice(0, 240),
+        reason: `continuation wake failed: ${messageText}`.slice(0, 240),
+      });
+      await appendDebugLog(config, "continuation-wake:error", {
+        taskId,
+        sessionKey,
+        error: messageText,
       });
     }
   }

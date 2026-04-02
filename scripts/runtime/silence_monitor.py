@@ -36,6 +36,10 @@ class SilenceFinding:
     should_notify: bool
     reason: str
     escalation: str | None = None
+    continuation_wake_state: str | None = None
+    continuation_wake_attempt_count: int = 0
+    continuation_last_wake_at: str | None = None
+    continuation_wake_message: str | None = None
 
 
 def is_active_task(task: TaskState) -> bool:
@@ -102,6 +106,10 @@ def scan_tasks(
                     should_notify=notify,
                     reason=reason,
                     escalation=escalation,
+                    continuation_wake_state=str(task.meta.get("continuation_wake_state") or "").strip() or None,
+                    continuation_wake_attempt_count=int(task.meta.get("continuation_wake_attempt_count") or 0),
+                    continuation_last_wake_at=str(task.meta.get("continuation_last_wake_at") or "").strip() or None,
+                    continuation_wake_message=str(task.meta.get("continuation_wake_message") or "").strip() or None,
                 )
             )
     return findings
@@ -127,6 +135,14 @@ def fallback_message(_finding: SilenceFinding) -> str:
             "当前长任务没有形成可靠的可见进展，且执行过程中出现了内部重试或模型失败；"
             "我已将它标记为阻塞，后续需要继续重试、切换模型，或人工介入确认。"
         )
+    if _finding.continuation_wake_state:
+        message = (
+            "已收到你的任务，当前仍在处理中；"
+            f"最近一次已尝试唤醒 agent {max(_finding.continuation_wake_attempt_count, 1)} 次"
+        )
+        if _finding.continuation_wake_message:
+            message += f"，最近状态：{_finding.continuation_wake_message}"
+        return message + "。"
     return (
         "已收到你的任务，当前仍在处理中；"
         "如果 30 秒内还没有新的阶段结果，我会继续同步当前进展或阻塞点。"
