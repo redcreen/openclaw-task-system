@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+import json
+import shutil
+import tempfile
+import unittest
+from pathlib import Path
+
+from runtime_loader import load_runtime_module, task_state_module
+
+
+task_status = load_runtime_module("task_status")
+
+
+class TaskStatusTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="task-system-status-tests."))
+        self.paths = task_state_module.TaskPaths.from_root(self.temp_dir)
+        self.store = task_state_module.TaskStore(paths=self.paths)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_build_status_summary_returns_expected_fields(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="feishu",
+            chat_id="chat:test",
+            task_label="status task",
+        )
+        task = self.store.start_task(task.task_id)
+        summary = task_status.build_status_summary(task.task_id, paths=self.paths)
+        self.assertEqual(summary["task_id"], task.task_id)
+        self.assertEqual(summary["status"], task_state_module.STATUS_RUNNING)
+        self.assertEqual(summary["task_label"], "status task")
+
+    def test_render_status_markdown_includes_key_lines(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="feishu",
+            chat_id="chat:test",
+            task_label="status markdown task",
+        )
+        markdown = task_status.render_status_markdown(task.task_id, paths=self.paths)
+        self.assertIn(f"# Task Status: {task.task_id}", markdown)
+        self.assertIn("- status: queued", markdown)
+
+    def test_list_inflight_statuses_returns_registered_task(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="feishu",
+            chat_id="chat:test",
+            task_label="status list task",
+        )
+        statuses = task_status.list_inflight_statuses(paths=self.paths)
+        self.assertEqual(len(statuses), 1)
+        self.assertEqual(statuses[0]["task_id"], task.task_id)
+
+    def test_render_inflight_markdown_includes_task_line(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="feishu",
+            chat_id="chat:test",
+            task_label="status list markdown task",
+        )
+        markdown = task_status.render_inflight_markdown(paths=self.paths)
+        self.assertIn("# Active Tasks", markdown)
+        self.assertIn(task.task_id, markdown)
+
+    def test_build_status_summary_can_resolve_paths_from_config_file(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="feishu",
+            chat_id="chat:test",
+            task_label="status config task",
+        )
+        config_dir = self.temp_dir / "config"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = config_dir / "task_system.json"
+        config_path.write_text(
+            json.dumps({"taskSystem": {"storageDir": str(self.paths.data_dir)}}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        summary = task_status.build_status_summary(task.task_id, config_path=config_path)
+        self.assertEqual(summary["task_id"], task.task_id)

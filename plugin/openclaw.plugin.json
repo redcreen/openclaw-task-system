@@ -1,0 +1,75 @@
+{
+  "id": "openclaw-task-system",
+  "uiHints": {
+    "enabled": {
+      "label": "Enabled",
+      "help": "Enable the OpenClaw Task System plugin."
+    },
+    "pythonBin": {
+      "label": "Python Binary",
+      "help": "Python executable used to invoke the task system runtime hooks."
+    },
+    "runtimeRoot": {
+      "label": "Runtime Root",
+      "help": "Absolute path to the openclaw-task-system project root."
+    },
+    "configPath": {
+      "label": "Config Path",
+      "help": "Optional path to task_system.json used by the runtime hooks."
+    },
+    "debugLogPath": {
+      "label": "Debug Log Path",
+      "help": "Optional file path for plugin hook trace logs during integration debugging."
+    },
+    "registerOnBeforeDispatch": {
+      "label": "Register On Dispatch",
+      "help": "Register long tasks during before_dispatch."
+    },
+    "syncProgressOnMessageSending": {
+      "label": "Sync Progress On Send",
+      "help": "Touch active task progress whenever OpenClaw is about to send a visible message."
+    },
+    "finalizeOnAgentEnd": {
+      "label": "Finalize On Agent End",
+      "help": "Automatically complete or fail the active task when the agent run ends."
+    },
+    "minProgressMessageLength": {
+      "label": "Min Progress Length",
+      "help": "Minimum outbound message length before it is treated as a visible progress update."
+    },
+    "ignoreProgressPatterns": {
+      "label": "Ignore Progress Patterns",
+      "help": "Regex patterns for outbound messages that should not count as progress."
+    },
+    "enableHostFeishuDelivery": {
+      "label": "Enable Feishu Host Delivery",
+      "help": "Process Feishu send-instructions inside the plugin with OpenClaw host runtime instead of CLI message send."
+    },
+    "hostDeliveryPollMs": {
+      "label": "Host Delivery Poll MS",
+      "help": "Polling interval for the plugin-side Feishu delivery bridge."
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": { "type": "boolean" },
+      "pythonBin": { "type": "string" },
+      "runtimeRoot": { "type": "string" },
+      "configPath": { "type": "string" },
+      "debugLogPath": { "type": "string" },
+      "defaultAgentId": { "type": "string" },
+      "registerOnBeforeDispatch": { "type": "boolean" },
+      "syncProgressOnMessageSending": { "type": "boolean" },
+      "finalizeOnAgentEnd": { "type": "boolean" },
+      "minProgressMessageLength": { "type": "integer", "minimum": 1 },
+      "enableHostFeishuDelivery": { "type": "boolean" },
+      "hostDeliveryPollMs": { "type": "integer", "minimum": 1000 },
+      "ignoreProgressPatterns": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    }
+  }
+}

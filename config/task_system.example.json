@@ -1,0 +1,39 @@
+{
+  "taskSystem": {
+    "enabled": true,
+    "storageDir": "./data",
+    "agents": {
+      "main": {
+        "enabled": true,
+        "autoStart": true,
+        "classification": {
+          "minRequestLength": 24,
+          "minReasonCount": 2,
+          "estimatedStepsThreshold": 3,
+          "keywords": [
+            "继续",
+            "处理",
+            "排查",
+            "修复",
+            "整理",
+            "实现",
+            "测试",
+            "验证"
+          ]
+        },
+        "silenceMonitor": {
+          "enabled": true,
+          "silentTimeoutSeconds": 30,
+          "resendIntervalSeconds": 30
+        }
+      }
+    },
+    "delivery": {
+      "mode": "session-aware",
+      "openclawBin": "/Users/redcreen/.local/bin/openclaw",
+      "autoExecuteInstructions": true,
+      "retryFailedInstructions": false,
+      "executionContext": "local"
+    }
+  }
+}

@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+import shutil
+import tempfile
+import unittest
+from pathlib import Path
+
+from runtime_loader import load_runtime_module, task_state_module
+
+
+main_task_adapter = load_runtime_module("main_task_adapter")
+
+
+class MainTaskAdapterTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="task-system-main-adapter-tests."))
+        self.paths = task_state_module.TaskPaths.from_root(self.temp_dir)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def build_context(self, request: str, **kwargs):
+        return main_task_adapter.MainTaskContext(
+            agent_id="main",
+            session_key="agent:main:feishu:direct:test",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="oc_test_chat",
+            user_request=request,
+            **kwargs,
+        )
+
+    def test_decide_main_task_registers_long_task(self) -> None:
+        context = self.build_context(
+            "帮我排查这个问题并修复，再验证结果",
+            estimated_steps=4,
+            needs_verification=True,
+        )
+        decision = main_task_adapter.decide_main_task(context)
+        self.assertTrue(decision.should_register)
+        self.assertEqual(decision.reason, "long-task")
+
+    def test_decide_main_task_skips_short_task(self) -> None:
+        context = self.build_context("看一下")
+        decision = main_task_adapter.decide_main_task(context)
+        self.assertFalse(decision.should_register)
+        self.assertEqual(decision.reason, "short-task")
+
+    def test_register_main_task_creates_running_task(self) -> None:
+        context = self.build_context(
+            "帮我整理配置并验证一下",
+            estimated_steps=3,
+            touches_multiple_files=True,
+        )
+        task = main_task_adapter.register_main_task(context, paths=self.paths)
+        self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(task.agent_id, "main")
+
+    def test_sync_finish_and_block_main_task(self) -> None:
+        context = self.build_context(
+            "继续处理这个任务",
+            estimated_steps=3,
+        )
+        task = main_task_adapter.register_main_task(context, paths=self.paths)
+
+        updated = main_task_adapter.sync_main_progress(
+            task.task_id,
+            progress_note="checked files",
+            paths=self.paths,
+        )
+        self.assertEqual(updated.meta["last_progress_note"], "checked files")
+
+        blocked = main_task_adapter.block_main_task(task.task_id, "waiting for approval", paths=self.paths)
+        self.assertEqual(blocked.status, task_state_module.STATUS_BLOCKED)
+
+        task2 = main_task_adapter.register_main_task(context, paths=self.paths)
+        finished = main_task_adapter.finish_main_task(task2.task_id, result_summary="done", paths=self.paths)
+        self.assertEqual(finished.status, task_state_module.STATUS_DONE)
+        self.assertEqual(finished.meta["result_summary"], "done")
+
+    def test_fail_main_task_marks_failed(self) -> None:
+        context = self.build_context(
+            "继续排查",
+            estimated_steps=3,
+        )
+        task = main_task_adapter.register_main_task(context, paths=self.paths)
+        failed = main_task_adapter.fail_main_task(task.task_id, "provider timeout", paths=self.paths)
+        self.assertEqual(failed.status, task_state_module.STATUS_FAILED)
+        self.assertEqual(failed.failure_reason, "provider timeout")

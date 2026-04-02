@@ -1,0 +1,32 @@
+{
+  "plugins": {
+    "entries": {
+      "openclaw-task-system": {
+        "enabled": true,
+        "config": {
+          "enabled": true,
+          "pythonBin": "python3",
+          "runtimeRoot": "/Users/redcreen/.openclaw/workspace/openclaw-task-system",
+          "configPath": "/Users/redcreen/.openclaw/workspace/openclaw-task-system/config/task_system.json",
+          "debugLogPath": "/Users/redcreen/.openclaw/workspace/openclaw-task-system/data/plugin-debug.log",
+          "defaultAgentId": "main",
+          "registerOnBeforeDispatch": true,
+          "syncProgressOnMessageSending": true,
+          "finalizeOnAgentEnd": true,
+          "enableHostFeishuDelivery": true,
+          "hostDeliveryPollMs": 3000,
+          "minProgressMessageLength": 20,
+          "ignoreProgressPatterns": [
+            "^收到$",
+            "^好的$",
+            "^继续$",
+            "^处理中$",
+            "^稍等$",
+            "^thinking\\.\\.\\.$",
+            "^\\.\\.\\.$"
+          ]
+        }
+      }
+    }
+  }
+}

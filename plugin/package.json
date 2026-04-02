@@ -1,0 +1,29 @@
+{
+  "name": "@redcreen/openclaw-task-system",
+  "version": "0.1.0",
+  "description": "Plugin-first task lifecycle management for OpenClaw long-running work",
+  "type": "module",
+  "main": "index.ts",
+  "license": "MIT",
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "task-management",
+    "watchdog",
+    "agent-runtime"
+  ],
+  "files": [
+    "index.ts",
+    "src/**/*.ts",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
