@@ -8,7 +8,7 @@ from typing import Optional
 
 from delivery_reconcile import reconcile_delivery_artifacts
 from health_report import build_health_report
-from instruction_executor import retry_failed_instructions
+from instruction_executor import annotate_failed_instruction_metadata, retry_failed_instructions
 from main_task_adapter import block_main_task, fail_main_task, finish_main_task, resume_main_task
 from task_config import load_task_system_config
 from task_status import list_inflight_statuses, render_overview_markdown, render_status_markdown
@@ -89,18 +89,22 @@ def repair_system(
     resolved_paths = _resolve_paths(config_path, paths=paths)
     health_before = build_health_report(config_path=config_path, paths=resolved_paths)
     stale_cleanup = reconcile_delivery_artifacts(paths=resolved_paths, apply_changes=True)
+    annotated_failures = annotate_failed_instruction_metadata(
+        paths=resolved_paths,
+        openclaw_bin=openclaw_bin or load_task_system_config(config_path=config_path).delivery.openclaw_bin,
+    )
     retry_results: list[dict[str, object]] = []
     if execute_retries:
-        config = load_task_system_config(config_path=config_path)
         retry_results = retry_failed_instructions(
             paths=resolved_paths,
-            openclaw_bin=openclaw_bin or config.delivery.openclaw_bin,
+            openclaw_bin=openclaw_bin or load_task_system_config(config_path=config_path).delivery.openclaw_bin,
             execution_context=execution_context,
         )
     health_after = build_health_report(config_path=config_path, paths=resolved_paths)
     return {
         "health_before": health_before,
         "stale_cleanup": stale_cleanup,
+        "annotated_failures": annotated_failures,
         "retry_results": retry_results,
         "health_after": health_after,
     }

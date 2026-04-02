@@ -267,8 +267,10 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair --exec
 说明：
 
 - `repair` 默认不会真实外发失败指令，只做安全清理
+- `repair` 还会补录历史 `failed-instructions` 的失败分类元数据，便于后续安全重试
 - `--execute-retries` 只会重试被标记为 retryable 的失败指令
 - `--execution-context host` 适合你在真实宿主环境下跑恢复动作
+- `health_report.py` 现在会区分失败指令里的 `retryable / non-retryable / unknown`
 
 状态查询里的 `delivery.state` 现在会直接给出当前投递阶段：
 

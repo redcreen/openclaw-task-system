@@ -94,7 +94,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(len(result["stale_cleanup"]), 1)
 
     def test_repair_system_can_retry_failed_instructions(self) -> None:
-        with patch.object(main_ops, "retry_failed_instructions", return_value=[{"name": "failed.json"}]) as retry_mock:
+        with (
+            patch.object(main_ops, "annotate_failed_instruction_metadata", return_value=[{"name": "legacy.json"}]) as annotate_mock,
+            patch.object(main_ops, "retry_failed_instructions", return_value=[{"name": "failed.json"}]) as retry_mock,
+        ):
             result = main_ops.repair_system(
                 paths=self.paths,
                 execute_retries=True,
@@ -102,7 +105,9 @@ class MainOpsTests(unittest.TestCase):
                 execution_context="host",
             )
 
+        annotate_mock.assert_called_once()
         retry_mock.assert_called_once()
+        self.assertEqual(result["annotated_failures"], [{"name": "legacy.json"}])
         self.assertEqual(result["retry_results"], [{"name": "failed.json"}])
 
 

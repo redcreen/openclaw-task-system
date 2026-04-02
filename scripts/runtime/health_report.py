@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import Optional
 
 from delivery_reconcile import reconcile_delivery_artifacts
+from instruction_executor import summarize_failed_instructions
 from plugin_doctor import run_checks
-from task_state import TaskPaths
+from task_config import load_task_system_config
+from task_state import TaskPaths, default_paths
 from task_status import build_system_overview
 
 
@@ -26,9 +28,14 @@ def build_health_report(
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
 ) -> dict[str, object]:
+    resolved_paths = paths
+    if resolved_paths is None:
+        config = load_task_system_config(config_path=config_path)
+        resolved_paths = config.build_paths() or default_paths()
     overview = build_system_overview(config_path=config_path, paths=paths)
     stale_findings = reconcile_delivery_artifacts(config_path=config_path, paths=paths, apply_changes=False)
     plugin_checks = run_checks()
+    failed_instruction_summary = summarize_failed_instructions(paths=resolved_paths)
 
     failing_plugin_checks = [check.name for check in plugin_checks if not check.ok]
     issue_entries: list[dict[str, object]] = []
@@ -93,6 +100,7 @@ def build_health_report(
         "issues": [str(entry["code"]) for entry in issue_entries],
         "issue_entries": issue_entries,
         "overview": overview,
+        "failed_instruction_summary": failed_instruction_summary,
         "stale_findings": stale_findings,
         "plugin_checks": [
             {
@@ -121,6 +129,9 @@ def render_markdown(report: dict[str, object]) -> str:
             f"- active_task_count: {overview['active_task_count']}",
             f"- blocked_active_tasks: {overview['active_status_counts'].get('blocked', 0)}",
             f"- failed_instruction_count: {overview['failed_instruction_count']}",
+            f"- failed_instruction_retryable_count: {report['failed_instruction_summary']['retryable']}",
+            f"- failed_instruction_non_retryable_count: {report['failed_instruction_summary']['non_retryable']}",
+            f"- failed_instruction_unknown_count: {report['failed_instruction_summary']['unknown']}",
             f"- active_stale_delivery_task_count: {overview['active_stale_delivery_task_count']}",
             f"- stale_delivery_task_count: {overview['stale_delivery_task_count']}",
         ]
@@ -146,6 +157,15 @@ def render_markdown(report: dict[str, object]) -> str:
         lines.append("")
         for finding in report["stale_findings"]:
             lines.append(f"- {finding['task_id']} | stale_count={len(finding['stale_paths'])}")
+
+    if report["failed_instruction_summary"]["items"]:
+        lines.append("")
+        lines.append("## Failed Instructions")
+        lines.append("")
+        for item in report["failed_instruction_summary"]["items"]:
+            lines.append(
+                f"- {item['name']} | classification={item['failure_classification']} | retryable={item['retryable']}"
+            )
 
     return "\n".join(lines) + "\n"
 

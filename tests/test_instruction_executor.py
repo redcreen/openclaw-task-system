@@ -363,3 +363,43 @@ class InstructionExecutorTests(unittest.TestCase):
         self.assertTrue(results[0]["skipped_retry"])
         self.assertEqual(results[0]["reason"], "non-retryable-failure")
         self.assertTrue(failed_path.exists())
+
+    def test_annotate_failed_instruction_metadata_backfills_from_dispatch_result(self) -> None:
+        failed_path = self.paths.data_dir / "failed-instructions" / "task_retry.json"
+        failed_path.parent.mkdir(parents=True, exist_ok=True)
+        failed_path.write_text(
+            json.dumps(
+                {
+                    "task_id": "task_retry",
+                    "channel": "telegram",
+                    "chat_id": "8705812936",
+                    "message": "retry me",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        dispatch_path = self.paths.data_dir / "dispatch-results" / "task_retry.json"
+        dispatch_path.parent.mkdir(parents=True, exist_ok=True)
+        dispatch_path.write_text(
+            json.dumps(
+                {
+                    "task_id": "task_retry",
+                    "exit_code": 1,
+                    "stderr": "Network request failed with timeout",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        updates = instruction_executor.annotate_failed_instruction_metadata(paths=self.paths, openclaw_bin="/mock/openclaw")
+
+        self.assertEqual(len(updates), 1)
+        payload = json.loads(failed_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["_last_failure_classification"], "transport-retryable")
+        self.assertTrue(payload["_last_failure_retryable"])

@@ -89,6 +89,45 @@ class HealthReportTests(unittest.TestCase):
         failed_issue = next(entry for entry in report["issue_entries"] if entry["code"] == "failed-instructions:1")
         self.assertEqual(failed_issue["severity"], "error")
 
+    def test_build_health_report_summarizes_failed_instruction_retryability(self) -> None:
+        failed_dir = self.paths.data_dir / "failed-instructions"
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        (failed_dir / "retryable.json").write_text(
+            json.dumps(
+                {
+                    "task_id": "retryable",
+                    "_last_failure_classification": "transport-retryable",
+                    "_last_failure_retryable": True,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (failed_dir / "nonretryable.json").write_text(
+            json.dumps(
+                {
+                    "task_id": "nonretryable",
+                    "_last_failure_classification": "auth",
+                    "_last_failure_retryable": False,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        report = health_report.build_health_report(config_path=self.config_path)
+        markdown = health_report.render_markdown(report)
+
+        self.assertEqual(report["failed_instruction_summary"]["retryable"], 1)
+        self.assertEqual(report["failed_instruction_summary"]["non_retryable"], 1)
+        self.assertIn("- failed_instruction_retryable_count: 1", markdown)
+        self.assertIn("- failed_instruction_non_retryable_count: 1", markdown)
+        self.assertIn("## Failed Instructions", markdown)
+
 
 if __name__ == "__main__":
     unittest.main()

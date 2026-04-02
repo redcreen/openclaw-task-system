@@ -78,6 +78,112 @@ def classify_failure(*, decision: DispatchDecision, exit_code: int, stderr: str)
     return ("unknown", False)
 
 
+def infer_failed_instruction_metadata(
+    instruction: dict[str, Any],
+    *,
+    name: str,
+    paths: TaskPaths,
+    openclaw_bin: str = "/Users/redcreen/.local/bin/openclaw",
+) -> tuple[Optional[str], Optional[bool]]:
+    existing_classification = instruction.get("_last_failure_classification")
+    existing_retryable = instruction.get("_last_failure_retryable")
+    if existing_classification is not None and existing_retryable is not None:
+        return (str(existing_classification), bool(existing_retryable))
+
+    result_path = result_dir(paths) / name
+    if not result_path.exists():
+        return (None, None)
+
+    result_payload = load_instruction(result_path)
+    failure_classification = result_payload.get("failure_classification")
+    retryable = result_payload.get("retryable")
+    if failure_classification is not None and retryable is not None:
+        return (str(failure_classification), bool(retryable))
+
+    exit_code = result_payload.get("exit_code")
+    stderr = str(result_payload.get("stderr") or "")
+    if exit_code is None:
+        return (None, None)
+
+    decision = build_dispatch_decision(instruction, openclaw_bin=openclaw_bin)
+    return classify_failure(
+        decision=decision,
+        exit_code=int(exit_code),
+        stderr=stderr,
+    )
+
+
+def annotate_failed_instruction_metadata(
+    *,
+    paths: TaskPaths,
+    openclaw_bin: str = "/Users/redcreen/.local/bin/openclaw",
+) -> list[dict[str, Any]]:
+    ensure_dirs(paths)
+    updates: list[dict[str, Any]] = []
+    for path in sorted(failed_dir(paths).glob("*.json")):
+        instruction = load_instruction(path)
+        classification, retryable = infer_failed_instruction_metadata(
+            instruction,
+            name=path.name,
+            paths=paths,
+            openclaw_bin=openclaw_bin,
+        )
+        if classification is None or retryable is None:
+            continue
+        if (
+            instruction.get("_last_failure_classification") == classification
+            and instruction.get("_last_failure_retryable") == retryable
+        ):
+            continue
+        instruction["_last_failure_classification"] = classification
+        instruction["_last_failure_retryable"] = retryable
+        atomic_write_json(path, instruction)
+        updates.append(
+            {
+                "name": path.name,
+                "failure_classification": classification,
+                "retryable": retryable,
+            }
+        )
+    return updates
+
+
+def summarize_failed_instructions(paths: TaskPaths) -> dict[str, Any]:
+    ensure_dirs(paths)
+    summary = {
+        "total": 0,
+        "retryable": 0,
+        "non_retryable": 0,
+        "unknown": 0,
+        "items": [],
+    }
+    for path in sorted(failed_dir(paths).glob("*.json")):
+        instruction = load_instruction(path)
+        classification, retryable = infer_failed_instruction_metadata(
+            instruction,
+            name=path.name,
+            paths=paths,
+        )
+        if classification is None or retryable is None:
+            summary["unknown"] += 1
+        elif retryable:
+            summary["retryable"] += 1
+        else:
+            summary["non_retryable"] += 1
+        summary["total"] += 1
+        summary["items"].append(
+            {
+                "name": path.name,
+                "task_id": instruction.get("task_id"),
+                "channel": instruction.get("channel"),
+                "chat_id": instruction.get("chat_id"),
+                "failure_classification": classification,
+                "retryable": retryable,
+            }
+        )
+    return summary
+
+
 def build_dispatch_decision(
     instruction: dict[str, Any],
     *,
@@ -369,6 +475,7 @@ def retry_failed_instructions(
 
     results: list[dict[str, Any]] = []
     ensure_dirs(paths)
+    annotate_failed_instruction_metadata(paths=paths, openclaw_bin=openclaw_bin)
     failed_dir_path = failed_dir(paths)
 
     if not failed_dir_path.exists():
