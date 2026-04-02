@@ -242,6 +242,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health`
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair`
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage`
+- `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py sweep`
 
 推荐状态查看入口：
 
@@ -287,6 +288,17 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage
 - 哪些失败是 non-retryable，需要先修目标或配置
 - 如果 retryable 失败已经连续失败，`triage` 会提示先检查宿主网络，不再建议盲目继续重试
 - 下一步建议执行的命令
+
+如果你想批量处理长期卡住的 blocked `main` 任务，可以用：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py sweep --fail-stale-blocked-after-minutes 60 --reason "stale blocked main task"
+```
+
+说明：
+
+- `sweep` 默认只是检查，不会改状态
+- 只有显式传 `--fail-stale-blocked-after-minutes` 才会把超过阈值的 blocked 任务收口成 `failed`
 
 状态查询里的 `delivery.state` 现在会直接给出当前投递阶段：
 

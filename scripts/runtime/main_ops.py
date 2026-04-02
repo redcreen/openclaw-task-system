@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from argparse import ArgumentParser
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -78,6 +79,64 @@ def render_main_health(
     return "\n".join(lines) + "\n"
 
 
+def _parse_iso8601(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _blocked_age_minutes(task: dict[str, object], *, now: Optional[datetime] = None) -> Optional[int]:
+    anchor = _parse_iso8601(str(task.get("updated_at") or task.get("started_at") or task.get("created_at") or ""))
+    if anchor is None:
+        return None
+    current = now or datetime.now(timezone.utc).astimezone(anchor.tzinfo)
+    return max(0, int((current - anchor).total_seconds() // 60))
+
+
+def sweep_main_tasks(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    fail_stale_blocked_after_minutes: Optional[int] = None,
+    reason: str = "automatic stale blocked cleanup",
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    blocked_tasks = [task for task in list_main_tasks(config_path=config_path, paths=resolved_paths) if task["status"] == "blocked"]
+    actions: list[dict[str, object]] = []
+    for task in blocked_tasks:
+        blocked_age = _blocked_age_minutes(task)
+        should_fail = (
+            fail_stale_blocked_after_minutes is not None
+            and blocked_age is not None
+            and blocked_age >= fail_stale_blocked_after_minutes
+        )
+        if should_fail:
+            updated = fail_main_task(str(task["task_id"]), reason, paths=resolved_paths)
+            actions.append(
+                {
+                    "task_id": updated.task_id,
+                    "action": "failed",
+                    "blocked_age_minutes": blocked_age,
+                    "reason": reason,
+                }
+            )
+        else:
+            actions.append(
+                {
+                    "task_id": str(task["task_id"]),
+                    "action": "noop",
+                    "blocked_age_minutes": blocked_age,
+                }
+            )
+    return {
+        "blocked_main_task_count": len(blocked_tasks),
+        "actions": actions,
+    }
+
+
 def render_main_triage(
     *,
     config_path: Optional[Path] = None,
@@ -106,12 +165,19 @@ def render_main_triage(
 
     if blocked_main:
         task = blocked_main[0]
+        blocked_age = _blocked_age_minutes(task)
         lines.append(
             f"- Resume blocked main task: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resume {task['task_id']} --note \"继续推进并同步真实进展\"`"
         )
         lines.append(
             f"- Or fail it explicitly: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py fail {task['task_id']} --reason \"manual close after triage\"`"
         )
+        if blocked_age is not None:
+            lines.append(f"- Current blocked age: {blocked_age} minute(s)")
+            if blocked_age >= 60:
+                lines.append(
+                    f"- Optional stale cleanup: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py sweep --fail-stale-blocked-after-minutes 60 --reason \"stale blocked main task\"`"
+                )
     else:
         lines.append("- No blocked main task requires manual action.")
 
@@ -227,6 +293,18 @@ def main() -> None:
         default="local",
         help="Execution context label to write into retry dispatch results.",
     )
+    sweep_parser = subparsers.add_parser("sweep", help="Inspect or fail stale blocked main tasks.")
+    sweep_parser.add_argument(
+        "--fail-stale-blocked-after-minutes",
+        type=int,
+        default=None,
+        help="If set, blocked main tasks older than this threshold will be failed.",
+    )
+    sweep_parser.add_argument(
+        "--reason",
+        default="automatic stale blocked cleanup",
+        help="Reason recorded when failing stale blocked tasks.",
+    )
 
     args = parser.parse_args()
     config_path = Path(args.config).expanduser() if args.config else None
@@ -270,6 +348,15 @@ def main() -> None:
             execute_retries=args.execute_retries,
             openclaw_bin=args.openclaw_bin,
             execution_context=args.execution_context,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    if args.command == "sweep":
+        result = sweep_main_tasks(
+            config_path=config_path,
+            paths=paths,
+            fail_stale_blocked_after_minutes=args.fail_stale_blocked_after_minutes,
+            reason=args.reason,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return

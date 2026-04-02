@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import tempfile
 import unittest
@@ -112,6 +113,25 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("## Non-Retryable Failed Instructions", rendered)
         self.assertIn("chat_id=@example", rendered)
 
+    def test_render_main_triage_includes_blocked_age_and_sweep_hint(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main",
+            channel="telegram",
+            chat_id="chat:main",
+            task_label="aged blocked main task",
+        )
+        blocked = self.store.block_task(task.task_id, "waiting")
+        task_path = self.paths.inflight_dir / f"{blocked.task_id}.json"
+        payload = json.loads(task_path.read_text(encoding="utf-8"))
+        payload["updated_at"] = "2026-04-01T00:00:00+00:00"
+        task_state_module.atomic_write_json(task_path, payload)
+
+        rendered = main_ops.render_main_triage(paths=self.paths)
+
+        self.assertIn("Current blocked age:", rendered)
+        self.assertIn("main_ops.py sweep --fail-stale-blocked-after-minutes 60", rendered)
+
     def test_repair_system_cleans_stale_delivery_artifacts(self) -> None:
         task = self.store.register_task(
             agent_id="main",
@@ -150,6 +170,31 @@ class MainOpsTests(unittest.TestCase):
         retry_mock.assert_called_once()
         self.assertEqual(result["annotated_failures"], [{"name": "legacy.json"}])
         self.assertEqual(result["retry_results"], [{"name": "failed.json"}])
+
+    def test_sweep_main_tasks_fails_stale_blocked_task(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main",
+            channel="telegram",
+            chat_id="chat:main",
+            task_label="stale blocked task",
+        )
+        blocked = self.store.block_task(task.task_id, "waiting")
+        task_path = self.paths.inflight_dir / f"{blocked.task_id}.json"
+        payload = json.loads(task_path.read_text(encoding="utf-8"))
+        payload["updated_at"] = "2026-04-01T00:00:00+00:00"
+        task_state_module.atomic_write_json(task_path, payload)
+
+        result = main_ops.sweep_main_tasks(
+            paths=self.paths,
+            fail_stale_blocked_after_minutes=60,
+            reason="stale blocked cleanup",
+        )
+
+        self.assertEqual(result["blocked_main_task_count"], 1)
+        self.assertEqual(result["actions"][0]["action"], "failed")
+        archived_path = self.paths.archive_dir / f"{task.task_id}.json"
+        self.assertTrue(archived_path.exists())
 
 
 if __name__ == "__main__":
