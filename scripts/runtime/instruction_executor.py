@@ -24,6 +24,7 @@ SUPPORTED_MESSAGE_CHANNELS = {
     "irc",
     "googlechat",
 }
+RETRYABLE_ERROR_MARKERS = ("network request", "timeout", "connection", "econnreset", "etimedout")
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,21 @@ def ensure_dirs(paths: TaskPaths) -> None:
 def load_instruction(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def classify_failure(*, decision: DispatchDecision, exit_code: int, stderr: str) -> tuple[str, bool]:
+    stderr_lower = stderr.lower()
+    if decision.action == "skip":
+        return ("skipped", False)
+    if any(marker in stderr_lower for marker in RETRYABLE_ERROR_MARKERS):
+        return ("transport-retryable", True)
+    if "auth" in stderr_lower or "unauthorized" in stderr_lower or "forbidden" in stderr_lower:
+        return ("auth", False)
+    if "rate limit" in stderr_lower or "too many requests" in stderr_lower:
+        return ("rate-limit", True)
+    if exit_code != 0:
+        return ("transport-nonretryable", False)
+    return ("unknown", False)
 
 
 def build_dispatch_decision(
@@ -104,6 +120,8 @@ def write_dispatch_result(
     exit_code: Optional[int] = None,
     stdout: Optional[str] = None,
     stderr: Optional[str] = None,
+    failure_classification: Optional[str] = None,
+    retryable: Optional[bool] = None,
 ) -> Path:
     ensure_dirs(paths)
     payload = {
@@ -124,6 +142,8 @@ def write_dispatch_result(
         "exit_code": exit_code,
         "stdout": stdout,
         "stderr": stderr,
+        "failure_classification": failure_classification,
+        "retryable": retryable,
     }
     out = result_dir(paths) / name
     atomic_write_json(out, payload)
@@ -136,11 +156,14 @@ def archive_instruction(
     name: str,
     paths: TaskPaths,
     succeeded: bool,
+    payload: Optional[dict[str, Any]] = None,
 ) -> Path:
     ensure_dirs(paths)
     target_dir = processed_dir(paths) if succeeded else failed_dir(paths)
     target = target_dir / name
-    source.replace(target)
+    archived_payload = payload or load_instruction(source)
+    atomic_write_json(target, archived_payload)
+    source.unlink(missing_ok=True)
     return target
 
 
@@ -169,6 +192,8 @@ def execute_instruction(
             executed=False,
             execution_context=result_execution_context,
             requested_execution_context=execution_context,
+            failure_classification=None,
+            retryable=None,
         )
         return {
             "decision": decision.__dict__,
@@ -186,6 +211,8 @@ def execute_instruction(
             executed=False,
             execution_context=execution_context,
             requested_execution_context=execution_context,
+            failure_classification=None,
+            retryable=False,
         )
         archived_instruction_path: Optional[str] = None
         if source_path is not None:
@@ -194,6 +221,7 @@ def execute_instruction(
                 name=name,
                 paths=paths,
                 succeeded=True,
+                payload=instruction,
             )
             archived_instruction_path = str(archived_path)
         return {
@@ -225,10 +253,7 @@ def execute_instruction(
 
         # Check if it's a retryable network error
         stderr_lower = completed.stderr.lower()
-        is_network_error = any(
-            err in stderr_lower
-            for err in ["network request", "timeout", "connection", "econnreset", "etimedout"]
-        )
+        is_network_error = any(err in stderr_lower for err in RETRYABLE_ERROR_MARKERS)
 
         if not is_network_error:
             break  # Non-retryable error, exit loop
@@ -236,6 +261,15 @@ def execute_instruction(
         attempt += 1
         if attempt <= max_retries:
             last_stderr = f"[Retry {attempt}/{max_retries}] {last_stderr}"
+
+    failure_classification = None
+    retryable = None
+    if last_exit_code != 0:
+        failure_classification, retryable = classify_failure(
+            decision=decision,
+            exit_code=last_exit_code,
+            stderr=last_stderr,
+        )
 
     result_path = write_dispatch_result(
         instruction,
@@ -248,13 +282,23 @@ def execute_instruction(
         exit_code=last_exit_code,
         stdout=last_stdout,
         stderr=last_stderr,
+        failure_classification=failure_classification,
+        retryable=retryable,
     )
     if source_path is not None:
+        archived_payload = dict(instruction)
+        archived_payload["_archived_from"] = "send-instructions"
+        archived_payload["_last_execution_context"] = execution_context
+        archived_payload["_retry_count"] = int(instruction.get("_retry_count", 0))
+        if last_exit_code != 0:
+            archived_payload["_last_failure_classification"] = failure_classification
+            archived_payload["_last_failure_retryable"] = retryable
         archived_path = archive_instruction(
             source_path,
             name=name,
             paths=paths,
             succeeded=(decision.action == "skip" or last_exit_code == 0),
+            payload=archived_payload,
         )
         archived_instruction_path = str(archived_path)
     return {
@@ -265,6 +309,8 @@ def execute_instruction(
         "retries": attempt,
         "execution_context": execution_context,
         "requested_execution_context": execution_context,
+        "failure_classification": failure_classification,
+        "retryable": retryable,
     }
 
 
@@ -333,10 +379,22 @@ def retry_failed_instructions(
 
         # Move back to instruction dir for retry
         instruction = load_instruction(path)
+        if not instruction.get("_last_failure_retryable", True):
+            results.append(
+                {
+                    "name": path.name,
+                    "retry_from_failed": True,
+                    "skipped_retry": True,
+                    "reason": "non-retryable-failure",
+                }
+            )
+            continue
         target_path = instruction_dir(paths) / path.name
 
         try:
+            instruction["_retry_count"] = int(instruction.get("_retry_count", 0)) + 1
             path.replace(target_path)
+            atomic_write_json(target_path, instruction)
             result = execute_instruction(
                 instruction,
                 name=path.name,

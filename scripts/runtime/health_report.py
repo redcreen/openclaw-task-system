@@ -43,7 +43,7 @@ def build_health_report(*, config_path: Optional[Path] = None) -> dict[str, obje
                 code=f"failed-instructions:{overview['failed_instruction_count']}",
                 severity="error",
                 count=int(overview["failed_instruction_count"]),
-                remediation="Inspect `data/failed-instructions/` and corresponding `dispatch-results/`, then retry with `instruction_executor.py --execute` after fixing transport/auth.",
+                remediation="Inspect `data/failed-instructions/` and `dispatch-results/`; retry only retryable transport failures with `instruction_executor.py --execute`, and fix auth/config issues before retrying non-retryable failures.",
             )
         )
     if overview["active_stale_delivery_task_count"]:

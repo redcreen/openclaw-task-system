@@ -90,6 +90,26 @@ class InstructionExecutorTests(unittest.TestCase):
             ],
         )
 
+    def test_classify_failure_marks_network_error_retryable(self) -> None:
+        decision = instruction_executor.DispatchDecision(action="send", reason="supported", command=["mock"])
+        classification, retryable = instruction_executor.classify_failure(
+            decision=decision,
+            exit_code=1,
+            stderr="Network request failed with timeout",
+        )
+        self.assertEqual(classification, "transport-retryable")
+        self.assertTrue(retryable)
+
+    def test_classify_failure_marks_auth_error_nonretryable(self) -> None:
+        decision = instruction_executor.DispatchDecision(action="send", reason="supported", command=["mock"])
+        classification, retryable = instruction_executor.classify_failure(
+            decision=decision,
+            exit_code=1,
+            stderr="Unauthorized: bad token",
+        )
+        self.assertEqual(classification, "auth")
+        self.assertFalse(retryable)
+
     def test_execute_all_writes_dispatch_results_in_dry_run(self) -> None:
         self.write_instruction(
             "task_123.json",
@@ -249,3 +269,72 @@ class InstructionExecutorTests(unittest.TestCase):
         self.assertEqual(dispatch_payload["stderr"], "send failed\n")
         self.assertEqual(dispatch_payload["execution_context"], "local")
         self.assertEqual(dispatch_payload["requested_execution_context"], "local")
+        self.assertEqual(dispatch_payload["failure_classification"], "transport-nonretryable")
+        self.assertFalse(dispatch_payload["retryable"])
+        archived_payload = json.loads(
+            (self.paths.data_dir / "failed-instructions" / "task_fail.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(archived_payload["_last_failure_classification"], "transport-nonretryable")
+        self.assertFalse(archived_payload["_last_failure_retryable"])
+
+    def test_retry_failed_instructions_retries_retryable_failure(self) -> None:
+        failed_path = self.paths.data_dir / "failed-instructions" / "task_retry.json"
+        failed_path.parent.mkdir(parents=True, exist_ok=True)
+        failed_path.write_text(
+            json.dumps(
+                {
+                    "task_id": "task_retry",
+                    "agent_id": "main",
+                    "session_key": "session:test",
+                    "channel": "telegram",
+                    "chat_id": "chat:test",
+                    "message": "retry me",
+                    "_retry_count": 0,
+                    "_last_failure_retryable": True,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        mock_bin = self.temp_dir / "mock-openclaw-retry"
+        mock_bin.write_text("#!/bin/sh\nprintf 'sent\\n'\nexit 0\n", encoding="utf-8")
+        os.chmod(mock_bin, 0o755)
+
+        results = instruction_executor.retry_failed_instructions(
+            paths=self.paths,
+            openclaw_bin=str(mock_bin),
+            execution_context="host",
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[0]["retry_from_failed"])
+        self.assertFalse((self.paths.data_dir / "failed-instructions" / "task_retry.json").exists())
+        archived_payload = json.loads(
+            (self.paths.data_dir / "processed-instructions" / "task_retry.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(archived_payload["_retry_count"], 1)
+
+    def test_retry_failed_instructions_skips_nonretryable_failure(self) -> None:
+        failed_path = self.paths.data_dir / "failed-instructions" / "task_no_retry.json"
+        failed_path.parent.mkdir(parents=True, exist_ok=True)
+        failed_path.write_text(
+            json.dumps(
+                {
+                    "task_id": "task_no_retry",
+                    "_last_failure_retryable": False,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        results = instruction_executor.retry_failed_instructions(paths=self.paths)
+
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[0]["skipped_retry"])
+        self.assertEqual(results[0]["reason"], "non-retryable-failure")
+        self.assertTrue(failed_path.exists())
