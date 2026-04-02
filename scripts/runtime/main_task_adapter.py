@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from task_policy import ContinuationPlan, TaskClassification, classify_main_task, parse_delayed_reply_request
+from task_policy import TaskClassification, classify_main_task
 from task_config import TaskSystemConfig, load_task_system_config
 from task_state import TaskPaths, TaskState, TaskStore, default_paths
 
@@ -32,10 +32,6 @@ class MainTaskDecision:
     reason: str
 
 
-def detect_continuation_plan(context: MainTaskContext) -> ContinuationPlan | None:
-    return parse_delayed_reply_request(context.user_request)
-
-
 def decide_main_task(
     context: MainTaskContext,
     *,
@@ -55,19 +51,6 @@ def decide_main_task(
             classification=TaskClassification(is_long_task=False, confidence="low", reasons=["agent-disabled"]),
             should_register=False,
             reason="agent-disabled",
-        )
-
-    continuation = detect_continuation_plan(context)
-    if continuation is not None:
-        classification = TaskClassification(
-            is_long_task=True,
-            confidence="high",
-            reasons=["continuation-plan", continuation.kind],
-        )
-        return MainTaskDecision(
-            classification=classification,
-            should_register=True,
-            reason="continuation-task",
         )
 
     policy = agent_config.classification
@@ -119,19 +102,6 @@ def register_main_task(
           "needs_verification": context.needs_verification,
         },
     )
-    continuation = detect_continuation_plan(context)
-    if continuation is not None:
-        return store.schedule_continuation(
-            task.task_id,
-            continuation_kind=continuation.kind,
-            due_at=continuation.due_at,
-            payload={
-                "reply_text": continuation.reply_text,
-                "wait_seconds": continuation.wait_seconds,
-                "original_user_request": context.user_request,
-            },
-            reason="scheduled continuation wait",
-        )
     if runtime_config.agent_config(context.agent_id).auto_start and not observe_only:
         return store.claim_execution_slot(task.task_id)
     return task

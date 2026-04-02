@@ -286,22 +286,22 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
 
     def test_fulfill_due_continuation_matches_due_reply_and_archives_task(self) -> None:
-        registration = openclaw_hooks.register_from_payload(
-            {
-                "agent_id": "main",
-                "session_key": "session:continuation-due",
-                "channel": "telegram",
-                "account_id": "default",
-                "chat_id": "tg:test",
-                "user_request": "1秒后回复我ok1",
-            }
+        store = task_state_module.TaskStore(paths=self.paths)
+        observed = store.observe_task(
+            agent_id="main",
+            session_key="session:continuation-due",
+            channel="telegram",
+            account_id="default",
+            chat_id="tg:test",
+            task_label="continuation due",
         )
-        task_id = registration["task_id"]
-        assert task_id is not None
-
-        task = task_state_module.TaskStore(paths=self.paths).load_task(task_id, allow_archive=False)
-        task.meta["continuation_due_at"] = "2000-01-01T00:00:00+08:00"
-        task_state_module.TaskStore(paths=self.paths).save_task(task)
+        scheduled = store.schedule_continuation(
+            observed.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2000-01-01T00:00:00+08:00",
+            payload={"reply_text": "ok1", "wait_seconds": 1},
+            reason="scheduled continuation wait",
+        )
 
         fulfilled = openclaw_hooks.fulfill_due_continuation_from_payload(
             {
@@ -315,17 +315,22 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(fulfilled["task"]["status"], task_state_module.STATUS_DONE)
 
     def test_fulfill_due_continuation_ignores_not_due_task(self) -> None:
-        registration = openclaw_hooks.register_from_payload(
-            {
-                "agent_id": "main",
-                "session_key": "session:continuation-not-due",
-                "channel": "telegram",
-                "account_id": "default",
-                "chat_id": "tg:test",
-                "user_request": "1分钟后回复我ok1",
-            }
+        store = task_state_module.TaskStore(paths=self.paths)
+        observed = store.observe_task(
+            agent_id="main",
+            session_key="session:continuation-not-due",
+            channel="telegram",
+            account_id="default",
+            chat_id="tg:test",
+            task_label="continuation not due",
         )
-        assert registration["task_id"] is not None
+        scheduled = store.schedule_continuation(
+            observed.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2099-01-01T00:00:00+08:00",
+            payload={"reply_text": "ok1", "wait_seconds": 60},
+            reason="scheduled continuation wait",
+        )
 
         fulfilled = openclaw_hooks.fulfill_due_continuation_from_payload(
             {
@@ -338,18 +343,23 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(fulfilled["reason"], "no-due-continuation-match")
 
     def test_mark_continuation_wake_tracks_attempts(self) -> None:
-        registration = openclaw_hooks.register_from_payload(
-            {
-                "agent_id": "main",
-                "session_key": "session:wake",
-                "channel": "telegram",
-                "account_id": "default",
-                "chat_id": "tg:test",
-                "user_request": "1分钟后回复我ok1",
-            }
+        store = task_state_module.TaskStore(paths=self.paths)
+        observed = store.observe_task(
+            agent_id="main",
+            session_key="session:wake",
+            channel="telegram",
+            account_id="default",
+            chat_id="tg:test",
+            task_label="wake task",
         )
-        task_id = registration["task_id"]
-        assert task_id is not None
+        scheduled = store.schedule_continuation(
+            observed.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2099-01-01T00:00:00+08:00",
+            payload={"reply_text": "ok1", "wait_seconds": 60},
+            reason="scheduled continuation wait",
+        )
+        task_id = scheduled.task_id
 
         marked = openclaw_hooks.mark_continuation_wake_from_payload(
             {
@@ -374,18 +384,23 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(dispatched["wake_state"], "dispatched")
 
     def test_mark_continuation_wake_returns_task_not_found_for_archived_task(self) -> None:
-        registration = openclaw_hooks.register_from_payload(
-            {
-                "agent_id": "main",
-                "session_key": "session:wake-missing",
-                "channel": "telegram",
-                "account_id": "default",
-                "chat_id": "tg:test",
-                "user_request": "1分钟后回复我ok1",
-            }
+        store = task_state_module.TaskStore(paths=self.paths)
+        observed = store.observe_task(
+            agent_id="main",
+            session_key="session:wake-missing",
+            channel="telegram",
+            account_id="default",
+            chat_id="tg:test",
+            task_label="wake missing",
         )
-        task_id = registration["task_id"]
-        assert task_id is not None
+        scheduled = store.schedule_continuation(
+            observed.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2099-01-01T00:00:00+08:00",
+            payload={"reply_text": "ok1", "wait_seconds": 60},
+            reason="scheduled continuation wait",
+        )
+        task_id = scheduled.task_id
         openclaw_hooks.completed_from_payload({"task_id": task_id, "result_summary": "done"})
 
         marked = openclaw_hooks.mark_continuation_wake_from_payload(
@@ -399,24 +414,23 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(marked["reason"], "task-not-found")
 
     def test_claim_due_continuations_returns_scheduled_delayed_reply(self) -> None:
-        registration = openclaw_hooks.register_from_payload(
-            {
-                "agent_id": "main",
-                "session_key": "session:delayed",
-                "channel": "telegram",
-                "account_id": "telegram-main",
-                "chat_id": "chat:delayed",
-                "user_request": "1秒后回复我ok1",
-                "requires_external_wait": True,
-            }
+        store = task_state_module.TaskStore(paths=self.paths)
+        observed = store.observe_task(
+            agent_id="main",
+            session_key="session:delayed",
+            channel="telegram",
+            account_id="telegram-main",
+            chat_id="chat:delayed",
+            task_label="delayed task",
         )
-        assert registration["task_id"] is not None
-        self.assertEqual(registration["task_status"], task_state_module.STATUS_PAUSED)
-
-        task_path = self.paths.inflight_dir / f"{registration['task_id']}.json"
-        payload = json.loads(task_path.read_text(encoding="utf-8"))
-        payload["meta"]["continuation_due_at"] = "2020-01-01T00:00:00+00:00"
-        task_state_module.atomic_write_json(task_path, payload)
+        scheduled = store.schedule_continuation(
+            observed.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2020-01-01T00:00:00+00:00",
+            payload={"reply_text": "ok1", "wait_seconds": 1},
+            reason="scheduled continuation wait",
+        )
+        task_path = self.paths.inflight_dir / f"{scheduled.task_id}.json"
 
         claimed = openclaw_hooks.claim_due_continuations_from_payload({})
         self.assertEqual(claimed["claimed_count"], 1)

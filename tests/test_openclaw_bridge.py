@@ -161,31 +161,53 @@ class OpenClawBridgeTests(unittest.TestCase):
         self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
 
     def test_register_inbound_task_reports_scheduled_continuation(self) -> None:
-        decision = openclaw_bridge.register_inbound_task(
-            self.make_context(
-                "1分钟后回复我ok",
-                requires_external_wait=True,
-            ),
-            paths=self.paths,
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.observe_task(
+            agent_id="main",
+            session_key="feishu:main:chat:test",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="oc_test_chat",
+            user_id="ou_test_user",
+            task_label="scheduled continuation",
+            meta={"source": "test"},
         )
+        scheduled = store.schedule_continuation(
+            task.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2099-01-01T00:00:00+08:00",
+            payload={"reply_text": "ok", "wait_seconds": 60},
+            reason="scheduled continuation wait",
+        )
+        decision = openclaw_bridge.register_inbound_task(self.make_context("继续"), paths=self.paths)
         assert decision.task_id is not None
+        self.assertEqual(decision.task_id, scheduled.task_id)
         self.assertEqual(decision.task_status, task_state_module.STATUS_PAUSED)
         self.assertIsNotNone(decision.continuation_due_at)
 
     def test_register_inbound_task_keeps_future_continuation_paused(self) -> None:
-        first = openclaw_bridge.register_inbound_task(
-            self.make_context(
-                "1分钟后回复我ok1",
-                requires_external_wait=True,
-            ),
-            paths=self.paths,
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.observe_task(
+            agent_id="main",
+            session_key="feishu:main:chat:test",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="oc_test_chat",
+            user_id="ou_test_user",
+            task_label="scheduled continuation",
+            meta={"source": "test"},
         )
-        assert first.task_id is not None
+        first = store.schedule_continuation(
+            task.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2099-01-01T00:00:00+08:00",
+            payload={"reply_text": "ok1", "wait_seconds": 60},
+            reason="scheduled continuation wait",
+        )
 
         second = openclaw_bridge.register_inbound_task(
             self.make_context(
-                "1分钟后回复我ok1",
-                requires_external_wait=True,
+                "继续处理",
             ),
             paths=self.paths,
         )
