@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from delivery_reconcile import reconcile_delivery_artifacts
+from delivery_outage import acknowledge_outage, clear_outage
 from health_report import build_health_report
 from instruction_executor import (
     annotate_failed_instruction_metadata,
@@ -233,6 +234,34 @@ def render_delivery_diagnose(
     return "\n".join(lines) + "\n"
 
 
+def acknowledge_delivery_outage(
+    *,
+    channel: str,
+    chat_id: str,
+    reason: str,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    return acknowledge_outage(channel=channel, chat_id=chat_id, reason=reason, paths=resolved_paths)
+
+
+def clear_delivery_outage(
+    *,
+    channel: str,
+    chat_id: str,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    removed = clear_outage(channel=channel, chat_id=chat_id, paths=resolved_paths)
+    return {
+        "channel": channel,
+        "chat_id": chat_id,
+        "removed": removed,
+    }
+
+
 def render_main_triage(
     *,
     config_path: Optional[Path] = None,
@@ -386,6 +415,13 @@ def main() -> None:
     subparsers.add_parser("health", help="Show main-oriented health summary.")
     subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
     subparsers.add_parser("diagnose-delivery", help="Show host-side delivery diagnosis steps for retryable failures.")
+    ack_parser = subparsers.add_parser("ack-delivery-outage", help="Acknowledge a known external delivery outage.")
+    ack_parser.add_argument("--channel", required=True)
+    ack_parser.add_argument("--chat-id", required=True)
+    ack_parser.add_argument("--reason", required=True)
+    clear_parser = subparsers.add_parser("clear-delivery-outage", help="Clear an acknowledged external delivery outage.")
+    clear_parser.add_argument("--channel", required=True)
+    clear_parser.add_argument("--chat-id", required=True)
     repair_parser = subparsers.add_parser("repair", help="Clean stale delivery state and optionally retry failed sends.")
     repair_parser.add_argument("--execute-retries", action="store_true", help="Retry retryable failed instructions.")
     repair_parser.add_argument("--openclaw-bin", default=None, help="Override openclaw binary for retry execution.")
@@ -464,6 +500,35 @@ def main() -> None:
         return
     if args.command == "diagnose-delivery":
         print(render_delivery_diagnose(config_path=config_path, paths=paths), end="")
+        return
+    if args.command == "ack-delivery-outage":
+        print(
+            json.dumps(
+                acknowledge_delivery_outage(
+                    channel=args.channel,
+                    chat_id=args.chat_id,
+                    reason=args.reason,
+                    config_path=config_path,
+                    paths=paths,
+                ),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    if args.command == "clear-delivery-outage":
+        print(
+            json.dumps(
+                clear_delivery_outage(
+                    channel=args.channel,
+                    chat_id=args.chat_id,
+                    config_path=config_path,
+                    paths=paths,
+                ),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return
     if args.command == "repair":
         result = repair_system(

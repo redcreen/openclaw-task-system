@@ -245,6 +245,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py sweep`
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resolve-failures`
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py diagnose-delivery`
+- `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py ack-delivery-outage`
 
 推荐状态查看入口：
 
@@ -333,6 +334,19 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py diagnose-deli
 - 当前最值得诊断的 retryable 失败目标
 - 最近一次失败摘要
 - 一条建议直接在宿主运行的 `openclaw message send ...` 探测命令
+
+如果你已经确认这是外部网络/平台故障，而不是任务系统内部问题，可以先标记为已知外部故障：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py ack-delivery-outage --channel telegram --chat-id 8705812936 --reason "known telegram network outage"
+```
+
+这样健康报告会把对应失败从 `error` 降为 `warn`。  
+恢复后再清掉：
+
+```bash
+python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py clear-delivery-outage --channel telegram --chat-id 8705812936
+```
 
 状态总览和健康报告现在也会显示：
 

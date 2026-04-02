@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 from typing import Optional
 
+from delivery_outage import find_outage, load_outages
 from delivery_reconcile import reconcile_delivery_artifacts
 from instruction_executor import summarize_failed_instructions
 from plugin_doctor import run_checks
@@ -36,6 +37,7 @@ def build_health_report(
     stale_findings = reconcile_delivery_artifacts(config_path=config_path, paths=paths, apply_changes=False)
     plugin_checks = run_checks()
     failed_instruction_summary = summarize_failed_instructions(paths=resolved_paths)
+    acknowledged_outages = load_outages(paths=resolved_paths)
 
     failing_plugin_checks = [check.name for check in plugin_checks if not check.ok]
     issue_entries: list[dict[str, object]] = []
@@ -49,13 +51,28 @@ def build_health_report(
                 remediation="Run `python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py` and fix missing plugin paths/config.",
             )
         )
+    acknowledged_failed_items = [
+        item
+        for item in failed_instruction_summary["items"]
+        if find_outage(
+            channel=str(item.get("channel") or ""),
+            chat_id=str(item.get("chat_id") or ""),
+            paths=resolved_paths,
+        )
+    ]
+
     if overview["failed_instruction_count"]:
+        all_failed_are_acknowledged = len(acknowledged_failed_items) == int(overview["failed_instruction_count"])
         issue_entries.append(
             _issue_entry(
                 code=f"failed-instructions:{overview['failed_instruction_count']}",
-                severity="error",
+                severity="warn" if all_failed_are_acknowledged else "error",
                 count=int(overview["failed_instruction_count"]),
-                remediation="Inspect `data/failed-instructions/` and `dispatch-results/`; retry only retryable transport failures with `instruction_executor.py --execute`, and fix auth/config issues before retrying non-retryable failures.",
+                remediation=(
+                    "Known external delivery outage acknowledged; restore host connectivity and then rerun `main_ops.py repair --execute-retries --execution-context host`."
+                    if all_failed_are_acknowledged
+                    else "Inspect `data/failed-instructions/` and `dispatch-results/`; retry only retryable transport failures with `instruction_executor.py --execute`, and fix auth/config issues before retrying non-retryable failures."
+                ),
             )
         )
     if overview["active_stale_delivery_task_count"]:
@@ -101,6 +118,8 @@ def build_health_report(
         "issue_entries": issue_entries,
         "overview": overview,
         "failed_instruction_summary": failed_instruction_summary,
+        "acknowledged_delivery_outages": acknowledged_outages,
+        "acknowledged_failed_instruction_count": len(acknowledged_failed_items),
         "stale_findings": stale_findings,
         "plugin_checks": [
             {
@@ -129,6 +148,7 @@ def render_markdown(report: dict[str, object]) -> str:
             f"- active_task_count: {overview['active_task_count']}",
             f"- blocked_active_tasks: {overview['active_status_counts'].get('blocked', 0)}",
             f"- failed_instruction_count: {overview['failed_instruction_count']}",
+            f"- acknowledged_failed_instruction_count: {report['acknowledged_failed_instruction_count']}",
             f"- resolved_failed_instruction_count: {overview['resolved_failed_instruction_count']}",
             f"- failed_instruction_retryable_count: {report['failed_instruction_summary']['retryable']}",
             f"- failed_instruction_persistent_retryable_count: {report['failed_instruction_summary']['persistent_retryable']}",
@@ -167,6 +187,15 @@ def render_markdown(report: dict[str, object]) -> str:
         for item in report["failed_instruction_summary"]["items"]:
             lines.append(
                 f"- {item['name']} | classification={item['failure_classification']} | retryable={item['retryable']}"
+            )
+
+    if report["acknowledged_delivery_outages"]:
+        lines.append("")
+        lines.append("## Acknowledged Delivery Outages")
+        lines.append("")
+        for outage in report["acknowledged_delivery_outages"]:
+            lines.append(
+                f"- {outage['channel']}:{outage['chat_id']} | reason={outage['reason']}"
             )
 
     return "\n".join(lines) + "\n"

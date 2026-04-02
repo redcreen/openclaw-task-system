@@ -148,6 +148,54 @@ class HealthReportTests(unittest.TestCase):
         self.assertIn("- failed_instruction_non_retryable_count: 1", markdown)
         self.assertIn("## Failed Instructions", markdown)
 
+    def test_build_health_report_downgrades_acknowledged_delivery_outage(self) -> None:
+        failed_dir = self.paths.data_dir / "failed-instructions"
+        failed_dir.mkdir(parents=True, exist_ok=True)
+        (failed_dir / "retryable.json").write_text(
+            json.dumps(
+                {
+                    "task_id": "retryable",
+                    "channel": "telegram",
+                    "chat_id": "8705812936",
+                    "_last_failure_classification": "transport-retryable",
+                    "_last_failure_retryable": True,
+                    "_retry_count": 1,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        diagnostics_dir = self.paths.data_dir / "diagnostics"
+        diagnostics_dir.mkdir(parents=True, exist_ok=True)
+        (diagnostics_dir / "delivery-outages.json").write_text(
+            json.dumps(
+                {
+                    "schema": "openclaw.task-system.delivery-outages.v1",
+                    "outages": [
+                        {
+                            "channel": "telegram",
+                            "chat_id": "8705812936",
+                            "reason": "network outage",
+                            "acknowledged_at": "2026-04-02T12:00:00+00:00",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        report = health_report.build_health_report(config_path=self.config_path)
+        markdown = health_report.render_markdown(report)
+
+        self.assertEqual(report["status"], "warn")
+        self.assertEqual(report["acknowledged_failed_instruction_count"], 1)
+        self.assertIn("## Acknowledged Delivery Outages", markdown)
+
 
 if __name__ == "__main__":
     unittest.main()

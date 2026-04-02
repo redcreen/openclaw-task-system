@@ -277,6 +277,22 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("message send --channel telegram --target 8705812936", rendered)
         self.assertIn("last_error: Network request failed with timeout", rendered)
 
+    def test_acknowledge_and_clear_delivery_outage(self) -> None:
+        entry = main_ops.acknowledge_delivery_outage(
+            channel="telegram",
+            chat_id="8705812936",
+            reason="network outage",
+            paths=self.paths,
+        )
+        self.assertEqual(entry["channel"], "telegram")
+
+        cleared = main_ops.clear_delivery_outage(
+            channel="telegram",
+            chat_id="8705812936",
+            paths=self.paths,
+        )
+        self.assertEqual(cleared["removed"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
