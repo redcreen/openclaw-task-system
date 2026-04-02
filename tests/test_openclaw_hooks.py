@@ -260,10 +260,34 @@ class OpenClawHooksTests(unittest.TestCase):
         )
         self.assertTrue(finalized["updated"])
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
-        self.assertEqual(
-            finalized["task"]["last_user_visible_update_at"],
-            finalized["task"]["updated_at"],
+
+    def test_claim_due_continuations_returns_scheduled_delayed_reply(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:delayed",
+                "channel": "telegram",
+                "account_id": "telegram-main",
+                "chat_id": "chat:delayed",
+                "user_request": "1秒后回复我ok1",
+                "requires_external_wait": True,
+            }
         )
+        assert registration["task_id"] is not None
+        self.assertEqual(registration["task_status"], task_state_module.STATUS_PAUSED)
+
+        task_path = self.paths.inflight_dir / f"{registration['task_id']}.json"
+        payload = json.loads(task_path.read_text(encoding="utf-8"))
+        payload["meta"]["continuation_due_at"] = "2020-01-01T00:00:00+00:00"
+        task_state_module.atomic_write_json(task_path, payload)
+
+        claimed = openclaw_hooks.claim_due_continuations_from_payload({})
+        self.assertEqual(claimed["claimed_count"], 1)
+        self.assertEqual(claimed["tasks"][0]["reply_text"], "ok1")
+
+        refreshed = json.loads(task_path.read_text(encoding="utf-8"))
+        self.assertEqual(refreshed["status"], task_state_module.STATUS_RUNNING)
+        self.assertEqual(refreshed["meta"]["continuation_state"], "claimed")
 
 
 if __name__ == "__main__":

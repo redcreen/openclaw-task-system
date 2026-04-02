@@ -47,6 +47,7 @@ class BridgeDecision:
     active_count: int = 0
     running_count: int = 0
     queued_count: int = 0
+    continuation_due_at: Optional[str] = None
 
 
 def build_main_task_context(ctx: OpenClawInboundContext) -> MainTaskContext:
@@ -107,6 +108,7 @@ def register_inbound_task(
             active_count=len(store.find_inflight_tasks(agent_id=ctx.agent_id, statuses={"queued", "running"})),
             running_count=len(store.find_running_tasks(agent_id=ctx.agent_id)),
             queued_count=len(store.find_queued_tasks(agent_id=ctx.agent_id)),
+            continuation_due_at=str(resumed.meta.get("continuation_due_at") or "") or None,
         )
 
     task = register_main_task(
@@ -134,6 +136,7 @@ def register_inbound_task(
         active_count=len(active_tasks),
         running_count=len(store.find_running_tasks(agent_id=ctx.agent_id)),
         queued_count=len(store.find_queued_tasks(agent_id=ctx.agent_id)),
+        continuation_due_at=str(task.meta.get("continuation_due_at") or "") or None,
     )
 
 

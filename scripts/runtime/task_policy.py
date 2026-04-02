@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import re
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from typing import Iterable
 
@@ -32,8 +34,54 @@ class TaskClassification:
     reasons: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class ContinuationPlan:
+    kind: str
+    due_at: str
+    wait_seconds: int
+    reply_text: str
+
+
+DELAYED_REPLY_PATTERNS = (
+    re.compile(r"(?P<delay>\d+)\s*分钟后回复我(?P<message>.+)"),
+    re.compile(r"(?P<delay>\d+)\s*秒后回复我(?P<message>.+)"),
+)
+
+
 def _contains_any(text: str, keywords: Iterable[str]) -> list[str]:
     return [keyword for keyword in keywords if keyword in text]
+
+
+def parse_delayed_reply_request(
+    user_request: str,
+    *,
+    now_dt: datetime | None = None,
+) -> ContinuationPlan | None:
+    normalized = user_request.strip()
+    if not normalized:
+        return None
+
+    for pattern in DELAYED_REPLY_PATTERNS:
+        matched = pattern.search(normalized)
+        if not matched:
+            continue
+        delay = int(matched.group("delay"))
+        message = matched.group("message").strip()
+        if not message:
+            return None
+        if "分钟后" in matched.group(0):
+            wait_seconds = delay * 60
+        else:
+            wait_seconds = delay
+        base = now_dt or datetime.now(timezone.utc).astimezone()
+        due_at = (base + timedelta(seconds=wait_seconds)).isoformat()
+        return ContinuationPlan(
+            kind="delayed-reply",
+            due_at=due_at,
+            wait_seconds=wait_seconds,
+            reply_text=message,
+        )
+    return None
 
 
 def classify_main_task(

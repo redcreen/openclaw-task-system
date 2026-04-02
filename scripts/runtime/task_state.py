@@ -282,6 +282,32 @@ class TaskStore:
         )
         return saved
 
+    def schedule_continuation(
+        self,
+        task_id: str,
+        *,
+        continuation_kind: str,
+        due_at: str,
+        payload: dict[str, Any],
+        reason: str,
+    ) -> TaskState:
+        task = self.load_task(task_id)
+        ts = now_iso()
+        task.status = STATUS_PAUSED
+        task.block_reason = reason
+        task.updated_at = ts
+        task.last_internal_touch_at = ts
+        task.meta["continuation_kind"] = continuation_kind
+        task.meta["continuation_due_at"] = due_at
+        task.meta["continuation_payload"] = payload
+        task.meta["continuation_state"] = "scheduled"
+        saved = self.save_task(task)
+        self.promote_next_queued_task(
+            agent_id=saved.agent_id,
+            meta={"promoted_after": saved.task_id, "promotion_reason": "paused"},
+        )
+        return saved
+
     def resume_task(
         self,
         task_id: str,

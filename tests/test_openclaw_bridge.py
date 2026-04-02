@@ -157,3 +157,15 @@ class OpenClawBridgeTests(unittest.TestCase):
         store = task_state_module.TaskStore(paths=self.paths)
         task = store.load_task(decision.task_id)
         self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
+
+    def test_register_inbound_task_reports_scheduled_continuation(self) -> None:
+        decision = openclaw_bridge.register_inbound_task(
+            self.make_context(
+                "1分钟后回复我ok",
+                requires_external_wait=True,
+            ),
+            paths=self.paths,
+        )
+        assert decision.task_id is not None
+        self.assertEqual(decision.task_status, task_state_module.STATUS_PAUSED)
+        self.assertIsNotNone(decision.continuation_due_at)

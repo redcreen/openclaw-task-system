@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from task_policy import TaskClassification, classify_main_task
+from task_policy import ContinuationPlan, TaskClassification, classify_main_task, parse_delayed_reply_request
 from task_config import TaskSystemConfig, load_task_system_config
 from task_state import TaskPaths, TaskState, TaskStore, default_paths
 
@@ -30,6 +30,10 @@ class MainTaskDecision:
     classification: TaskClassification
     should_register: bool
     reason: str
+
+
+def detect_continuation_plan(context: MainTaskContext) -> ContinuationPlan | None:
+    return parse_delayed_reply_request(context.user_request)
 
 
 def decide_main_task(
@@ -100,6 +104,18 @@ def register_main_task(
           "needs_verification": context.needs_verification,
         },
     )
+    continuation = detect_continuation_plan(context)
+    if continuation is not None:
+        return store.schedule_continuation(
+            task.task_id,
+            continuation_kind=continuation.kind,
+            due_at=continuation.due_at,
+            payload={
+                "reply_text": continuation.reply_text,
+                "wait_seconds": continuation.wait_seconds,
+            },
+            reason="scheduled continuation wait",
+        )
     if runtime_config.agent_config(context.agent_id).auto_start:
         return store.claim_execution_slot(task.task_id)
     return task

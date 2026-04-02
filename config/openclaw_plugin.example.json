@@ -20,6 +20,8 @@
           "finalizeOnAgentEnd": true,
           "enableHostFeishuDelivery": true,
           "hostDeliveryPollMs": 3000,
+          "enableContinuationRunner": true,
+          "continuationPollMs": 3000,
           "minProgressMessageLength": 20,
           "ignoreProgressPatterns": [
             "^收到$",

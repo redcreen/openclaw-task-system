@@ -48,3 +48,11 @@ class TaskPolicyTests(unittest.TestCase):
         )
         self.assertTrue(result.is_long_task)
         self.assertEqual(result.confidence, "medium")
+
+    def test_parse_delayed_reply_request_detects_minutes(self) -> None:
+        plan = task_policy.parse_delayed_reply_request("5分钟后回复我ok")
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(plan.kind, "delayed-reply")
+        self.assertEqual(plan.wait_seconds, 300)
+        self.assertEqual(plan.reply_text, "ok")

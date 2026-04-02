@@ -68,6 +68,14 @@
     "hostDeliveryPollMs": {
       "label": "Host Delivery Poll MS",
       "help": "Polling interval for the plugin-side Feishu delivery bridge."
+    },
+    "enableContinuationRunner": {
+      "label": "Enable Continuation Runner",
+      "help": "Poll for scheduled delayed-reply continuations and execute them when due."
+    },
+    "continuationPollMs": {
+      "label": "Continuation Poll MS",
+      "help": "Polling interval for scheduled continuation tasks such as delayed replies."
     }
   },
   "configSchema": {
@@ -91,6 +99,8 @@
       "minProgressMessageLength": { "type": "integer", "minimum": 1 },
       "enableHostFeishuDelivery": { "type": "boolean" },
       "hostDeliveryPollMs": { "type": "integer", "minimum": 1000 },
+      "enableContinuationRunner": { "type": "boolean" },
+      "continuationPollMs": { "type": "integer", "minimum": 1000 },
       "ignoreProgressPatterns": {
         "type": "array",
         "items": { "type": "string" }

@@ -26,6 +26,8 @@ type TaskSystemPluginConfig = {
   ignoreProgressPatterns?: string[];
   enableHostFeishuDelivery?: boolean;
   hostDeliveryPollMs?: number;
+  enableContinuationRunner?: boolean;
+  continuationPollMs?: number;
 };
 
 function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
@@ -74,6 +76,11 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
     hostDeliveryPollMs:
       typeof value.hostDeliveryPollMs === "number" && Number.isFinite(value.hostDeliveryPollMs)
         ? Math.max(1000, Math.trunc(value.hostDeliveryPollMs))
+        : 3000,
+    enableContinuationRunner: value.enableContinuationRunner !== false,
+    continuationPollMs:
+      typeof value.continuationPollMs === "number" && Number.isFinite(value.continuationPollMs)
+        ? Math.max(1000, Math.trunc(value.continuationPollMs))
         : 3000,
   };
 }
@@ -357,6 +364,45 @@ async function processHostDeliveryQueue(api: OpenClawPluginApi, config: Required
   }
 }
 
+async function processDueContinuations(api: OpenClawPluginApi, config: Required<TaskSystemPluginConfig>): Promise<void> {
+  if (!config.enableContinuationRunner) {
+    return;
+  }
+  const claimed = await callHook(api, config, "claim-due-continuations", {});
+  const tasks = Array.isArray(claimed?.tasks) ? claimed.tasks : [];
+  for (const task of tasks) {
+    const payload = task as Record<string, unknown>;
+    const channel = normalizeText(String(payload.channel || ""));
+    const chatId = normalizeText(String(payload.chat_id || ""));
+    const taskId = normalizeText(String(payload.task_id || ""));
+    const sessionKey = normalizeText(String(payload.session_key || ""));
+    const replyText = normalizeText(String(payload.reply_text || ""));
+    if (!channel || !chatId || !taskId || !replyText) {
+      continue;
+    }
+    try {
+      await sendStatusMessage(api, config, {
+        channel,
+        accountId: normalizeText(String(payload.account_id || "")),
+        chatId,
+        sessionKey,
+        message: replyText,
+        eventName: "continuation-delivery",
+      });
+      await callHook(api, config, "completed", {
+        task_id: taskId,
+        result_summary: `continuation reply sent: ${replyText}`.slice(0, 240),
+      });
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      await callHook(api, config, "blocked", {
+        task_id: taskId,
+        reason: `continuation delivery failed: ${messageText}`.slice(0, 240),
+      });
+    }
+  }
+}
+
 async function sendImmediateAck(
   api: OpenClawPluginApi,
   config: Required<TaskSystemPluginConfig>,
@@ -454,6 +500,11 @@ function buildImmediateReceiptMessage(
   const aheadCount = Math.max(toInteger(registerResult.ahead_count) ?? 0, 0);
   const runningCount = Math.max(toInteger(registerResult.running_count) ?? 0, 0);
   const activeCount = Math.max(toInteger(registerResult.active_count) ?? 0, 0);
+  const continuationDueAt = normalizeText(String(registerResult.continuation_due_at || ""));
+
+  if (taskStatus === "paused" && continuationDueAt) {
+    return `已收到，已安排后续继续执行；计划时间 ${continuationDueAt}。到点后我会继续处理并主动回复。`;
+  }
 
   if (taskStatus === "queued") {
     const position = queuePosition ?? aheadCount + 1;
@@ -578,6 +629,7 @@ const taskSystemPlugin = definePluginEntry({
   register(api: OpenClawPluginApi) {
     const config = normalizeConfig(api.pluginConfig);
     let hostDeliveryTimer: ReturnType<typeof setInterval> | null = null;
+    let continuationTimer: ReturnType<typeof setInterval> | null = null;
     const pendingReceipts = new Map<string, PendingReceipt>();
     if (!config.enabled) {
       api.logger.info("[task-system] plugin loaded in disabled mode");
@@ -848,17 +900,33 @@ const taskSystemPlugin = definePluginEntry({
       id: "openclaw-task-system-host-delivery",
       async start() {
         if (!config.enableHostFeishuDelivery) {
+          if (config.enableContinuationRunner) {
+            continuationTimer = setInterval(() => {
+              void processDueContinuations(api, config);
+            }, config.continuationPollMs);
+            await processDueContinuations(api, config);
+          }
           return;
         }
         hostDeliveryTimer = setInterval(() => {
           void processHostDeliveryQueue(api, config);
         }, config.hostDeliveryPollMs);
         await processHostDeliveryQueue(api, config);
+        if (config.enableContinuationRunner) {
+          continuationTimer = setInterval(() => {
+            void processDueContinuations(api, config);
+          }, config.continuationPollMs);
+          await processDueContinuations(api, config);
+        }
       },
       async stop() {
         if (hostDeliveryTimer) {
           clearInterval(hostDeliveryTimer);
           hostDeliveryTimer = null;
+        }
+        if (continuationTimer) {
+          clearInterval(continuationTimer);
+          continuationTimer = null;
         }
         for (const pending of pendingReceipts.values()) {
           if (pending.timer) {

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from openclaw_bridge import (
@@ -70,6 +71,7 @@ def register_from_payload(
             "active_count": 1,
             "running_count": 1 if active.get("status") == "running" else 0,
             "queued_count": 1 if active.get("status") == "queued" else 0,
+            "continuation_due_at": None,
         }
     decision = register_inbound_task(
         _build_context(payload),
@@ -86,6 +88,56 @@ def register_from_payload(
         "active_count": decision.active_count,
         "running_count": decision.running_count,
         "queued_count": decision.queued_count,
+        "continuation_due_at": decision.continuation_due_at,
+    }
+
+
+def claim_due_continuations_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    now_dt = datetime.now(timezone.utc).astimezone()
+    due_tasks: list[dict[str, Any]] = []
+    for path in store.list_inflight():
+        task = store.load_task(path.stem, allow_archive=False)
+        if task.status != "paused":
+            continue
+        if str(task.meta.get("continuation_kind") or "") != "delayed-reply":
+            continue
+        due_at = str(task.meta.get("continuation_due_at") or "").strip()
+        if not due_at:
+            continue
+        try:
+            due_dt = datetime.fromisoformat(due_at)
+        except ValueError:
+            continue
+        if due_dt > now_dt:
+            continue
+        if str(task.meta.get("continuation_state") or "") == "claimed":
+            continue
+        task.status = "running"
+        task.meta["continuation_state"] = "claimed"
+        task.meta["continuation_claimed_at"] = now_dt.isoformat()
+        task.updated_at = now_dt.isoformat()
+        task.last_internal_touch_at = now_dt.isoformat()
+        store.save_task(task)
+        due_tasks.append(
+            {
+                "task_id": task.task_id,
+                "agent_id": task.agent_id,
+                "session_key": task.session_key,
+                "channel": task.channel,
+                "account_id": task.account_id,
+                "chat_id": task.chat_id,
+                "reply_text": ((task.meta.get("continuation_payload") or {}).get("reply_text") if isinstance(task.meta.get("continuation_payload"), dict) else None),
+            }
+        )
+    return {
+        "claimed_count": len(due_tasks),
+        "tasks": due_tasks,
     }
 
 
@@ -264,6 +316,8 @@ def finalize_active_from_payload(
 def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Path] = None) -> dict[str, Any]:
     if command == "register":
         return register_from_payload(payload, config_path=config_path)
+    if command == "claim-due-continuations":
+        return claim_due_continuations_from_payload(payload, config_path=config_path)
     if command == "resolve-active":
         return resolve_active_task_from_payload(payload, config_path=config_path)
     if command == "progress":
@@ -293,7 +347,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     usage = (
         "usage: openclaw_hooks.py "
-        "<register|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active> "
+        "<register|claim-due-continuations|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active> "
         "<payload.json> [config.json]"
     )
     if args and args[0] in {"-h", "--help"}:

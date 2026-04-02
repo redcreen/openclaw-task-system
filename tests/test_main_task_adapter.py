@@ -125,3 +125,12 @@ class MainTaskAdapterTests(unittest.TestCase):
         resumed = main_task_adapter.resume_main_task(first.task_id, progress_note="继续", paths=self.paths)
         self.assertEqual(resumed.status, task_state_module.STATUS_QUEUED)
         self.assertEqual(resumed.meta["resume_target_status"], task_state_module.STATUS_QUEUED)
+
+    def test_delayed_reply_request_is_scheduled_as_paused_continuation(self) -> None:
+        task = main_task_adapter.register_main_task(
+            self.build_context("5分钟后回复我ok", requires_external_wait=True),
+            paths=self.paths,
+        )
+        self.assertEqual(task.status, task_state_module.STATUS_PAUSED)
+        self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
+        self.assertEqual(task.meta["continuation_payload"]["reply_text"], "ok")
