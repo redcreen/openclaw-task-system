@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -92,6 +93,29 @@ def register_inbound_task(
         session_key=ctx.session_key,
     )
     if recoverable is not None:
+        continuation_kind = str(recoverable.meta.get("continuation_kind") or "").strip()
+        continuation_due_at = str(recoverable.meta.get("continuation_due_at") or "").strip()
+        if continuation_kind and continuation_due_at:
+            try:
+                due_dt = datetime.fromisoformat(continuation_due_at)
+            except ValueError:
+                due_dt = None
+            now_dt = datetime.now(timezone.utc).astimezone()
+            if due_dt is not None and due_dt > now_dt:
+                active_tasks = store.find_inflight_tasks(agent_id=ctx.agent_id, statuses={"queued", "running"})
+                return BridgeDecision(
+                    should_register_task=True,
+                    task_id=recoverable.task_id,
+                    classification_reason="scheduled-continuation",
+                    confidence="high",
+                    task_status=recoverable.status,
+                    queue_position=None,
+                    ahead_count=0,
+                    active_count=len(active_tasks),
+                    running_count=len(store.find_running_tasks(agent_id=ctx.agent_id)),
+                    queued_count=len(store.find_queued_tasks(agent_id=ctx.agent_id)),
+                    continuation_due_at=continuation_due_at,
+                )
         resumed = resume_main_task(
             recoverable.task_id,
             progress_note=f"恢复执行：{ctx.user_request[:120]}",

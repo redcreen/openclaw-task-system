@@ -169,3 +169,24 @@ class OpenClawBridgeTests(unittest.TestCase):
         assert decision.task_id is not None
         self.assertEqual(decision.task_status, task_state_module.STATUS_PAUSED)
         self.assertIsNotNone(decision.continuation_due_at)
+
+    def test_register_inbound_task_keeps_future_continuation_paused(self) -> None:
+        first = openclaw_bridge.register_inbound_task(
+            self.make_context(
+                "1分钟后回复我ok1",
+                requires_external_wait=True,
+            ),
+            paths=self.paths,
+        )
+        assert first.task_id is not None
+
+        second = openclaw_bridge.register_inbound_task(
+            self.make_context(
+                "1分钟后回复我ok1",
+                requires_external_wait=True,
+            ),
+            paths=self.paths,
+        )
+        self.assertEqual(second.task_id, first.task_id)
+        self.assertEqual(second.classification_reason, "scheduled-continuation")
+        self.assertEqual(second.task_status, task_state_module.STATUS_PAUSED)

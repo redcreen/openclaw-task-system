@@ -141,6 +141,64 @@ def claim_due_continuations_from_payload(
     }
 
 
+def fulfill_due_continuation_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    now_dt = datetime.now(timezone.utc).astimezone()
+    content = str(payload.get("content") or "").strip()
+    if not content:
+        return {"updated": False, "reason": "empty-content"}
+
+    session_tasks = store.find_inflight_tasks(
+        agent_id=payload["agent_id"],
+        session_key=payload["session_key"],
+        statuses={"paused", "running"},
+    )
+    normalized_content = " ".join(content.split()).casefold()
+    for task in session_tasks:
+        if str(task.meta.get("continuation_kind") or "") != "delayed-reply":
+            continue
+        due_at = str(task.meta.get("continuation_due_at") or "").strip()
+        if not due_at:
+            continue
+        try:
+            due_dt = datetime.fromisoformat(due_at)
+        except ValueError:
+            continue
+        if due_dt > now_dt:
+            continue
+        continuation_payload = task.meta.get("continuation_payload")
+        if not isinstance(continuation_payload, dict):
+            continue
+        reply_text = str(continuation_payload.get("reply_text") or "").strip()
+        if not reply_text:
+            continue
+        normalized_reply = " ".join(reply_text.split()).casefold()
+        if normalized_reply not in normalized_content:
+            continue
+
+        completed = store.complete_task(
+            task.task_id,
+            archive=True,
+            meta={
+                "result_summary": f"continuation reply fulfilled by agent output: {reply_text}"[:240],
+                "continuation_fulfilled_by": "agent-output",
+                "continuation_fulfilled_at": now_dt.isoformat(),
+            },
+        )
+        return {
+            "updated": True,
+            "task": completed.to_dict(),
+            "matched_reply_text": reply_text,
+        }
+
+    return {"updated": False, "reason": "no-due-continuation-match"}
+
+
 def resolve_active_task_from_payload(
     payload: dict[str, Any],
     *,
@@ -318,6 +376,8 @@ def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Pat
         return register_from_payload(payload, config_path=config_path)
     if command == "claim-due-continuations":
         return claim_due_continuations_from_payload(payload, config_path=config_path)
+    if command == "fulfill-due-continuation":
+        return fulfill_due_continuation_from_payload(payload, config_path=config_path)
     if command == "resolve-active":
         return resolve_active_task_from_payload(payload, config_path=config_path)
     if command == "progress":
@@ -347,7 +407,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     usage = (
         "usage: openclaw_hooks.py "
-        "<register|claim-due-continuations|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active> "
+        "<register|claim-due-continuations|fulfill-due-continuation|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active> "
         "<payload.json> [config.json]"
     )
     if args and args[0] in {"-h", "--help"}:

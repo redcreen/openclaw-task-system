@@ -261,6 +261,58 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertTrue(finalized["updated"])
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
 
+    def test_fulfill_due_continuation_matches_due_reply_and_archives_task(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:continuation-due",
+                "channel": "telegram",
+                "account_id": "default",
+                "chat_id": "tg:test",
+                "user_request": "1秒后回复我ok1",
+            }
+        )
+        task_id = registration["task_id"]
+        assert task_id is not None
+
+        task = task_state_module.TaskStore(paths=self.paths).load_task(task_id, allow_archive=False)
+        task.meta["continuation_due_at"] = "2000-01-01T00:00:00+08:00"
+        task_state_module.TaskStore(paths=self.paths).save_task(task)
+
+        fulfilled = openclaw_hooks.fulfill_due_continuation_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:continuation-due",
+                "content": '收到，1分钟后回复"ok1"。 ok1',
+            }
+        )
+        self.assertTrue(fulfilled["updated"])
+        self.assertEqual(fulfilled["matched_reply_text"], "ok1")
+        self.assertEqual(fulfilled["task"]["status"], task_state_module.STATUS_DONE)
+
+    def test_fulfill_due_continuation_ignores_not_due_task(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:continuation-not-due",
+                "channel": "telegram",
+                "account_id": "default",
+                "chat_id": "tg:test",
+                "user_request": "1分钟后回复我ok1",
+            }
+        )
+        assert registration["task_id"] is not None
+
+        fulfilled = openclaw_hooks.fulfill_due_continuation_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:continuation-not-due",
+                "content": '收到，1分钟后回复"ok1"。 ok1',
+            }
+        )
+        self.assertFalse(fulfilled["updated"])
+        self.assertEqual(fulfilled["reason"], "no-due-continuation-match")
+
     def test_claim_due_continuations_returns_scheduled_delayed_reply(self) -> None:
         registration = openclaw_hooks.register_from_payload(
             {

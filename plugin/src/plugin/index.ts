@@ -149,6 +149,23 @@ function buildSessionKey(channelId: string, conversationId?: string): string {
   return `${channelId}:${suffix}`;
 }
 
+function formatContinuationDelayLabel(continuationDueAt: string): string | null {
+  if (!continuationDueAt) {
+    return null;
+  }
+  const dueMs = Date.parse(continuationDueAt);
+  if (!Number.isFinite(dueMs)) {
+    return null;
+  }
+  const diffMs = Math.max(0, dueMs - Date.now());
+  const diffSeconds = Math.max(1, Math.ceil(diffMs / 1000));
+  if (diffSeconds < 60) {
+    return `预计约 ${diffSeconds} 秒后`;
+  }
+  const diffMinutes = Math.max(1, Math.ceil(diffSeconds / 60));
+  return `预计约 ${diffMinutes} 分钟后`;
+}
+
 function normalizeText(value: unknown): string {
   if (typeof value !== "string") {
     if (value === null || value === undefined) {
@@ -509,7 +526,11 @@ function buildImmediateReceiptMessage(
   const continuationDueAt = normalizeText(String(registerResult.continuation_due_at || ""));
 
   if (taskStatus === "paused" && continuationDueAt) {
-    return `已收到，已安排后续继续执行；计划时间 ${continuationDueAt}。到点后我会继续处理并主动回复。`;
+    const delayLabel = formatContinuationDelayLabel(continuationDueAt);
+    if (delayLabel) {
+      return `已收到，已安排后续继续执行；${delayLabel}，到点后我会主动回复。`;
+    }
+    return "已收到，已安排后续继续执行；到点后我会主动回复。";
   }
 
   if (taskStatus === "queued") {
@@ -824,6 +845,21 @@ const taskSystemPlugin = definePluginEntry({
       if (!config.syncProgressOnMessageSending || !event.content?.trim()) {
         return;
       }
+      if (ctx.sessionKey?.trim()) {
+        const continuationFulfilled = await callHook(api, config, "fulfill-due-continuation", {
+          agent_id: ctx.agentId || config.defaultAgentId,
+          session_key: ctx.sessionKey,
+          content: event.content,
+        });
+        if (continuationFulfilled?.updated) {
+          await appendDebugLog(config, "message_sending:continuation-fulfilled", {
+            agentId: ctx.agentId || config.defaultAgentId,
+            sessionKey: ctx.sessionKey,
+            matchedReplyText: continuationFulfilled.matched_reply_text ?? null,
+          });
+          return;
+        }
+      }
       if (!shouldSyncProgress(event.content, config)) {
         await appendDebugLog(config, "message_sending:ignored", {
           sessionKey: ctx.sessionKey || buildSessionKey(ctx.channelId, ctx.conversationId),
@@ -855,6 +891,20 @@ const taskSystemPlugin = definePluginEntry({
       }
       const text = normalizeText((event.assistantTexts || []).join("\n"));
       if (!text) {
+        return;
+      }
+      const continuationFulfilled = await callHook(api, config, "fulfill-due-continuation", {
+        agent_id: ctx.agentId || config.defaultAgentId,
+        session_key: sessionKey,
+        content: text,
+      });
+      if (continuationFulfilled?.updated) {
+        await appendDebugLog(config, "llm_output:continuation-fulfilled", {
+          agentId: ctx.agentId || config.defaultAgentId,
+          sessionKey,
+          matchedReplyText: continuationFulfilled.matched_reply_text ?? null,
+          content: text.slice(0, 240),
+        });
         return;
       }
       if (!shouldSyncProgress(text, config)) {
