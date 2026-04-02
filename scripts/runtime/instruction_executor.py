@@ -153,6 +153,7 @@ def summarize_failed_instructions(paths: TaskPaths) -> dict[str, Any]:
     summary = {
         "total": 0,
         "retryable": 0,
+        "persistent_retryable": 0,
         "non_retryable": 0,
         "unknown": 0,
         "items": [],
@@ -168,6 +169,8 @@ def summarize_failed_instructions(paths: TaskPaths) -> dict[str, Any]:
             summary["unknown"] += 1
         elif retryable:
             summary["retryable"] += 1
+            if int(instruction.get("_retry_count", 0) or 0) > 0:
+                summary["persistent_retryable"] += 1
         else:
             summary["non_retryable"] += 1
         summary["total"] += 1

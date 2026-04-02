@@ -105,7 +105,8 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertIn("# Main Ops Triage", rendered)
         self.assertIn(task.task_id, rendered)
-        self.assertIn("repair --execute-retries --execution-context host", rendered)
+        self.assertIn("Persistent retryable failures detected", rendered)
+        self.assertNotIn("repair --execute-retries --execution-context host", rendered)
         self.assertIn("## Retryable Failed Instructions", rendered)
         self.assertIn("retry_count=2", rendered)
         self.assertIn("## Non-Retryable Failed Instructions", rendered)

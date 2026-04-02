@@ -96,6 +96,7 @@ def render_main_triage(
         f"- status: {report['status']}",
         f"- blocked_main_task_count: {len(blocked_main)}",
         f"- retryable_failed_instruction_count: {failed_summary['retryable']}",
+        f"- persistent_retryable_failed_instruction_count: {failed_summary['persistent_retryable']}",
         f"- non_retryable_failed_instruction_count: {failed_summary['non_retryable']}",
         f"- unknown_failed_instruction_count: {failed_summary['unknown']}",
         "",
@@ -114,9 +115,17 @@ def render_main_triage(
     else:
         lines.append("- No blocked main task requires manual action.")
 
-    if failed_summary["retryable"]:
+    persistent_retryable_items = [
+        item for item in failed_summary["items"] if item["retryable"] and item["retry_count"] > 0
+    ]
+
+    if failed_summary["retryable"] and not persistent_retryable_items:
         lines.append(
             "- Retry retryable failed instructions on host: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair --execute-retries --execution-context host`"
+        )
+    elif persistent_retryable_items:
+        lines.append(
+            "- Persistent retryable failures detected. Investigate host network/connectivity before running more retries."
         )
     else:
         lines.append("- No retryable failed instructions are waiting.")
