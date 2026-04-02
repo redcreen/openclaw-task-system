@@ -349,6 +349,31 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(dispatched["attempt_count"], 1)
         self.assertEqual(dispatched["wake_state"], "dispatched")
 
+    def test_mark_continuation_wake_returns_task_not_found_for_archived_task(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:wake-missing",
+                "channel": "telegram",
+                "account_id": "default",
+                "chat_id": "tg:test",
+                "user_request": "1分钟后回复我ok1",
+            }
+        )
+        task_id = registration["task_id"]
+        assert task_id is not None
+        openclaw_hooks.completed_from_payload({"task_id": task_id, "result_summary": "done"})
+
+        marked = openclaw_hooks.mark_continuation_wake_from_payload(
+            {
+                "task_id": task_id,
+                "state": "dispatched",
+                "message": "已唤醒 agent",
+            }
+        )
+        self.assertFalse(marked["updated"])
+        self.assertEqual(marked["reason"], "task-not-found")
+
     def test_claim_due_continuations_returns_scheduled_delayed_reply(self) -> None:
         registration = openclaw_hooks.register_from_payload(
             {

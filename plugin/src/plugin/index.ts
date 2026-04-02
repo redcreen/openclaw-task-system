@@ -457,14 +457,14 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         cwd: config.runtimeRoot,
         env: process.env,
       });
-      await callHook(api, config, "completed", {
-        task_id: taskId,
-        result_summary: `continuation agent reply sent: ${replyText}`.slice(0, 240),
-      });
       await callHook(api, config, "continuation-wake", {
         task_id: taskId,
         state: "dispatched",
         message: "已唤醒 agent，等待最终回复送达",
+      });
+      await callHook(api, config, "completed", {
+        task_id: taskId,
+        result_summary: `continuation agent reply sent: ${replyText}`.slice(0, 240),
       });
       await appendDebugLog(config, "continuation-wake:ok", {
         taskId,

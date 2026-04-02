@@ -207,7 +207,10 @@ def mark_continuation_wake_from_payload(
 ) -> dict[str, Any]:
     runtime_config = load_task_system_config(config_path=config_path)
     store = TaskStore(paths=runtime_config.build_paths())
-    task = store.load_task(payload["task_id"], allow_archive=False)
+    try:
+        task = store.load_task(payload["task_id"], allow_archive=False)
+    except FileNotFoundError:
+        return {"updated": False, "reason": "task-not-found"}
     ts = datetime.now(timezone.utc).astimezone().isoformat()
     meta = dict(task.meta)
     attempts = int(meta.get("continuation_wake_attempt_count") or 0)
