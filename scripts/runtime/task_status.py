@@ -9,6 +9,9 @@ from typing import Optional
 from task_config import TaskSystemConfig, load_task_system_config
 from task_state import TaskPaths, TaskStore, default_paths
 
+FINAL_INSTRUCTION_DIRS = ("processed-instructions", "failed-instructions")
+INTERMEDIATE_DELIVERY_DIRS = ("outbox", "sent", "delivery-ready", "send-instructions")
+
 
 def _artifact_path(paths: TaskPaths, directory: str, task_id: str) -> Path:
     return paths.data_dir / directory / f"{task_id}.json"
@@ -49,6 +52,22 @@ def _resolve_delivery_state(
     return "not-requested"
 
 
+def _stale_intermediate_paths(
+    task_id: str,
+    *,
+    paths: TaskPaths,
+    processed_instruction_exists: bool,
+    failed_instruction_exists: bool,
+) -> list[Path]:
+    if not processed_instruction_exists and not failed_instruction_exists:
+        return []
+    return [
+        _artifact_path(paths, directory, task_id)
+        for directory in INTERMEDIATE_DELIVERY_DIRS
+        if _artifact_path(paths, directory, task_id).exists()
+    ]
+
+
 def build_delivery_summary(task_id: str, *, paths: TaskPaths) -> dict[str, object]:
     outbox_path = _artifact_path(paths, "outbox", task_id)
     sent_path = _artifact_path(paths, "sent", task_id)
@@ -57,6 +76,8 @@ def build_delivery_summary(task_id: str, *, paths: TaskPaths) -> dict[str, objec
     dispatch_result_path = _artifact_path(paths, "dispatch-results", task_id)
     processed_instruction_path = _artifact_path(paths, "processed-instructions", task_id)
     failed_instruction_path = _artifact_path(paths, "failed-instructions", task_id)
+    processed_instruction_exists = processed_instruction_path.exists()
+    failed_instruction_exists = failed_instruction_path.exists()
 
     dispatch_result = _load_json_if_exists(dispatch_result_path)
     delivery_state = _resolve_delivery_state(
@@ -64,9 +85,15 @@ def build_delivery_summary(task_id: str, *, paths: TaskPaths) -> dict[str, objec
         sent_exists=sent_path.exists(),
         delivery_ready_exists=delivery_ready_path.exists(),
         send_instruction_exists=send_instruction_path.exists(),
-        processed_instruction_exists=processed_instruction_path.exists(),
-        failed_instruction_exists=failed_instruction_path.exists(),
+        processed_instruction_exists=processed_instruction_exists,
+        failed_instruction_exists=failed_instruction_exists,
         dispatch_result=dispatch_result,
+    )
+    stale_paths = _stale_intermediate_paths(
+        task_id,
+        paths=paths,
+        processed_instruction_exists=processed_instruction_exists,
+        failed_instruction_exists=failed_instruction_exists,
     )
     return {
         "state": delivery_state,
@@ -74,9 +101,11 @@ def build_delivery_summary(task_id: str, *, paths: TaskPaths) -> dict[str, objec
         "sent_exists": sent_path.exists(),
         "delivery_ready_exists": delivery_ready_path.exists(),
         "send_instruction_exists": send_instruction_path.exists(),
-        "processed_instruction_exists": processed_instruction_path.exists(),
-        "failed_instruction_exists": failed_instruction_path.exists(),
+        "processed_instruction_exists": processed_instruction_exists,
+        "failed_instruction_exists": failed_instruction_exists,
         "dispatch_result_exists": dispatch_result_path.exists(),
+        "stale_intermediate_exists": bool(stale_paths),
+        "stale_intermediate_count": len(stale_paths),
         "dispatch_action": dispatch_result.get("action") if dispatch_result else None,
         "dispatch_reason": dispatch_result.get("reason") if dispatch_result else None,
         "dispatch_execution_context": dispatch_result.get("execution_context") if dispatch_result else None,
@@ -153,6 +182,8 @@ def build_system_overview(
 
     inflight_counts = Counter(str(status["status"]) for status in inflight_statuses)
     delivery_counts = Counter(str(status["delivery"]["state"]) for status in inflight_statuses)
+    stale_delivery_task_count = sum(1 for status in inflight_statuses if status["delivery"]["stale_intermediate_exists"])
+    stale_delivery_artifact_count = sum(int(status["delivery"]["stale_intermediate_count"]) for status in inflight_statuses)
 
     archived_counts: Counter[str] = Counter()
     for archived_path in sorted(resolved_paths.archive_dir.glob("*.json")):
@@ -165,6 +196,8 @@ def build_system_overview(
         "active_task_count": len(inflight_statuses),
         "active_status_counts": dict(sorted(inflight_counts.items())),
         "active_delivery_counts": dict(sorted(delivery_counts.items())),
+        "stale_delivery_task_count": stale_delivery_task_count,
+        "stale_delivery_artifact_count": stale_delivery_artifact_count,
         "archived_task_count": sum(archived_counts.values()),
         "archived_status_counts": dict(sorted(archived_counts.items())),
         "outbox_count": len(list((resolved_paths.data_dir / "outbox").glob("*.json"))),
@@ -210,6 +243,8 @@ def render_status_markdown(
         f"- delivery.processed_instruction_exists: {status['delivery']['processed_instruction_exists']}",
         f"- delivery.failed_instruction_exists: {status['delivery']['failed_instruction_exists']}",
         f"- delivery.dispatch_result_exists: {status['delivery']['dispatch_result_exists']}",
+        f"- delivery.stale_intermediate_exists: {status['delivery']['stale_intermediate_exists']}",
+        f"- delivery.stale_intermediate_count: {status['delivery']['stale_intermediate_count']}",
     ]
     if status["delivery"]["dispatch_action"]:
         lines.append(f"- delivery.dispatch_action: {status['delivery']['dispatch_action']}")
@@ -269,6 +304,8 @@ def render_overview_markdown(
         f"- processed_instruction_count: {overview['processed_instruction_count']}",
         f"- failed_instruction_count: {overview['failed_instruction_count']}",
         f"- dispatch_result_count: {overview['dispatch_result_count']}",
+        f"- stale_delivery_task_count: {overview['stale_delivery_task_count']}",
+        f"- stale_delivery_artifact_count: {overview['stale_delivery_artifact_count']}",
     ]
     if overview["active_status_counts"]:
         lines.append(f"- active_status_counts: {json.dumps(overview['active_status_counts'], ensure_ascii=False)}")

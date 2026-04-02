@@ -36,6 +36,8 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(summary["task_label"], "status task")
         self.assertIn("delivery", summary)
         self.assertEqual(summary["delivery"]["state"], "not-requested")
+        self.assertFalse(summary["delivery"]["stale_intermediate_exists"])
+        self.assertEqual(summary["delivery"]["stale_intermediate_count"], 0)
         self.assertFalse(summary["delivery"]["dispatch_result_exists"])
 
     def test_render_status_markdown_includes_key_lines(self) -> None:
@@ -50,6 +52,7 @@ class TaskStatusTests(unittest.TestCase):
         self.assertIn(f"# Task Status: {task.task_id}", markdown)
         self.assertIn("- status: queued", markdown)
         self.assertIn("- delivery.state: not-requested", markdown)
+        self.assertIn("- delivery.stale_intermediate_exists: False", markdown)
         self.assertIn("- delivery.outbox_exists: False", markdown)
 
     def test_list_inflight_statuses_returns_registered_task(self) -> None:
@@ -99,6 +102,8 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(overview["archived_task_count"], 1)
         self.assertEqual(overview["active_status_counts"], {"running": 1})
         self.assertEqual(overview["active_delivery_counts"], {"not-requested": 1})
+        self.assertEqual(overview["stale_delivery_task_count"], 0)
+        self.assertEqual(overview["stale_delivery_artifact_count"], 0)
         self.assertEqual(overview["archived_status_counts"], {"done": 1})
 
     def test_render_overview_markdown_includes_counts(self) -> None:
@@ -113,6 +118,7 @@ class TaskStatusTests(unittest.TestCase):
         markdown = task_status.render_overview_markdown(paths=self.paths)
         self.assertIn("# Task System Overview", markdown)
         self.assertIn("- active_task_count: 1", markdown)
+        self.assertIn("- stale_delivery_task_count: 0", markdown)
         self.assertIn("- active_status_counts: {\"running\": 1}", markdown)
         self.assertIn(task.task_id, markdown)
 
@@ -164,6 +170,7 @@ class TaskStatusTests(unittest.TestCase):
         summary = task_status.build_status_summary(task.task_id, paths=self.paths)
         self.assertTrue(summary["delivery"]["dispatch_result_exists"])
         self.assertEqual(summary["delivery"]["state"], "not-requested")
+        self.assertFalse(summary["delivery"]["stale_intermediate_exists"])
         self.assertEqual(summary["delivery"]["dispatch_action"], "send")
         self.assertEqual(summary["delivery"]["dispatch_execution_context"], "dry-run")
         self.assertEqual(summary["delivery"]["dispatch_requested_execution_context"], "host")
@@ -203,6 +210,7 @@ class TaskStatusTests(unittest.TestCase):
         )
         summary = task_status.build_status_summary(task.task_id, paths=self.paths)
         self.assertEqual(summary["delivery"]["state"], "processed")
+        self.assertFalse(summary["delivery"]["stale_intermediate_exists"])
 
     def test_build_status_summary_reports_skipped_delivery_state(self) -> None:
         task = self.store.register_task(
@@ -239,3 +247,28 @@ class TaskStatusTests(unittest.TestCase):
         )
         summary = task_status.build_status_summary(task.task_id, paths=self.paths)
         self.assertEqual(summary["delivery"]["state"], "skipped")
+        self.assertFalse(summary["delivery"]["stale_intermediate_exists"])
+
+    def test_build_status_summary_reports_stale_intermediate_artifacts(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="telegram",
+            chat_id="chat:test",
+            task_label="status stale task",
+        )
+        processed_dir = self.paths.data_dir / "processed-instructions"
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        (processed_dir / f"{task.task_id}.json").write_text(
+            json.dumps({"task_id": task.task_id}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        sent_dir = self.paths.data_dir / "sent"
+        sent_dir.mkdir(parents=True, exist_ok=True)
+        (sent_dir / f"{task.task_id}.json").write_text(
+            json.dumps({"task_id": task.task_id}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        summary = task_status.build_status_summary(task.task_id, paths=self.paths)
+        self.assertTrue(summary["delivery"]["stale_intermediate_exists"])
+        self.assertEqual(summary["delivery"]["stale_intermediate_count"], 1)

@@ -256,6 +256,16 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 - `skipped`
 - `failed`
 
+状态查询还会暴露残留中间产物：
+
+- `delivery.stale_intermediate_exists`
+- `delivery.stale_intermediate_count`
+
+总览里也会汇总：
+
+- `stale_delivery_task_count`
+- `stale_delivery_artifact_count`
+
 如果要检查历史遗留的中间投递产物，比如任务已经进入 `processed-instructions/` 或 `failed-instructions/`，但仍残留 `sent/`、`delivery-ready/`、`send-instructions/`，使用：
 
 ```bash
