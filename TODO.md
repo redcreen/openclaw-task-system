@@ -252,6 +252,20 @@
   - 更低成本的日常管理界面
   - 更接近面板/小组件的交互入口
 
+### 2. Feishu 离线期间新消息补收
+
+当前状态：暂缓，不作为当前主线继续推进
+
+- 目标原本是：
+  - OpenClaw 关闭期间，如果 Feishu 来了新消息
+  - 启动 OpenClaw 后再主动补拉 missed messages
+- 当前判断：
+  - 技术路径上可走“启动后 backfill missed messages”
+  - 但现有授权缺少 `im:message.history:readonly`
+- 结论：
+  - 在当前权限条件下，无法可靠实现 Feishu 离线历史消息补收
+  - 这条线先记录为权限阻塞项，暂不继续开发
+
 
 ## 未单独处理的历史问题
 

@@ -1111,6 +1111,7 @@ const taskSystemPlugin = {
     let hostDeliveryTimer: ReturnType<typeof setInterval> | null = null;
     let continuationTimer: ReturnType<typeof setInterval> | null = null;
     let watchdogRecoveryTimer: ReturnType<typeof setInterval> | null = null;
+    let startupWatchdogRecoveryRetryTimer: ReturnType<typeof setTimeout> | null = null;
     const pendingReceipts = new Map<string, PendingReceipt>();
     const activeTaskBindings = new Map<string, ActiveTaskBinding>();
     const taskMonitorEnabledBySession = new Map<string, boolean>();
@@ -1622,7 +1623,18 @@ const taskSystemPlugin = {
           watchdogRecoveryTimer = setInterval(() => {
             void processWatchdogRecovery(api, config);
           }, config.watchdogRecoveryPollMs);
+          await appendDebugLog(config, "watchdog-auto-recover:startup-kickoff", {
+            startupRecovery: true,
+            attempt: "initial",
+          });
           await processWatchdogRecovery(api, config, { startupRecovery: true });
+          startupWatchdogRecoveryRetryTimer = setTimeout(() => {
+            void appendDebugLog(config, "watchdog-auto-recover:startup-kickoff", {
+              startupRecovery: true,
+              attempt: "delayed-retry",
+            });
+            void processWatchdogRecovery(api, config, { startupRecovery: true });
+          }, 10000);
         }
         if (!config.enableHostFeishuDelivery) {
           if (config.enableContinuationRunner) {
@@ -1652,6 +1664,10 @@ const taskSystemPlugin = {
         if (watchdogRecoveryTimer) {
           clearInterval(watchdogRecoveryTimer);
           watchdogRecoveryTimer = null;
+        }
+        if (startupWatchdogRecoveryRetryTimer) {
+          clearTimeout(startupWatchdogRecoveryRetryTimer);
+          startupWatchdogRecoveryRetryTimer = null;
         }
         if (continuationTimer) {
           clearInterval(continuationTimer);
