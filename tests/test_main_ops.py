@@ -155,12 +155,19 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertEqual(summary["status"], "warn")
         self.assertEqual(summary["continuity"]["auto_resumable_task_count"], 1)
+        self.assertTrue(summary["auto_resume_ready"])
+        self.assertTrue(summary["auto_resume_safe_to_apply"])
+        self.assertEqual(summary["auto_resume_blockers"], [])
         self.assertEqual(summary["top_followup_session"]["session_key"], "session:main:dashboard-risk")
         self.assertEqual(summary["focus_session_key"], "session:main:dashboard-risk")
         self.assertEqual(summary["top_followup_session"]["auto_resumable_count"], 1)
         self.assertEqual(summary["action_hint"], "Apply the watchdog auto-resume plan now.")
         self.assertEqual(
             summary["action_hint_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+        )
+        self.assertEqual(
+            summary["auto_resume_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
         )
         self.assertEqual(summary["primary_action_kind"], "apply-auto-resume")
@@ -330,9 +337,14 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["compact_summary"]["status"], "ok")
         self.assertEqual(summary["compact_summary"]["top_followup_session_summary"], "none")
         self.assertEqual(summary["compact_summary"]["action_hint"], "No immediate action needed.")
+        self.assertEqual(summary["compact_summary"]["auto_resume_summary"], "none")
         self.assertEqual(summary["action_hint"], "No immediate action needed.")
         self.assertIsNone(summary["focus_session_key"])
         self.assertIsNone(summary["action_hint_command"])
+        self.assertFalse(summary["auto_resume_ready"])
+        self.assertFalse(summary["auto_resume_safe_to_apply"])
+        self.assertEqual(summary["auto_resume_blockers"], [])
+        self.assertIsNone(summary["auto_resume_command"])
         self.assertEqual(summary["compact_summary"]["action_hint_command_summary"], "none")
         self.assertEqual(summary["primary_action_kind"], "none")
         self.assertIsNone(summary["primary_action_command"])
@@ -353,6 +365,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertFalse(summary["issue_summary"]["has_issues"])
         self.assertIsNone(summary["issue_summary"]["action_hint"])
         self.assertIsNone(summary["issue_summary"]["action_hint_command"])
+        self.assertFalse(summary["issue_summary"]["auto_resume_ready"])
+        self.assertFalse(summary["issue_summary"]["auto_resume_safe_to_apply"])
+        self.assertEqual(summary["issue_summary"]["auto_resume_blockers"], [])
+        self.assertIsNone(summary["issue_summary"]["auto_resume_command"])
         self.assertEqual(summary["issue_summary"]["primary_action_kind"], "none")
         self.assertIsNone(summary["issue_summary"]["primary_action_command"])
         self.assertEqual(summary["issue_summary"]["runbook_status"], "ok")

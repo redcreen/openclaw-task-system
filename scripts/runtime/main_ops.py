@@ -1382,6 +1382,7 @@ def render_main_dashboard(
                 f"- main_active_task_count: {summary['health']['main_active_task_count']}",
                 f"- main_blocked_task_count: {summary['health']['main_blocked_task_count']}",
                 f"- continuity_risk: auto={summary['continuity']['auto_resumable_task_count']} manual={summary['continuity']['manual_review_task_count']}",
+                f"- auto_resume_safe_to_apply: {summary['auto_resume_safe_to_apply']}",
                 f"- top_followup_session: {summary['top_followup_session']['session_key'] if summary['top_followup_session'] else 'none'}",
                 f"- action_hint: {summary['action_hint']}",
             ]
@@ -1411,6 +1412,7 @@ def render_main_dashboard(
             f"- queues: {compact_summary['queue_count']}",
             f"- lanes: {compact_summary['lane_agent_count']}",
             f"- continuity_risk: auto={compact_summary['continuity_auto_resumable_task_count']} manual={compact_summary['continuity_manual_review_task_count']}",
+            f"- auto_resume: {compact_summary['auto_resume_summary']}",
             f"- top_followup_session: {compact_summary['top_followup_session_summary']}",
             f"- action_hint: {compact_summary['action_hint']}",
             f"- action_hint_command: {compact_summary['action_hint_command_summary']}",
@@ -1429,6 +1431,9 @@ def render_main_dashboard(
         f"- lane_agent_count: {summary['lanes']['agent_count']}",
         f"- continuity_auto_resumable_task_count: {summary['continuity']['auto_resumable_task_count']}",
         f"- continuity_manual_review_task_count: {summary['continuity']['manual_review_task_count']}",
+        f"- auto_resume_ready: {summary['auto_resume_ready']}",
+        f"- auto_resume_safe_to_apply: {summary['auto_resume_safe_to_apply']}",
+        f"- auto_resume_command: {summary['auto_resume_command'] or 'none'}",
         f"- top_followup_session: {summary['top_followup_session']['session_key'] if summary['top_followup_session'] else 'none'}",
         f"- action_hint: {summary['action_hint']}",
         f"- action_hint_command: {summary['action_hint_command'] or 'none'}",
@@ -1530,6 +1535,13 @@ def get_main_dashboard_summary(
         "lane_agent_count": lanes["agent_count"],
         "continuity_auto_resumable_task_count": continuity["auto_resumable_task_count"],
         "continuity_manual_review_task_count": continuity["manual_review_task_count"],
+        "auto_resume_summary": (
+            "safe"
+            if continuity.get("auto_resume_safe_to_apply")
+            else "blocked"
+            if continuity.get("auto_resume_ready")
+            else "none"
+        ),
         "top_followup_session_summary": (
             str(top_followup_session["session_key"])
             if top_followup_session
@@ -1566,6 +1578,12 @@ def get_main_dashboard_summary(
         "main_blocked_task_count": health["main_blocked_task_count"],
         "continuity_auto_resumable_task_count": continuity["auto_resumable_task_count"],
         "continuity_manual_review_task_count": continuity["manual_review_task_count"],
+        "auto_resume_ready": bool(continuity.get("auto_resume_ready")),
+        "auto_resume_safe_to_apply": bool(continuity.get("auto_resume_safe_to_apply")),
+        "auto_resume_blockers": list(continuity.get("auto_resume_blockers", [])),
+        "auto_resume_command": continuity.get("primary_action_command")
+        if str(continuity.get("primary_action_kind") or "").strip() in {"apply-auto-resume", "preview-auto-resume"}
+        else None,
         "top_followup_session": top_followup_session["session_key"] if top_followup_session else None,
         "action_hint": action_hint if status != "ok" else None,
         "action_hint_command": action_hint_command if status != "ok" else None,
@@ -1645,6 +1663,12 @@ def get_main_dashboard_summary(
         "continuity": continuity,
         "top_followup_session": top_followup_session,
         "focus_session_key": top_followup_session["session_key"] if top_followup_session else None,
+        "auto_resume_ready": bool(continuity.get("auto_resume_ready")),
+        "auto_resume_safe_to_apply": bool(continuity.get("auto_resume_safe_to_apply")),
+        "auto_resume_blockers": list(continuity.get("auto_resume_blockers", [])),
+        "auto_resume_command": continuity.get("primary_action_command")
+        if str(continuity.get("primary_action_kind") or "").strip() in {"apply-auto-resume", "preview-auto-resume"}
+        else None,
         "action_hint": action_hint,
         "action_hint_command": action_hint_command,
         "primary_action_kind": primary_action["kind"],

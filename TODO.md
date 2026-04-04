@@ -180,6 +180,7 @@
   - 不 safe 时返回 `noop / skipped`
 - `dashboard` 在 continuity 风险场景下也已继承这条主动作，不再只停在“follow up session”
 - `continuity --auto-resume-if-safe --json` 也已统一提供顶层 `closure_complete / primary_action / runbook`
+- `dashboard --json` / `issue_summary` 也已统一提供 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_blockers / auto_resume_command`
 - 现在剩余的真正残留主要是：
   - 恢复后的最终自动收口判定
   - watchdog 与长任务续跑的更完整自动策略
