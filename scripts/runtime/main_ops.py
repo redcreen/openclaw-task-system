@@ -639,6 +639,7 @@ def resume_watchdog_blocked_main_tasks(
                 {
                     "session_key": resumed_session_key,
                     "followup_state": "settled",
+                    "followup_state_reason": "no-active-tasks-after-resume",
                     "followup_priority": None,
                     "active_task_count": 0,
                     "status_counts": {},
@@ -653,6 +654,7 @@ def resume_watchdog_blocked_main_tasks(
             {
                 "session_key": resumed_session_key,
                 "followup_state": "needs-followup",
+                "followup_state_reason": "active-tasks-remain-after-resume",
                 "followup_priority": None,
                 "active_task_count": len(session_tasks),
                 "status_counts": status_counts,
@@ -764,7 +766,7 @@ def render_resume_watchdog_blocked_result(result: dict[str, object]) -> str:
         lines.extend(["", "## Follow-up Priorities", ""])
         for entry in needs_followup:
             lines.append(
-                f"- P{entry.get('followup_priority') or '?'} | {entry.get('session_key')} | status_counts={json.dumps(entry.get('status_counts', {}), ensure_ascii=False, sort_keys=True)}"
+                f"- P{entry.get('followup_priority') or '?'} | {entry.get('session_key')} | status_counts={json.dumps(entry.get('status_counts', {}), ensure_ascii=False, sort_keys=True)} | reason={entry.get('followup_state_reason', 'unknown')}"
             )
             if entry.get("next_command"):
                 lines.append(f"  next: {entry['next_command']}")
@@ -772,7 +774,7 @@ def render_resume_watchdog_blocked_result(result: dict[str, object]) -> str:
         lines.extend(["", "## Needs Follow-up", ""])
         for entry in needs_followup:
             lines.append(
-                f"- {entry.get('session_key')} | active_task_count={entry.get('active_task_count', 0)} | status_counts={json.dumps(entry.get('status_counts', {}), ensure_ascii=False, sort_keys=True)}"
+                f"- {entry.get('session_key')} | active_task_count={entry.get('active_task_count', 0)} | status_counts={json.dumps(entry.get('status_counts', {}), ensure_ascii=False, sort_keys=True)} | reason={entry.get('followup_state_reason', 'unknown')}"
             )
             if entry.get("task_labels"):
                 lines.append(f"  labels: {', '.join(list(entry['task_labels'])[:3])}")
@@ -783,7 +785,7 @@ def render_resume_watchdog_blocked_result(result: dict[str, object]) -> str:
         lines.extend(["", "## Settled", ""])
         for entry in settled:
             lines.append(
-                f"- {entry.get('session_key')} | active_task_count={entry.get('active_task_count', 0)}"
+                f"- {entry.get('session_key')} | active_task_count={entry.get('active_task_count', 0)} | reason={entry.get('followup_state_reason', 'unknown')}"
             )
             if entry.get("next_command"):
                 lines.append(f"  next: {entry['next_command']}")

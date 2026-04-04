@@ -535,6 +535,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["execution_recommendation"], "parallel-safe")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["session_key"], "session:main:blocked:one")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "needs-followup")
+        self.assertEqual(
+            result["post_resume_summary"]["sessions"][0]["followup_state_reason"],
+            "active-tasks-remain-after-resume",
+        )
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_priority"], 1)
         self.assertEqual(result["post_resume_summary"]["followup_priorities"][0]["session_key"], "session:main:blocked:one")
         self.assertEqual(result["post_resume_summary"]["top_followup_session"]["session_key"], "session:main:blocked:one")
@@ -593,6 +597,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["execution_recommendation"], "parallel-safe")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["session_key"], "session:main:focus")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "needs-followup")
+        self.assertEqual(
+            result["post_resume_summary"]["sessions"][0]["followup_state_reason"],
+            "active-tasks-remain-after-resume",
+        )
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_priority"], 1)
         self.assertEqual(result["post_resume_summary"]["top_followup_session"]["session_key"], "session:main:focus")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["running"], 1)
@@ -658,6 +666,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["session_key"], "session:main:running")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "needs-followup")
+        self.assertEqual(
+            result["post_resume_summary"]["sessions"][0]["followup_state_reason"],
+            "active-tasks-remain-after-resume",
+        )
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_priority"], 1)
         self.assertEqual(result["post_resume_summary"]["top_followup_session"]["session_key"], "session:main:running")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["running"], 1)
@@ -697,6 +709,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "settled")
+        self.assertEqual(
+            result["post_resume_summary"]["sessions"][0]["followup_state_reason"],
+            "no-active-tasks-after-resume",
+        )
         self.assertEqual(result["post_resume_summary"]["followup_priorities"], [])
         self.assertIsNone(result["post_resume_summary"]["top_followup_session"])
         refreshed = self.store.load_task(first.task_id)
@@ -726,6 +742,7 @@ class MainOpsTests(unittest.TestCase):
                         {
                             "session_key": "session:main:followup",
                             "followup_state": "needs-followup",
+                            "followup_state_reason": "active-tasks-remain-after-resume",
                             "followup_priority": 1,
                             "active_task_count": 1,
                             "status_counts": {"running": 1},
@@ -735,6 +752,7 @@ class MainOpsTests(unittest.TestCase):
                         {
                             "session_key": "session:main:settled",
                             "followup_state": "settled",
+                            "followup_state_reason": "no-active-tasks-after-resume",
                             "followup_priority": None,
                             "active_task_count": 0,
                             "status_counts": {},
@@ -756,10 +774,12 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("# Continuity Resume", rendered)
         self.assertIn("## Follow-up Priorities", rendered)
         self.assertIn("P1 | session:main:followup", rendered)
+        self.assertIn("reason=active-tasks-remain-after-resume", rendered)
         self.assertIn("## Needs Follow-up", rendered)
         self.assertIn("session:main:followup", rendered)
         self.assertIn("## Settled", rendered)
         self.assertIn("session:main:settled", rendered)
+        self.assertIn("reason=no-active-tasks-after-resume", rendered)
         self.assertIn("## Skipped", rendered)
         self.assertIn("blocked-by-serial-execution-advice", rendered)
         self.assertIn("## Suggested Commands", rendered)
