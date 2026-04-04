@@ -91,11 +91,15 @@ def render_main_continuity(
     *,
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
 ) -> str:
     resolved_paths = _resolve_paths(config_path, paths=paths)
     runtime_config = load_task_system_config(config_path=config_path)
     store = TaskStore(paths=resolved_paths)
+    normalized_session_key = str(session_key or "").strip() or None
     main_tasks = store.find_inflight_tasks(agent_id="main")
+    if normalized_session_key:
+        main_tasks = [task for task in main_tasks if task.session_key == normalized_session_key]
     blocked_without_watchdog = [
         task
         for task in main_tasks
@@ -168,6 +172,7 @@ def render_main_continuity(
     lines = [
         "# Main Continuity",
         "",
+        f"- session_filter: {normalized_session_key or 'all'}",
         f"- silence_monitor_enabled: {monitor.enabled}",
         f"- silent_timeout_seconds: {monitor.silent_timeout_seconds}",
         f"- resend_interval_seconds: {monitor.resend_interval_seconds}",
@@ -1100,6 +1105,11 @@ def main() -> None:
     subparsers.add_parser("queues", help="Show current queue topology across agents and sessions.")
     continuity_parser = subparsers.add_parser("continuity", help="Show main-agent continuity/watchdog risk summary.")
     continuity_parser.add_argument(
+        "--session-key",
+        default=None,
+        help="Only inspect continuity risk for one main session.",
+    )
+    continuity_parser.add_argument(
         "--resume-watchdog-blocked",
         action="store_true",
         help="Resume watchdog-blocked main tasks instead of only showing the summary.",
@@ -1266,7 +1276,14 @@ def main() -> None:
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return
-        print(render_main_continuity(config_path=config_path, paths=paths), end="")
+        print(
+            render_main_continuity(
+                config_path=config_path,
+                paths=paths,
+                session_key=args.session_key,
+            ),
+            end="",
+        )
         return
     if args.command == "health":
         print(render_main_health(config_path=config_path), end="")

@@ -211,6 +211,7 @@
 
 - 当前持续执行 / watchdog 风险摘要：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '<session_key>'`
   输出会分成：
   - `Auto-Resumable`
   - `Needs Manual Review`

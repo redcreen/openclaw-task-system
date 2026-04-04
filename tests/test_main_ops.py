@@ -104,6 +104,7 @@ class MainOpsTests(unittest.TestCase):
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
 
         self.assertIn("# Main Continuity", rendered)
+        self.assertIn("- session_filter: all", rendered)
         self.assertIn("- No continuity risk is currently detected for main.", rendered)
 
     def test_render_main_continuity_includes_watchdog_blocked_task(self) -> None:
@@ -159,6 +160,38 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("## By Session", rendered)
         self.assertIn("session:main:queued | auto_resumable=0 | manual_review=1 | not_recommended=0", rendered)
         self.assertIn("session:main:blocked:manual | auto_resumable=0 | manual_review=0 | not_recommended=1", rendered)
+
+    def test_render_main_continuity_can_filter_to_one_session(self) -> None:
+        queued = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:focus",
+            channel="telegram",
+            chat_id="chat:main:focus",
+            task_label="focus overdue task",
+        )
+        queued_task = self.store.start_task(queued.task_id)
+        queued_task.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        self.store.save_task(queued_task)
+
+        other = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:other",
+            channel="telegram",
+            chat_id="chat:main:other",
+            task_label="other blocked task",
+        )
+        self.store.block_task(other.task_id, "waiting elsewhere")
+
+        rendered = main_ops.render_main_continuity(
+            config_path=self._config_path(),
+            paths=self.paths,
+            session_key="session:main:focus",
+        )
+
+        self.assertIn("- session_filter: session:main:focus", rendered)
+        self.assertIn("focus overdue task", rendered)
+        self.assertNotIn("other blocked task", rendered)
+        self.assertIn("session:main:focus | auto_resumable=0 | manual_review=1 | not_recommended=0", rendered)
 
     def test_resume_watchdog_blocked_main_tasks_resumes_only_selected_candidates(self) -> None:
         first = self.store.register_task(
