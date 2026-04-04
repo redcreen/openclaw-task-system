@@ -400,6 +400,10 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertEqual(summary["session_filter"], "all")
         self.assertEqual(summary["active_monitored_task_count"], 0)
+        self.assertFalse(summary["auto_resume_ready"])
+        self.assertEqual(summary["auto_resume_mode"], "none")
+        self.assertIsNone(summary["auto_resume_preview_command"])
+        self.assertIsNone(summary["auto_resume_apply_command"])
         self.assertIsNone(summary["top_risk_session"])
         self.assertEqual(summary["primary_action"]["kind"], "none")
         self.assertEqual(summary["runbook"]["status"], "ok")
@@ -437,6 +441,31 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- execution_recommendation: parallel-safe", rendered)
         self.assertIn("## Execution Plan", rendered)
         self.assertIn("Run a dry-run first to preview which watchdog-blocked tasks are eligible.", rendered)
+
+    def test_get_main_continuity_summary_exposes_auto_resume_plan(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:auto-resume",
+            channel="telegram",
+            chat_id="chat:main:auto-resume",
+            task_label="auto resumable blocked task",
+        )
+        blocked = self.store.block_task(task.task_id, "watchdog blocked")
+        blocked.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked)
+
+        summary = main_ops.get_main_continuity_summary(config_path=self._config_path(), paths=self.paths)
+
+        self.assertTrue(summary["auto_resume_ready"])
+        self.assertEqual(summary["auto_resume_mode"], "direct")
+        self.assertEqual(
+            summary["auto_resume_preview_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run",
+        )
+        self.assertEqual(
+            summary["auto_resume_apply_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked",
+        )
 
     def test_render_main_continuity_separates_manual_review_and_not_recommended(self) -> None:
         queued = self.store.register_task(

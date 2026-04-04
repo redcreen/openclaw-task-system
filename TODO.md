@@ -168,10 +168,15 @@
   - 可按当前建议执行方式收紧恢复范围
   - 真正恢复前可先 dry-run 预览
   - continuity 输出内置 execution_plan / runbook 视图
+- `continuity --json` 已直接提供：
+  - `auto_resume_ready`
+  - `auto_resume_mode`
+  - `auto_resume_preview_command`
+  - `auto_resume_apply_command`
 - 现在剩余的真正残留主要是：
-  - 恢复后的进一步自动推进，而不只是给出 runbook
   - 恢复后的最终自动收口判定
   - watchdog 与长任务续跑的更完整自动策略
+  - 在安全前提下把 auto-resume 从“可预览 / 可执行计划”再往自动执行推进一点
 
 ### 3. 并发执行策略与 lane 模型
 

@@ -482,6 +482,25 @@ def get_main_continuity_summary(
             else []
         ),
     ]
+    auto_resume_command_parts = [
+        "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked",
+        *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
+        *(["--respect-execution-advice"] if str(execution_strategy["execution_recommendation"]) == "serial" else []),
+    ]
+    auto_resume_ready = len(auto_resumable) > 0
+    auto_resume_mode = (
+        "respect-execution-advice"
+        if auto_resume_ready and str(execution_strategy["execution_recommendation"]) == "serial"
+        else "direct"
+        if auto_resume_ready
+        else "none"
+    )
+    auto_resume_apply_command = " ".join(auto_resume_command_parts) if auto_resume_ready else None
+    auto_resume_preview_command = (
+        " ".join([*auto_resume_command_parts, "--dry-run"])
+        if auto_resume_ready
+        else None
+    )
     execution_plan = _build_continuity_execution_plan(
         session_filter=normalized_session_key or "all",
         execution_recommendation=str(execution_strategy["execution_recommendation"]),
@@ -595,6 +614,10 @@ def get_main_continuity_summary(
         "by_session": by_session,
         "top_risk_session": top_risk_session,
         "focus_session_key": top_risk_session["session_key"] if top_risk_session else None,
+        "auto_resume_ready": auto_resume_ready,
+        "auto_resume_mode": auto_resume_mode,
+        "auto_resume_preview_command": auto_resume_preview_command,
+        "auto_resume_apply_command": auto_resume_apply_command,
         "primary_action_kind": primary_action["kind"],
         "primary_action_command": primary_action["command"],
         "runbook_status": runbook["status"],
