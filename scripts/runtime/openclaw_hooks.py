@@ -176,6 +176,9 @@ def watchdog_auto_recover_from_payload(
                     "task_id": blocked.task_id,
                     "session_key": blocked.session_key,
                     "task_label": blocked.task_label,
+                    "channel": blocked.channel,
+                    "account_id": blocked.account_id,
+                    "chat_id": blocked.chat_id,
                     "previous_status": "running",
                     "watchdog_escalation": "startup-recovery-stalled-running",
                 }

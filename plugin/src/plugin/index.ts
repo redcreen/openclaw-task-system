@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { appendFile, mkdir, readdir, readFile, rename } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { appendFile, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
@@ -741,6 +742,9 @@ async function processWatchdogRecovery(
     if (!sessionKey) {
       continue;
     }
+    const channel = normalizeText((item as Record<string, unknown>).channel).toLowerCase();
+    const accountId = normalizeText((item as Record<string, unknown>).account_id);
+    const chatId = normalizeText((item as Record<string, unknown>).chat_id);
     const taskLabel = normalizeText((item as Record<string, unknown>).task_label);
     const resumeMessage = [
       INTERNAL_STARTUP_RESUME_MARKER,
@@ -750,11 +754,33 @@ async function processWatchdogRecovery(
     ]
       .filter(Boolean)
       .join("\n");
-    await callGatewayCli(api, config, "sessions.steer", {
-      key: sessionKey,
-      message: resumeMessage,
-      timeoutMs: 10000,
+    const useExplicitDelivery = !!channel && !!chatId;
+    const method = useExplicitDelivery ? "chat.send" : "sessions.steer";
+    const params = useExplicitDelivery
+      ? {
+          sessionKey,
+          message: resumeMessage,
+          timeoutMs: 10000,
+          idempotencyKey: `startup-resume:${randomUUID()}`,
+          deliver: true,
+          originatingChannel: channel,
+          originatingTo: chatId,
+          ...(accountId ? { originatingAccountId: accountId } : {}),
+        }
+      : {
+          key: sessionKey,
+          message: resumeMessage,
+          timeoutMs: 10000,
+        };
+    await appendDebugLog(config, "watchdog-auto-recover:startup-dispatch", {
+      sessionKey,
+      taskLabel,
+      method,
+      channel,
+      chatId,
+      accountId,
     });
+    await callGatewayCli(api, config, method, params);
   }
 }
 

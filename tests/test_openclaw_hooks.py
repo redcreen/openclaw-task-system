@@ -179,6 +179,9 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(result["startup_recovery"], True)
         self.assertEqual(result["startup_promoted_count"], 1)
         self.assertEqual(result["startup_promoted"][0]["task_id"], task.task_id)
+        self.assertEqual(result["startup_promoted"][0]["channel"], "feishu")
+        self.assertEqual(result["startup_promoted"][0]["account_id"], "feishu1-main")
+        self.assertEqual(result["startup_promoted"][0]["chat_id"], "chat:startup-recover")
         self.assertEqual(result["status"], "applied")
         self.assertEqual(refreshed.status, task_state_module.STATUS_RUNNING)
 
