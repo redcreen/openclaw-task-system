@@ -753,6 +753,39 @@ def resume_watchdog_blocked_main_tasks(
             if top_followup_session:
                 closure_hint = f"Follow up session {top_followup_session['session_key']} next."
                 closure_hint_command = str(top_followup_session["next_command"])
+    post_resume_runbook = {
+        "status": closure_state,
+        "primary_action": {
+            "kind": (
+                "followup-session"
+                if closure_state == "needs-followup" and top_followup_session
+                else "review-lanes"
+                if closure_state == "settled"
+                else "none"
+            ),
+            "summary": closure_hint,
+            "command": closure_hint_command,
+            "session_key": top_followup_session["session_key"] if top_followup_session else None,
+        },
+        "steps": [
+            closure_hint,
+            "Review the suggested commands in order if the resumed sessions are not fully settled yet.",
+        ],
+        "commands": [
+            *( [closure_hint_command] if closure_hint_command else [] ),
+            *[
+                command
+                for command in [
+                    "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+                    *[
+                        f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{resumed_session_key}'"
+                        for resumed_session_key in sorted(resumed_session_keys)
+                    ],
+                ]
+                if command != closure_hint_command
+            ],
+        ],
+    }
     return {
         "action": "resume-watchdog-blocked-main-tasks",
         "session_filter": normalized_session_key or "all",
@@ -785,6 +818,7 @@ def resume_watchdog_blocked_main_tasks(
                 "command": closure_hint_command,
                 "session_key": top_followup_session["session_key"] if top_followup_session else None,
             },
+            "runbook": post_resume_runbook,
             "sessions": post_resume_session_summaries,
             "settled_session_count": settled_session_count,
             "needs_followup_session_count": needs_followup_session_count,

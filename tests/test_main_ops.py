@@ -576,6 +576,8 @@ class MainOpsTests(unittest.TestCase):
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
         )
         self.assertEqual(result["post_resume_summary"]["primary_action"]["kind"], "followup-session")
+        self.assertEqual(result["post_resume_summary"]["runbook"]["status"], "needs-followup")
+        self.assertEqual(result["post_resume_summary"]["runbook"]["primary_action"]["kind"], "followup-session")
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["status_counts"]["running"], 1)
@@ -778,6 +780,7 @@ class MainOpsTests(unittest.TestCase):
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
         )
         self.assertEqual(result["post_resume_summary"]["primary_action"]["kind"], "review-lanes")
+        self.assertEqual(result["post_resume_summary"]["runbook"]["status"], "settled")
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "settled")
         self.assertEqual(
@@ -884,6 +887,7 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertIsNone(result["post_resume_summary"]["closure_hint_command"])
         self.assertEqual(result["post_resume_summary"]["primary_action"]["kind"], "none")
+        self.assertEqual(result["post_resume_summary"]["runbook"]["status"], "no-resume-targets")
         self.assertIsNone(result["post_resume_summary"]["top_followup_session"])
 
     def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:

@@ -246,6 +246,7 @@
   `post_resume_summary.closure_state` 会直接标出本次恢复整体是否已收口：`no-resume-targets / settled / needs-followup`
   `post_resume_summary` 也会直接给出 `closure_hint / closure_hint_command`，提示恢复后下一步最推荐先做什么
   `post_resume_summary` 也会附带统一结构的 `primary_action`
+  `post_resume_summary.runbook` 会把恢复后的首选动作和后续命令收成一组可直接消费的步骤
   每个 resumed session 还会带 `followup_state_reason`，直接说明为什么当前被判成 settled 或 needs-followup
   `post_resume_summary.top_followup_session` 会直接给出当前最值得优先跟进的 session，方便脚本和面板直接消费
   `continuity` / `continuity --json` 也会直接给出 `top_risk_session`，方便先从风险最高的 session 开始排
