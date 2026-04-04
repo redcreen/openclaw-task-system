@@ -157,6 +157,7 @@
 - `dashboard / continuity / resume result` 已统一输出顶层 `primary_action_kind / primary_action_command`
 - `dashboard / continuity / resume result` 已统一输出顶层 `runbook_status`
 - `dashboard / continuity / resume result` 已统一输出顶层 `requires_action`
+- `dashboard --only-issues --json` 的 `issue_summary` 也已统一输出这些顶层别名字段
 - `continuity` / `dashboard` / `resume result` 已统一输出 `runbook`
 - continuity / resume 结果附带推荐下一步命令
   - continuity / resume 结果附带当前建议执行方式

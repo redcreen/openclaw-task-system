@@ -1392,6 +1392,10 @@ def get_main_dashboard_summary(
             "commands": [],
         }
     )
+    issue_summary["primary_action_kind"] = issue_summary["primary_action"]["kind"]
+    issue_summary["primary_action_command"] = issue_summary["primary_action"]["command"]
+    issue_summary["runbook_status"] = issue_summary["runbook"]["status"]
+    issue_summary["requires_action"] = bool(issue_summary["has_issues"])
     return {
         "generated_at": datetime.now(timezone.utc).astimezone().isoformat(),
         "session_filter": normalized_session_key or "all",
