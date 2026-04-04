@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -31,6 +32,13 @@ GENERIC_SUCCESS_SUMMARIES = {
 def load_payload(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def load_payload_from_stdin() -> dict[str, Any]:
+    raw = sys.stdin.read()
+    if not raw.strip():
+        return {}
+    return json.loads(raw)
 
 
 def _build_context(payload: dict[str, Any]) -> OpenClawInboundContext:
@@ -626,13 +634,11 @@ def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Pat
 
 
 if __name__ == "__main__":
-    import sys
-
     args = sys.argv[1:]
     usage = (
         "usage: openclaw_hooks.py "
         "<register|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control> "
-        "<payload.json> [config.json]"
+        "<payload.json|-> [config.json]"
     )
     if args and args[0] in {"-h", "--help"}:
         print(usage)
@@ -641,7 +647,8 @@ if __name__ == "__main__":
         raise SystemExit(usage)
 
     command = args[0]
-    payload_path = Path(args[1]).expanduser().resolve()
+    payload_source = args[1]
     config_path = Path(args[2]).expanduser().resolve() if len(args) > 2 else None
-    result = dispatch(command, load_payload(payload_path), config_path=config_path)
+    payload = load_payload_from_stdin() if payload_source == "-" else load_payload(Path(payload_source).expanduser().resolve())
+    result = dispatch(command, payload, config_path=config_path)
     print(json.dumps(result, ensure_ascii=False, indent=2))

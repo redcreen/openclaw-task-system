@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
-import { appendFile, mkdtemp, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, rename } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
@@ -186,19 +185,16 @@ async function callHook(
   payload: Record<string, unknown>,
 ): Promise<Record<string, unknown> | null> {
   const script = buildHooksScriptPath(config);
-  const tempDir = await mkdtemp(join(tmpdir(), "openclaw-task-system-"));
-  const tempPayloadPath = join(tempDir, "payload.json");
-  await writeFile(tempPayloadPath, JSON.stringify(payload, null, 2), "utf-8");
-
   try {
     enqueueDebugLog(config, `hook:${command}:start`, payload);
-    const args = [script, command, tempPayloadPath];
+    const args = [script, command, "-"];
     if (config.configPath) {
       args.push(config.configPath);
     }
     const result = await execFileAsync(config.pythonBin, args, {
       cwd: config.runtimeRoot,
       env: process.env,
+      input: JSON.stringify(payload),
     });
     const parsed = JSON.parse(result.stdout || "{}") as Record<string, unknown>;
     enqueueDebugLog(config, `hook:${command}:ok`, parsed);
@@ -208,8 +204,6 @@ async function callHook(
     enqueueDebugLog(config, `hook:${command}:error`, { message });
     api.logger.warn(`[task-system] hook ${command} failed: ${message}`);
     return null;
-  } finally {
-    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -945,6 +939,7 @@ const taskSystemPlugin = {
     const pendingReceipts = new Map<string, PendingReceipt>();
     const activeTaskBindings = new Map<string, ActiveTaskBinding>();
     const taskMonitorEnabledBySession = new Map<string, boolean>();
+    const recentActivationBySession = new Map<string, { signature: string; ts: number }>();
     if (!config.enabled) {
       api.logger.info("[task-system] plugin loaded in disabled mode");
       return;
@@ -964,9 +959,31 @@ const taskSystemPlugin = {
       return enabled;
     }
 
+    async function isTaskMonitorEnabledForSession(sessionKey: string): Promise<boolean> {
+      const normalizedSessionKey = normalizeSessionKey(sessionKey);
+      const cached = taskMonitorEnabledBySession.get(normalizedSessionKey);
+      if (typeof cached === "boolean") {
+        return cached;
+      }
+      if (activeTaskBindings.has(normalizedSessionKey)) {
+        return true;
+      }
+      return isTaskMonitorEnabled(normalizedSessionKey);
+    }
+
+    function isTaskMonitorEnabledForFollowupStage(sessionKey: string): boolean {
+      const normalizedSessionKey = normalizeSessionKey(sessionKey);
+      const cached = taskMonitorEnabledBySession.get(normalizedSessionKey);
+      if (cached === false) {
+        return false;
+      }
+      return true;
+    }
+
     function clearSessionTaskArtifacts(sessionKey: string): void {
       const normalizedSessionKey = normalizeSessionKey(sessionKey);
       activeTaskBindings.delete(normalizedSessionKey);
+      recentActivationBySession.delete(normalizedSessionKey);
       for (const [taskId, receipt] of pendingReceipts.entries()) {
         if (receipt.sessionKey !== normalizedSessionKey) {
           continue;
@@ -1171,7 +1188,7 @@ const taskSystemPlugin = {
       }
       const agentId = resolveAgentId(ctx.agentId, sessionKey, config.defaultAgentId);
       const normalizedSessionKey = normalizeSessionKey(sessionKey);
-      if (!(await isTaskMonitorEnabled(normalizedSessionKey))) {
+      if (!isTaskMonitorEnabledForFollowupStage(normalizedSessionKey)) {
         await appendDebugLog(config, "before_agent_start:taskmonitor-disabled", {
           agentId,
           sessionKey: normalizedSessionKey,
@@ -1185,6 +1202,28 @@ const taskSystemPlugin = {
         prompt: normalizeText(event.prompt).slice(0, 240),
       });
       const activeTaskBinding = activeTaskBindings.get(normalizedSessionKey);
+      const activationSignature = JSON.stringify({
+        taskId: activeTaskBinding?.taskId ?? "",
+        trigger: ctx.trigger || "unknown",
+        prompt: normalizeText(event.prompt).slice(0, 240),
+      });
+      const recentActivation = recentActivationBySession.get(normalizedSessionKey);
+      if (
+        recentActivation &&
+        recentActivation.signature === activationSignature &&
+        Date.now() - recentActivation.ts < 3000
+      ) {
+        await appendDebugLog(config, "before_agent_start:duplicate-activation-skipped", {
+          agentId,
+          sessionKey: normalizedSessionKey,
+          taskId: activeTaskBinding?.taskId ?? null,
+        });
+        return;
+      }
+      recentActivationBySession.set(normalizedSessionKey, {
+        signature: activationSignature,
+        ts: Date.now(),
+      });
       await callHook(api, config, "activate-latest", {
         agent_id: agentId,
         session_key: normalizedSessionKey,
@@ -1291,7 +1330,7 @@ const taskSystemPlugin = {
       if (!sessionKey) {
         return;
       }
-      if (!(await isTaskMonitorEnabled(sessionKey))) {
+      if (!(await isTaskMonitorEnabledForSession(sessionKey))) {
         await appendDebugLog(config, "llm_output:taskmonitor-disabled", {
           agentId: ctx.agentId || config.defaultAgentId,
           sessionKey,
@@ -1344,7 +1383,7 @@ const taskSystemPlugin = {
       if (!config.finalizeOnAgentEnd || !normalizedSessionKey) {
         return;
       }
-      if (!(await isTaskMonitorEnabled(normalizedSessionKey))) {
+      if (!(await isTaskMonitorEnabledForSession(normalizedSessionKey))) {
         await appendDebugLog(config, "agent_end:taskmonitor-disabled", {
           agentId: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
           sessionKey: normalizedSessionKey,
@@ -1388,6 +1427,7 @@ const taskSystemPlugin = {
       if (activeTaskBinding) {
         activeTaskBindings.delete(normalizedSessionKey);
       }
+      recentActivationBySession.delete(normalizedSessionKey);
     });
 
     api.registerService({
@@ -1430,6 +1470,7 @@ const taskSystemPlugin = {
         pendingReceipts.clear();
         activeTaskBindings.clear();
         taskMonitorEnabledBySession.clear();
+        recentActivationBySession.clear();
       },
     });
 

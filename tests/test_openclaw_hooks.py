@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -48,6 +50,31 @@ class OpenClawHooksTests(unittest.TestCase):
         )
         self.assertTrue(result["should_register_task"])
         self.assertIsNotNone(result["task_id"])
+
+    def test_openclaw_hooks_cli_accepts_stdin_payload(self) -> None:
+        script = Path("/Users/redcreen/.openclaw/workspace/openclaw-task-system/scripts/runtime/openclaw_hooks.py")
+        payload = {
+            "agent_id": "main",
+            "session_key": "session:stdin",
+            "channel": "feishu",
+            "account_id": "feishu1-main",
+            "chat_id": "chat:stdin",
+            "user_id": "ou_test",
+            "user_request": "帮我检查一下 stdin hook 路径",
+            "observe_only": True,
+        }
+
+        result = subprocess.run(
+            [sys.executable, str(script), "register", "-", str(self.config_path)],
+            input=json.dumps(payload, ensure_ascii=False),
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+
+        parsed = json.loads(result.stdout)
+        self.assertTrue(parsed["should_register_task"])
+        self.assertEqual(parsed["classification_reason"], "observed-task")
 
     def test_register_from_payload_includes_estimated_wait_seconds(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
