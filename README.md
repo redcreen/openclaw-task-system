@@ -211,6 +211,10 @@
 
 - 当前持续执行 / watchdog 风险摘要：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`
+  输出会分成：
+  - `Auto-Resumable`
+  - `Needs Manual Review`
+  - `Not Recommended For Auto Resume`
 
 - 恢复 watchdog 卡住的主任务：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --limit 1`

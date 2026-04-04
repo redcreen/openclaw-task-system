@@ -111,6 +111,10 @@
 - 是否已经出现 `watchdog_blocked_task`
 - 哪些任务可优先 `resume`
 - 也可以直接按限额恢复 watchdog 拦住的主任务
+- continuity 输出已按三类区分：
+  - `Auto-Resumable`
+  - `Needs Manual Review`
+  - `Not Recommended For Auto Resume`
 
 原问题：
 

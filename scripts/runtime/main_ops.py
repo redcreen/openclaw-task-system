@@ -96,6 +96,11 @@ def render_main_continuity(
     runtime_config = load_task_system_config(config_path=config_path)
     store = TaskStore(paths=resolved_paths)
     main_tasks = store.find_inflight_tasks(agent_id="main")
+    blocked_without_watchdog = [
+        task
+        for task in main_tasks
+        if task.status == "blocked" and not str(task.meta.get("watchdog_escalation") or "").strip()
+    ]
     watchdog_blocked = [
         task
         for task in main_tasks
@@ -106,6 +111,7 @@ def render_main_continuity(
         for task in main_tasks
         if task.status in {"received", "queued", "running"}
     ]
+    main_tasks_by_id = {task.task_id: task for task in main_tasks}
     monitor = runtime_config.agent_config("main").silence_monitor
     continuity_findings = (
         scan_tasks(
@@ -117,6 +123,17 @@ def render_main_continuity(
         else []
     )
     overdue_findings = [finding for finding in continuity_findings if finding.silence_seconds > monitor.silent_timeout_seconds]
+    auto_resumable = sorted(watchdog_blocked, key=lambda item: item.updated_at, reverse=True)
+    overdue_by_task_id = {finding.task_id: finding for finding in overdue_findings}
+    manual_review = sorted(
+        [finding for finding in overdue_findings if finding.task_id not in {task.task_id for task in auto_resumable}],
+        key=lambda item: (-item.silence_seconds, item.task_id),
+    )
+    not_recommended = sorted(
+        blocked_without_watchdog,
+        key=lambda item: item.updated_at,
+        reverse=True,
+    )
 
     lines = [
         "# Main Continuity",
@@ -127,26 +144,45 @@ def render_main_continuity(
         f"- active_monitored_task_count: {len(monitored_tasks)}",
         f"- overdue_monitored_task_count: {len(overdue_findings)}",
         f"- watchdog_blocked_task_count: {len(watchdog_blocked)}",
+        f"- auto_resumable_task_count: {len(auto_resumable)}",
+        f"- manual_review_task_count: {len(manual_review)}",
+        f"- not_recommended_auto_resume_count: {len(not_recommended)}",
     ]
 
-    if overdue_findings:
-        lines.extend(["", "## Overdue Main Tasks", ""])
-        for finding in sorted(overdue_findings, key=lambda item: (-item.silence_seconds, item.task_id)):
-            lines.append(
-                f"- {finding.task_id} | {finding.status} | silence={finding.silence_seconds}s | notify={finding.should_notify} | reason={finding.reason}"
-            )
-
-    if watchdog_blocked:
-        lines.extend(["", "## Watchdog-Blocked Tasks", ""])
-        for task in sorted(watchdog_blocked, key=lambda item: item.updated_at, reverse=True):
+    if auto_resumable:
+        lines.extend(["", "## Auto-Resumable", ""])
+        for task in auto_resumable:
             lines.append(
                 f"- {task.task_id} | escalation={task.meta.get('watchdog_escalation')} | updated_at={task.updated_at}"
             )
+            if task.task_id in overdue_by_task_id:
+                finding = overdue_by_task_id[task.task_id]
+                lines.append(
+                    f"  detail: silence={finding.silence_seconds}s | notify={finding.should_notify} | reason={finding.reason}"
+                )
             lines.append(
                 f"  resume: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resume {task.task_id} --note \"继续推进并同步真实进展\""
             )
 
-    if not overdue_findings and not watchdog_blocked:
+    if manual_review:
+        lines.extend(["", "## Needs Manual Review", ""])
+        for finding in manual_review:
+            task = main_tasks_by_id.get(finding.task_id)
+            lines.append(
+                f"- {finding.task_id} | {finding.status} | label={task.task_label if task else ''} | silence={finding.silence_seconds}s | notify={finding.should_notify} | reason={finding.reason}"
+            )
+
+    if not_recommended:
+        lines.extend(["", "## Not Recommended For Auto Resume", ""])
+        for task in not_recommended:
+            lines.append(
+                f"- {task.task_id} | block_reason={task.block_reason} | updated_at={task.updated_at}"
+            )
+            lines.append(
+                f"  inspect: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py show {task.task_id}"
+            )
+
+    if not auto_resumable and not manual_review and not not_recommended:
         lines.extend(["", "## Status", "", "- No continuity risk is currently detected for main."])
 
     return "\n".join(lines) + "\n"

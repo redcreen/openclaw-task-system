@@ -124,9 +124,38 @@ class MainOpsTests(unittest.TestCase):
 
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
 
-        self.assertIn("## Watchdog-Blocked Tasks", rendered)
+        self.assertIn("## Auto-Resumable", rendered)
         self.assertIn("blocked-no-visible-progress", rendered)
         self.assertIn("main_ops.py resume", rendered)
+
+    def test_render_main_continuity_separates_manual_review_and_not_recommended(self) -> None:
+        queued = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:queued",
+            channel="telegram",
+            chat_id="chat:main:queued",
+            task_label="queued overdue task",
+        )
+        queued_task = self.store.start_task(queued.task_id)
+        queued_task.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        self.store.save_task(queued_task)
+
+        blocked = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:blocked:manual",
+            channel="telegram",
+            chat_id="chat:main:blocked:manual",
+            task_label="manual blocked task",
+        )
+        self.store.block_task(blocked.task_id, "waiting for human confirmation")
+
+        rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
+
+        self.assertIn("## Needs Manual Review", rendered)
+        self.assertIn("queued overdue task", rendered)
+        self.assertIn("## Not Recommended For Auto Resume", rendered)
+        self.assertIn("waiting for human confirmation", rendered)
+        self.assertIn("main_ops.py show", rendered)
 
     def test_resume_watchdog_blocked_main_tasks_resumes_only_selected_candidates(self) -> None:
         first = self.store.register_task(
