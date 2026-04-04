@@ -251,6 +251,7 @@
   `post_resume_summary.top_followup_session` 会直接给出当前最值得优先跟进的 session，方便脚本和面板直接消费
   `continuity` / `continuity --json` 也会直接给出 `top_risk_session`，方便先从风险最高的 session 开始排
   `continuity` / `continuity --json` 同样会附带统一结构的 `primary_action`
+  `continuity` / `continuity --json` 现在也会附带 `runbook`
   文本输出和 JSON 输出都会附带推荐的下一步命令，方便继续检查对应 session 的连续执行状态
   同时会直接给出当前建议执行方式：`serial` / `serial-per-session` / `parallel-safe`
   并会附带一份 `execution_plan`，把 dry-run、尊重 advice、后续检查命令收成一份更像 runbook 的输出

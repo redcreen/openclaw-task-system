@@ -282,6 +282,19 @@ def render_main_continuity(
                 key,
             ),
         )[0]
+    primary_action = {
+        "kind": "none",
+        "summary": "No immediate continuity action is needed.",
+        "command": None,
+        "session_key": None,
+    }
+    if top_risk_session_key:
+        primary_action = {
+            "kind": "followup-session",
+            "summary": f"Inspect continuity for session {top_risk_session_key} first.",
+            "command": f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{top_risk_session_key}'",
+            "session_key": top_risk_session_key,
+        }
 
     lines = [
         "# Main Continuity",
@@ -299,6 +312,8 @@ def render_main_continuity(
         f"- manual_review_task_count: {len(manual_review)}",
         f"- not_recommended_auto_resume_count: {len(not_recommended)}",
         f"- top_risk_session: {top_risk_session_key or 'none'}",
+        f"- primary_action: {primary_action['kind']}",
+        f"- primary_action_command: {primary_action['command'] or 'none'}",
     ]
 
     if auto_resumable:
@@ -519,6 +534,18 @@ def get_main_continuity_summary(
             "command": top_risk_session["next_command"],
             "session_key": top_risk_session["session_key"],
         }
+    runbook = {
+        "status": "warn" if top_risk_session else "ok",
+        "primary_action": primary_action,
+        "steps": [
+            primary_action["summary"],
+            "Review the suggested commands in order if the first action does not resolve the highest-risk session.",
+        ],
+        "commands": [
+            *( [primary_action["command"]] if primary_action["command"] else [] ),
+            *[command for command in suggested_next_commands if command != primary_action["command"]],
+        ],
+    }
 
     return {
         "session_filter": normalized_session_key or "all",
@@ -568,6 +595,7 @@ def get_main_continuity_summary(
         "by_session": by_session,
         "top_risk_session": top_risk_session,
         "primary_action": primary_action,
+        "runbook": runbook,
         "suggested_next_commands": suggested_next_commands,
         "execution_plan": execution_plan,
     }
