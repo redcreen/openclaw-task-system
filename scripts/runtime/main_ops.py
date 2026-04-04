@@ -243,6 +243,153 @@ def render_main_continuity(
     return "\n".join(lines) + "\n"
 
 
+def get_main_continuity_summary(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=resolved_paths)
+    normalized_session_key = str(session_key or "").strip() or None
+    main_tasks = store.find_inflight_tasks(agent_id="main")
+    if normalized_session_key:
+        main_tasks = [task for task in main_tasks if task.session_key == normalized_session_key]
+    blocked_without_watchdog = [
+        task
+        for task in main_tasks
+        if task.status == "blocked" and not str(task.meta.get("watchdog_escalation") or "").strip()
+    ]
+    watchdog_blocked = [
+        task
+        for task in main_tasks
+        if task.status == "blocked" and str(task.meta.get("watchdog_escalation") or "").strip()
+    ]
+    monitored_tasks = [
+        task
+        for task in main_tasks
+        if task.status in {"received", "queued", "running"}
+    ]
+    main_tasks_by_id = {task.task_id: task for task in main_tasks}
+    monitor = runtime_config.agent_config("main").silence_monitor
+    continuity_findings = (
+        scan_tasks(
+            monitored_tasks,
+            timeout_seconds=monitor.silent_timeout_seconds,
+            resend_interval_seconds=monitor.resend_interval_seconds,
+        )
+        if monitor.enabled
+        else []
+    )
+    overdue_findings = [finding for finding in continuity_findings if finding.silence_seconds > monitor.silent_timeout_seconds]
+    auto_resumable = sorted(watchdog_blocked, key=lambda item: item.updated_at, reverse=True)
+    auto_resumable_ids = {task.task_id for task in auto_resumable}
+    manual_review = sorted(
+        [finding for finding in overdue_findings if finding.task_id not in auto_resumable_ids],
+        key=lambda item: (-item.silence_seconds, item.task_id),
+    )
+    not_recommended = sorted(
+        blocked_without_watchdog,
+        key=lambda item: item.updated_at,
+        reverse=True,
+    )
+    session_summary: dict[str, dict[str, object]] = {}
+
+    def ensure_session(summary_session_key: str) -> dict[str, object]:
+        bucket = session_summary.get(summary_session_key)
+        if bucket is None:
+            bucket = {
+                "session_key": summary_session_key,
+                "auto_resumable_count": 0,
+                "manual_review_count": 0,
+                "not_recommended_count": 0,
+                "task_labels": [],
+            }
+            session_summary[summary_session_key] = bucket
+        return bucket
+
+    for task in auto_resumable:
+        bucket = ensure_session(task.session_key)
+        bucket["auto_resumable_count"] = int(bucket["auto_resumable_count"]) + 1
+        bucket["task_labels"].append(task.task_label)
+    for finding in manual_review:
+        task = main_tasks_by_id.get(finding.task_id)
+        bucket = ensure_session(finding.session_key)
+        bucket["manual_review_count"] = int(bucket["manual_review_count"]) + 1
+        if task:
+            bucket["task_labels"].append(task.task_label)
+    for task in not_recommended:
+        bucket = ensure_session(task.session_key)
+        bucket["not_recommended_count"] = int(bucket["not_recommended_count"]) + 1
+        bucket["task_labels"].append(task.task_label)
+
+    return {
+        "session_filter": normalized_session_key or "all",
+        "silence_monitor_enabled": monitor.enabled,
+        "silent_timeout_seconds": monitor.silent_timeout_seconds,
+        "resend_interval_seconds": monitor.resend_interval_seconds,
+        "active_monitored_task_count": len(monitored_tasks),
+        "overdue_monitored_task_count": len(overdue_findings),
+        "watchdog_blocked_task_count": len(watchdog_blocked),
+        "auto_resumable_task_count": len(auto_resumable),
+        "manual_review_task_count": len(manual_review),
+        "not_recommended_auto_resume_count": len(not_recommended),
+        "auto_resumable": [
+            {
+                "task_id": task.task_id,
+                "session_key": task.session_key,
+                "task_label": task.task_label,
+                "watchdog_escalation": str(task.meta.get("watchdog_escalation") or ""),
+                "updated_at": task.updated_at,
+            }
+            for task in auto_resumable
+        ],
+        "manual_review": [
+            {
+                "task_id": finding.task_id,
+                "session_key": finding.session_key,
+                "status": finding.status,
+                "task_label": main_tasks_by_id.get(finding.task_id).task_label if main_tasks_by_id.get(finding.task_id) else "",
+                "silence_seconds": finding.silence_seconds,
+                "should_notify": finding.should_notify,
+                "reason": finding.reason,
+            }
+            for finding in manual_review
+        ],
+        "not_recommended": [
+            {
+                "task_id": task.task_id,
+                "session_key": task.session_key,
+                "task_label": task.task_label,
+                "block_reason": task.block_reason,
+                "updated_at": task.updated_at,
+            }
+            for task in not_recommended
+        ],
+        "by_session": [
+            {
+                "session_key": session_entry["session_key"],
+                "auto_resumable_count": session_entry["auto_resumable_count"],
+                "manual_review_count": session_entry["manual_review_count"],
+                "not_recommended_count": session_entry["not_recommended_count"],
+                "task_labels": sorted({str(label) for label in session_entry["task_labels"] if str(label).strip()}),
+            }
+            for session_entry in sorted(
+                session_summary.values(),
+                key=lambda item: (
+                    -(
+                        int(item["auto_resumable_count"])
+                        + int(item["manual_review_count"])
+                        + int(item["not_recommended_count"])
+                    ),
+                    str(item["session_key"]),
+                ),
+            )
+        ],
+    }
+
+
 def resume_watchdog_blocked_main_tasks(
     *,
     config_path: Optional[Path] = None,
@@ -1110,6 +1257,11 @@ def main() -> None:
         help="Only inspect continuity risk for one main session.",
     )
     continuity_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit structured JSON instead of markdown.",
+    )
+    continuity_parser.add_argument(
         "--resume-watchdog-blocked",
         action="store_true",
         help="Resume watchdog-blocked main tasks instead of only showing the summary.",
@@ -1275,6 +1427,19 @@ def main() -> None:
                 note=args.note,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
+            return
+        if args.json:
+            print(
+                json.dumps(
+                    get_main_continuity_summary(
+                        config_path=config_path,
+                        paths=paths,
+                        session_key=args.session_key,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
             return
         print(
             render_main_continuity(

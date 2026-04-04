@@ -117,6 +117,7 @@
   - `Not Recommended For Auto Resume`
 - 也已按 `session` 聚合，便于直接看问题集中在哪几个会话
 - 已支持 `--session-key` 过滤，可只看某个具体会话的 continuity 状态
+- 已支持 `--json`，便于后续给插件、状态栏或外部脚本直接消费
 
 原问题：
 
@@ -231,6 +232,7 @@
 - 查看或恢复 main 连续执行风险：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '<session_key>'`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json`
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --limit 1`
 - 查看或切换 taskmonitor：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status`

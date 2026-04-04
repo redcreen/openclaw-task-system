@@ -107,6 +107,16 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- session_filter: all", rendered)
         self.assertIn("- No continuity risk is currently detected for main.", rendered)
 
+    def test_get_main_continuity_summary_reports_empty_state(self) -> None:
+        summary = main_ops.get_main_continuity_summary(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(summary["session_filter"], "all")
+        self.assertEqual(summary["active_monitored_task_count"], 0)
+        self.assertEqual(summary["auto_resumable"], [])
+        self.assertEqual(summary["manual_review"], [])
+        self.assertEqual(summary["not_recommended"], [])
+        self.assertEqual(summary["by_session"], [])
+
     def test_render_main_continuity_includes_watchdog_blocked_task(self) -> None:
         task = self.store.register_task(
             agent_id="main",
@@ -192,6 +202,41 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("focus overdue task", rendered)
         self.assertNotIn("other blocked task", rendered)
         self.assertIn("session:main:focus | auto_resumable=0 | manual_review=1 | not_recommended=0", rendered)
+
+    def test_get_main_continuity_summary_can_filter_to_one_session(self) -> None:
+        focus = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:focus-json",
+            channel="telegram",
+            chat_id="chat:main:focus-json",
+            task_label="focus json task",
+        )
+        focus_task = self.store.start_task(focus.task_id)
+        focus_task.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        self.store.save_task(focus_task)
+
+        other = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:other-json",
+            channel="telegram",
+            chat_id="chat:main:other-json",
+            task_label="other json task",
+        )
+        self.store.block_task(other.task_id, "other blocked")
+
+        summary = main_ops.get_main_continuity_summary(
+            config_path=self._config_path(),
+            paths=self.paths,
+            session_key="session:main:focus-json",
+        )
+
+        self.assertEqual(summary["session_filter"], "session:main:focus-json")
+        self.assertEqual(summary["manual_review_task_count"], 1)
+        self.assertEqual(summary["not_recommended_auto_resume_count"], 0)
+        self.assertEqual(len(summary["manual_review"]), 1)
+        self.assertEqual(summary["manual_review"][0]["task_label"], "focus json task")
+        self.assertEqual(len(summary["by_session"]), 1)
+        self.assertEqual(summary["by_session"][0]["session_key"], "session:main:focus-json")
 
     def test_resume_watchdog_blocked_main_tasks_resumes_only_selected_candidates(self) -> None:
         first = self.store.register_task(
