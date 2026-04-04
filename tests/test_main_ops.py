@@ -100,6 +100,34 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("# TaskMonitor Overrides", rendered)
         self.assertIn("session:taskmonitor | enabled=False", rendered)
 
+    def test_render_main_continuity_reports_no_risk_when_idle(self) -> None:
+        rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
+
+        self.assertIn("# Main Continuity", rendered)
+        self.assertIn("- No continuity risk is currently detected for main.", rendered)
+
+    def test_render_main_continuity_includes_watchdog_blocked_task(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:blocked",
+            channel="telegram",
+            chat_id="chat:main:blocked",
+            task_label="blocked main task",
+        )
+        running = self.store.start_task(task.task_id)
+        running.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        running.meta["finalize_skipped_reason"] = "success-without-visible-progress"
+        self.store.save_task(running)
+
+        silence_monitor = load_runtime_module("silence_monitor")
+        silence_monitor.process_overdue_tasks(paths=self.paths)
+
+        rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
+
+        self.assertIn("## Watchdog-Blocked Tasks", rendered)
+        self.assertIn("blocked-no-visible-progress", rendered)
+        self.assertIn("main_ops.py resume", rendered)
+
     def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:
         main_running = self.store.register_task(
             agent_id="main",

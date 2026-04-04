@@ -209,6 +209,9 @@
 - 当前 lane 摘要：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes`
 
+- 当前持续执行 / watchdog 风险摘要：
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`
+
 - `main` 健康检查：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health`
 

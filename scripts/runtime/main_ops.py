@@ -17,6 +17,7 @@ from instruction_executor import (
     retry_failed_instructions,
 )
 from main_task_adapter import block_main_task, fail_main_task, finish_main_task, resume_main_task
+from silence_monitor import scan_tasks
 from task_config import load_task_system_config
 from task_status import list_inflight_statuses, render_overview_markdown, render_status_markdown
 from task_state import STATUS_QUEUED, STATUS_RUNNING, TaskPaths, TaskStore, default_paths
@@ -83,6 +84,71 @@ def render_main_health(
         lines.append("")
         for task in blocked_main:
             lines.append(f"- {task['task_id']} | {task['task_label']}")
+    return "\n".join(lines) + "\n"
+
+
+def render_main_continuity(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> str:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=resolved_paths)
+    main_tasks = store.find_inflight_tasks(agent_id="main")
+    watchdog_blocked = [
+        task
+        for task in main_tasks
+        if task.status == "blocked" and str(task.meta.get("watchdog_escalation") or "").strip()
+    ]
+    monitored_tasks = [
+        task
+        for task in main_tasks
+        if task.status in {"received", "queued", "running"}
+    ]
+    monitor = runtime_config.agent_config("main").silence_monitor
+    continuity_findings = (
+        scan_tasks(
+            monitored_tasks,
+            timeout_seconds=monitor.silent_timeout_seconds,
+            resend_interval_seconds=monitor.resend_interval_seconds,
+        )
+        if monitor.enabled
+        else []
+    )
+    overdue_findings = [finding for finding in continuity_findings if finding.silence_seconds > monitor.silent_timeout_seconds]
+
+    lines = [
+        "# Main Continuity",
+        "",
+        f"- silence_monitor_enabled: {monitor.enabled}",
+        f"- silent_timeout_seconds: {monitor.silent_timeout_seconds}",
+        f"- resend_interval_seconds: {monitor.resend_interval_seconds}",
+        f"- active_monitored_task_count: {len(monitored_tasks)}",
+        f"- overdue_monitored_task_count: {len(overdue_findings)}",
+        f"- watchdog_blocked_task_count: {len(watchdog_blocked)}",
+    ]
+
+    if overdue_findings:
+        lines.extend(["", "## Overdue Main Tasks", ""])
+        for finding in sorted(overdue_findings, key=lambda item: (-item.silence_seconds, item.task_id)):
+            lines.append(
+                f"- {finding.task_id} | {finding.status} | silence={finding.silence_seconds}s | notify={finding.should_notify} | reason={finding.reason}"
+            )
+
+    if watchdog_blocked:
+        lines.extend(["", "## Watchdog-Blocked Tasks", ""])
+        for task in sorted(watchdog_blocked, key=lambda item: item.updated_at, reverse=True):
+            lines.append(
+                f"- {task.task_id} | escalation={task.meta.get('watchdog_escalation')} | updated_at={task.updated_at}"
+            )
+            lines.append(
+                f"  resume: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resume {task.task_id} --note \"继续推进并同步真实进展\""
+            )
+
+    if not overdue_findings and not watchdog_blocked:
+        lines.extend(["", "## Status", "", "- No continuity risk is currently detected for main."])
+
     return "\n".join(lines) + "\n"
 
 
@@ -900,6 +966,7 @@ def main() -> None:
     subparsers.add_parser("overview", help="Show task system overview.")
     subparsers.add_parser("lanes", help="Show current queue/lane summary across agents.")
     subparsers.add_parser("queues", help="Show current queue topology across agents and sessions.")
+    subparsers.add_parser("continuity", help="Show main-agent continuity/watchdog risk summary.")
     subparsers.add_parser("health", help="Show main-oriented health summary.")
     subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
     subparsers.add_parser("diagnose-delivery", help="Show host-side delivery diagnosis steps for retryable failures.")
@@ -1040,6 +1107,9 @@ def main() -> None:
         return
     if args.command == "queues":
         print(render_queue_topology(config_path=config_path, paths=paths), end="")
+        return
+    if args.command == "continuity":
+        print(render_main_continuity(config_path=config_path, paths=paths), end="")
         return
     if args.command == "health":
         print(render_main_health(config_path=config_path), end="")

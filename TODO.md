@@ -97,6 +97,19 @@
 
 ### 1. 连续执行任务的持续执行机制
 
+当前状态：部分完成
+
+已新增：
+
+- `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`
+
+当前可以直接看到：
+
+- `main` 当前是否存在连续执行风险
+- watchdog 正在监控的超时任务数量
+- 是否已经出现 `watchdog_blocked_task`
+- 哪些任务可优先 `resume`
+
 原问题：
 
 - 任务看起来开始了
