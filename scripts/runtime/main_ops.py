@@ -288,7 +288,24 @@ def render_main_continuity(
         "command": None,
         "session_key": None,
     }
-    if top_risk_session_key:
+    auto_resume_command_parts = [
+        "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked",
+        *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
+        *(["--respect-execution-advice"] if str(execution_strategy["execution_recommendation"]) == "serial" else []),
+    ]
+    auto_resume_preview_command = (
+        " ".join([*auto_resume_command_parts, "--dry-run"])
+        if auto_resumable
+        else None
+    )
+    if auto_resumable and auto_resume_preview_command:
+        primary_action = {
+            "kind": "preview-auto-resume",
+            "summary": "Preview watchdog auto-resume candidates first.",
+            "command": auto_resume_preview_command,
+            "session_key": normalized_session_key or top_risk_session_key,
+        }
+    elif top_risk_session_key:
         primary_action = {
             "kind": "followup-session",
             "summary": f"Inspect continuity for session {top_risk_session_key} first.",
@@ -546,7 +563,14 @@ def get_main_continuity_summary(
         "command": None,
         "session_key": None,
     }
-    if top_risk_session:
+    if auto_resume_ready and auto_resume_preview_command:
+        primary_action = {
+            "kind": "preview-auto-resume",
+            "summary": "Preview watchdog auto-resume candidates first.",
+            "command": auto_resume_preview_command,
+            "session_key": normalized_session_key or (top_risk_session["session_key"] if top_risk_session else None),
+        }
+    elif top_risk_session:
         primary_action = {
             "kind": "followup-session",
             "summary": f"Inspect continuity for session {top_risk_session['session_key']} first.",
@@ -558,10 +582,22 @@ def get_main_continuity_summary(
         "primary_action": primary_action,
         "steps": [
             primary_action["summary"],
+            *(
+                ["If the dry-run looks right, apply the auto-resume plan next."]
+                if primary_action["kind"] == "preview-auto-resume" and auto_resume_apply_command
+                else []
+            ),
             "Review the suggested commands in order if the first action does not resolve the highest-risk session.",
         ],
         "commands": [
-            *( [primary_action["command"]] if primary_action["command"] else [] ),
+            *([primary_action["command"]] if primary_action["command"] else []),
+            *(
+                [auto_resume_apply_command]
+                if primary_action["kind"] == "preview-auto-resume"
+                and auto_resume_apply_command
+                and auto_resume_apply_command != primary_action["command"]
+                else []
+            ),
             *[command for command in suggested_next_commands if command != primary_action["command"]],
         ],
     }

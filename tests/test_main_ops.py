@@ -433,7 +433,7 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertIn("## Auto-Resumable", rendered)
         self.assertIn("- top_risk_session: session:main:blocked", rendered)
-        self.assertIn("- primary_action: followup-session", rendered)
+        self.assertIn("- primary_action: preview-auto-resume", rendered)
         self.assertIn("blocked-no-visible-progress", rendered)
         self.assertIn("main_ops.py resume", rendered)
         self.assertIn("main_ops.py continuity --session-key 'session:main:blocked'", rendered)
@@ -458,6 +458,9 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertTrue(summary["auto_resume_ready"])
         self.assertEqual(summary["auto_resume_mode"], "direct")
+        self.assertEqual(summary["primary_action_kind"], "preview-auto-resume")
+        self.assertEqual(summary["primary_action"]["kind"], "preview-auto-resume")
+        self.assertEqual(summary["runbook"]["primary_action"]["kind"], "preview-auto-resume")
         self.assertEqual(
             summary["auto_resume_preview_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run",
@@ -583,6 +586,36 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn(
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus-json'",
             summary["suggested_next_commands"],
+        )
+
+    def test_get_main_continuity_summary_prefers_auto_resume_preview_action_when_available(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:preview-first",
+            channel="telegram",
+            chat_id="chat:main:preview-first",
+            task_label="preview-first blocked task",
+        )
+        blocked = self.store.block_task(task.task_id, "watchdog blocked")
+        blocked.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked)
+
+        summary = main_ops.get_main_continuity_summary(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(summary["primary_action_kind"], "preview-auto-resume")
+        self.assertEqual(
+            summary["primary_action_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run",
+        )
+        self.assertEqual(summary["primary_action"]["kind"], "preview-auto-resume")
+        self.assertEqual(summary["runbook"]["primary_action"]["kind"], "preview-auto-resume")
+        self.assertIn(
+            "If the dry-run looks right, apply the auto-resume plan next.",
+            summary["runbook"]["steps"],
+        )
+        self.assertEqual(
+            summary["runbook"]["commands"][1],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked",
         )
 
     def test_resume_watchdog_blocked_main_tasks_resumes_only_selected_candidates(self) -> None:
