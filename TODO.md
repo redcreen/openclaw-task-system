@@ -154,6 +154,7 @@
 - `continuity --resume-watchdog-blocked --json` 已直接提供 `top_followup_session`
 - `continuity` / `continuity --json` 已直接提供 `top_risk_session`
 - `dashboard / continuity / resume result` 已统一输出 `primary_action`
+- `dashboard / continuity / resume result` 已统一输出顶层 `primary_action_kind / primary_action_command`
 - `continuity` / `dashboard` / `resume result` 已统一输出 `runbook`
 - continuity / resume 结果附带推荐下一步命令
   - continuity / resume 结果附带当前建议执行方式

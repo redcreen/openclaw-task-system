@@ -162,6 +162,11 @@ class MainOpsTests(unittest.TestCase):
             summary["action_hint_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:dashboard-risk'",
         )
+        self.assertEqual(summary["primary_action_kind"], "followup-session")
+        self.assertEqual(
+            summary["primary_action_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:dashboard-risk'",
+        )
         self.assertEqual(
             summary["suggested_next_commands"][0],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:dashboard-risk'",
@@ -325,6 +330,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["action_hint"], "No immediate action needed.")
         self.assertIsNone(summary["action_hint_command"])
         self.assertEqual(summary["compact_summary"]["action_hint_command_summary"], "none")
+        self.assertEqual(summary["primary_action_kind"], "none")
+        self.assertIsNone(summary["primary_action_command"])
         self.assertEqual(summary["primary_action"]["kind"], "none")
         self.assertEqual(summary["runbook"]["primary_action"]["kind"], "none")
         self.assertEqual(summary["compact_summary"]["taskmonitor_summary"], "override_count=0")
@@ -521,6 +528,11 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(len(summary["by_session"]), 1)
         self.assertEqual(summary["by_session"][0]["session_key"], "session:main:focus-json")
         self.assertEqual(summary["top_risk_session"]["session_key"], "session:main:focus-json")
+        self.assertEqual(summary["primary_action_kind"], "followup-session")
+        self.assertEqual(
+            summary["primary_action_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus-json'",
+        )
         self.assertEqual(summary["primary_action"]["kind"], "followup-session")
         self.assertEqual(summary["runbook"]["status"], "warn")
         self.assertEqual(summary["runbook"]["primary_action"]["kind"], "followup-session")
@@ -593,6 +605,11 @@ class MainOpsTests(unittest.TestCase):
             result["post_resume_summary"]["closure_hint_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
         )
+        self.assertEqual(result["primary_action_kind"], "followup-session")
+        self.assertEqual(
+            result["primary_action_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
+        )
         self.assertEqual(result["primary_action"]["kind"], "followup-session")
         self.assertEqual(result["runbook"]["status"], "needs-followup")
         self.assertEqual(result["runbook"]["primary_action"]["kind"], "followup-session")
@@ -662,6 +679,11 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["closure_state"], "needs-followup")
         self.assertEqual(result["closure_hint"], "Follow up session session:main:focus next.")
+        self.assertEqual(result["primary_action_kind"], "followup-session")
+        self.assertEqual(
+            result["primary_action_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus'",
+        )
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
         self.assertEqual(
@@ -743,6 +765,11 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed"][0]["task_id"], resumable_same_session.task_id)
         self.assertEqual(result["closure_state"], "needs-followup")
         self.assertEqual(result["closure_hint"], "Follow up session session:main:running next.")
+        self.assertEqual(result["primary_action_kind"], "followup-session")
+        self.assertEqual(
+            result["primary_action_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:running'",
+        )
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
         self.assertEqual(
@@ -797,6 +824,11 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["closure_state"], "settled")
         self.assertEqual(result["closure_state_reason"], "all-resumed-sessions-are-settled")
         self.assertEqual(result["closure_hint"], "All resumed sessions are settled; a quick lanes check is enough.")
+        self.assertEqual(result["primary_action_kind"], "review-lanes")
+        self.assertEqual(
+            result["primary_action_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+        )
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "settled")
         self.assertEqual(
@@ -924,6 +956,8 @@ class MainOpsTests(unittest.TestCase):
             "No continuity resume action is pending right now.",
         )
         self.assertIsNone(result["post_resume_summary"]["closure_hint_command"])
+        self.assertEqual(result["primary_action_kind"], "none")
+        self.assertIsNone(result["primary_action_command"])
         self.assertEqual(result["primary_action"]["kind"], "none")
         self.assertEqual(result["runbook"]["status"], "no-resume-targets")
         self.assertEqual(result["post_resume_summary"]["primary_action"]["kind"], "none")

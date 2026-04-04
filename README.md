@@ -214,6 +214,7 @@
   `dashboard` / `dashboard --compact` / `dashboard --json` 现在也会附带 `action_hint`，直接提示下一步更推荐先看什么
   `action_hint_command` 会直接给出首选命令，并排在 `suggested_next_commands` 的第一位
   `dashboard` 也会附带统一结构的 `primary_action`
+  `dashboard` / `continuity` / `resume result` 也会直接给出顶层 `primary_action_kind / primary_action_command`
   `dashboard --json` 还会附带 `runbook`，把首选动作和后续命令收成一组可直接消费的步骤
   文本版 `dashboard` 现在也会渲染 `Runbook` 段落
   `dashboard --only-issues` 会只保留非 OK 项，更适合日常巡检
