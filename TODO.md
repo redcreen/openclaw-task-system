@@ -140,6 +140,7 @@
   - 指定 session 过滤
   - watchdog blocked 任务限额恢复
   - watchdog blocked 任务按 session 精准恢复
+  - 恢复结果附带 post-resume 状态摘要
 - 但还没有完全形成自动闭环：
   - 任务持续推进
   - 恢复后的后续收口

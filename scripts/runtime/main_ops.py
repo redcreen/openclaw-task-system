@@ -419,8 +419,12 @@ def resume_watchdog_blocked_main_tasks(
         selected = selected[: max(0, int(limit))]
     resume_note = note or "继续推进并同步真实进展"
     resumed: list[dict[str, object]] = []
+    post_resume_status_counts: dict[str, int] = {}
+    resumed_session_keys: set[str] = set()
     for task in selected:
         updated = resume_main_task(task.task_id, progress_note=resume_note, paths=resolved_paths)
+        resumed_session_keys.add(updated.session_key)
+        post_resume_status_counts[updated.status] = post_resume_status_counts.get(updated.status, 0) + 1
         resumed.append(
             {
                 "task_id": updated.task_id,
@@ -437,6 +441,10 @@ def resume_watchdog_blocked_main_tasks(
         "resumed_count": len(resumed),
         "limit": limit,
         "note": resume_note,
+        "post_resume_summary": {
+            "resumed_session_count": len(resumed_session_keys),
+            "status_counts": post_resume_status_counts,
+        },
         "resumed": resumed,
     }
 
