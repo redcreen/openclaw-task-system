@@ -639,6 +639,7 @@ def resume_watchdog_blocked_main_tasks(
                 {
                     "session_key": resumed_session_key,
                     "followup_state": "settled",
+                    "followup_priority": None,
                     "active_task_count": 0,
                     "status_counts": {},
                     "next_command": f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{resumed_session_key}'",
@@ -652,12 +653,29 @@ def resume_watchdog_blocked_main_tasks(
             {
                 "session_key": resumed_session_key,
                 "followup_state": "needs-followup",
+                "followup_priority": None,
                 "active_task_count": len(session_tasks),
                 "status_counts": status_counts,
                 "task_labels": sorted({str(task.task_label) for task in session_tasks if str(task.task_label).strip()}),
                 "next_command": f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{resumed_session_key}'",
             }
         )
+    prioritized_followups = sorted(
+        [
+            entry
+            for entry in post_resume_session_summaries
+            if entry.get("followup_state") == "needs-followup"
+        ],
+        key=lambda entry: (
+            -int((entry.get("status_counts") or {}).get("running", 0)),
+            -int((entry.get("status_counts") or {}).get("queued", 0)),
+            -int((entry.get("status_counts") or {}).get("paused", 0)),
+            -int(entry.get("active_task_count", 0)),
+            str(entry.get("session_key") or ""),
+        ),
+    )
+    for index, entry in enumerate(prioritized_followups, start=1):
+        entry["followup_priority"] = index
     return {
         "action": "resume-watchdog-blocked-main-tasks",
         "session_filter": normalized_session_key or "all",
@@ -681,6 +699,16 @@ def resume_watchdog_blocked_main_tasks(
             "needs_followup_session_count": len(
                 [entry for entry in post_resume_session_summaries if entry.get("followup_state") == "needs-followup"]
             ),
+            "followup_priorities": [
+                {
+                    "session_key": entry["session_key"],
+                    "followup_priority": entry["followup_priority"],
+                    "active_task_count": entry["active_task_count"],
+                    "status_counts": entry["status_counts"],
+                    "next_command": entry["next_command"],
+                }
+                for entry in prioritized_followups
+            ],
         },
         "skipped": skipped,
         "suggested_next_commands": [
@@ -722,6 +750,14 @@ def render_resume_watchdog_blocked_result(result: dict[str, object]) -> str:
     settled = [entry for entry in sessions if isinstance(entry, dict) and entry.get("followup_state") == "settled"]
 
     if needs_followup:
+        lines.extend(["", "## Follow-up Priorities", ""])
+        for entry in needs_followup:
+            lines.append(
+                f"- P{entry.get('followup_priority') or '?'} | {entry.get('session_key')} | status_counts={json.dumps(entry.get('status_counts', {}), ensure_ascii=False, sort_keys=True)}"
+            )
+            if entry.get("next_command"):
+                lines.append(f"  next: {entry['next_command']}")
+
         lines.extend(["", "## Needs Follow-up", ""])
         for entry in needs_followup:
             lines.append(
