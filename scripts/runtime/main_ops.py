@@ -598,6 +598,13 @@ def render_queue_lanes(
             if lane_kind == "shared"
             else f"agent {agent_id} currently has only one active session in the lane"
         )
+        execution_recommendation = (
+            "serial"
+            if lane_kind == "shared" and shared_with_running_lane
+            else "serial-per-session"
+            if lane_kind == "shared"
+            else "parallel-safe"
+        )
         lines.extend(
             [
                 f"## Agent: {agent_id}",
@@ -605,6 +612,7 @@ def render_queue_lanes(
                 f"- lane_kind: {lane_kind}",
                 f"- sharing_reason: {sharing_reason}",
                 f"- shared_with_running_lane: {shared_with_running_lane}",
+                f"- execution_recommendation: {execution_recommendation}",
                 f"- active_task_count: {len(agent_tasks)}",
                 f"- running_task_count: {len(running_tasks)}",
                 f"- queued_task_count: {len(queued_tasks)}",
@@ -710,12 +718,20 @@ def get_queue_lanes_summary(
             if lane_kind == "shared"
             else f"agent {agent_id} currently has only one active session in the lane"
         )
+        execution_recommendation = (
+            "serial"
+            if lane_kind == "shared" and shared_with_running_lane
+            else "serial-per-session"
+            if lane_kind == "shared"
+            else "parallel-safe"
+        )
         agents.append(
             {
                 "agent_id": agent_id,
                 "lane_kind": lane_kind,
                 "sharing_reason": sharing_reason,
                 "shared_with_running_lane": shared_with_running_lane,
+                "execution_recommendation": execution_recommendation,
                 "active_task_count": len(agent_tasks),
                 "running_task_count": len(running_tasks),
                 "queued_task_count": len(queued_tasks),
@@ -829,6 +845,13 @@ def render_queue_topology(
             if queue_kind == "shared"
             else f"agent {agent_id} queue is currently dedicated to one session"
         )
+        execution_recommendation = (
+            "serial"
+            if queue_kind == "shared" and shared_with_running_lane
+            else "serial-per-session"
+            if queue_kind == "shared"
+            else "parallel-safe"
+        )
         lines.extend(
             [
                 f"## Queue: {agent_id}",
@@ -836,6 +859,7 @@ def render_queue_topology(
                 f"- queue_kind: {queue_kind}",
                 f"- sharing_reason: {sharing_reason}",
                 f"- shared_with_running_lane: {shared_with_running_lane}",
+                f"- execution_recommendation: {execution_recommendation}",
                 f"- session_count: {len(session_keys)}",
                 f"- active_task_count: {len(agent_tasks)}",
                 f"- running_task_count: {running_count}",
@@ -879,12 +903,20 @@ def get_queue_topology_summary(
             if queue_kind == "shared"
             else f"agent {agent_id} queue is currently dedicated to one session"
         )
+        execution_recommendation = (
+            "serial"
+            if queue_kind == "shared" and shared_with_running_lane
+            else "serial-per-session"
+            if queue_kind == "shared"
+            else "parallel-safe"
+        )
         queues.append(
             {
                 "agent_id": agent_id,
                 "queue_kind": queue_kind,
                 "sharing_reason": sharing_reason,
                 "shared_with_running_lane": shared_with_running_lane,
+                "execution_recommendation": execution_recommendation,
                 "shared_sessions": shared_sessions,
                 "session_count": len(session_keys),
                 "active_task_count": len(agent_tasks),

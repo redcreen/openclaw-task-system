@@ -399,6 +399,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- lane_kind: shared", rendered)
         self.assertIn("- sharing_reason: agent main currently has 2 active sessions in the same lane", rendered)
         self.assertIn("- shared_with_running_lane: True", rendered)
+        self.assertIn("- execution_recommendation: serial", rendered)
         self.assertIn("- running_task_count: 1", rendered)
         self.assertIn("- session_lane_count: 2", rendered)
         self.assertIn("- shared_sessions:", rendered)
@@ -435,9 +436,33 @@ class MainOpsTests(unittest.TestCase):
             "agent main currently has only one active session in the lane",
         )
         self.assertEqual(summary["agents"][1]["shared_with_running_lane"], True)
+        self.assertEqual(summary["agents"][1]["execution_recommendation"], "parallel-safe")
         self.assertEqual(summary["agents"][1]["running_task_count"], 1)
         self.assertEqual(summary["agents"][1]["shared_sessions"], [])
         self.assertEqual(summary["agents"][0]["queued_head"][0]["task_id"], code_queued.task_id)
+
+    def test_get_queue_lanes_summary_reports_serial_per_session_for_shared_idle_lane(self) -> None:
+        self.store.register_task(
+            agent_id="main",
+            session_key="session:main:one",
+            channel="telegram",
+            chat_id="chat:main:one",
+            task_label="main queued one",
+        )
+        self.store.register_task(
+            agent_id="main",
+            session_key="session:main:two",
+            channel="telegram",
+            chat_id="chat:main:two",
+            task_label="main queued two",
+        )
+
+        summary = main_ops.get_queue_lanes_summary(paths=self.paths)
+
+        self.assertEqual(summary["agents"][0]["agent_id"], "main")
+        self.assertEqual(summary["agents"][0]["lane_kind"], "shared")
+        self.assertEqual(summary["agents"][0]["shared_with_running_lane"], False)
+        self.assertEqual(summary["agents"][0]["execution_recommendation"], "serial-per-session")
 
     def test_render_queue_lanes_includes_due_paused_continuations(self) -> None:
         observed = self.store.observe_task(
@@ -498,6 +523,7 @@ class MainOpsTests(unittest.TestCase):
             rendered,
         )
         self.assertIn("- shared_with_running_lane: True", rendered)
+        self.assertIn("- execution_recommendation: serial", rendered)
         self.assertIn("- shared_sessions:", rendered)
         self.assertIn("- session_count: 2", rendered)
         self.assertIn("session:main:one | task_count=1", rendered)
@@ -532,6 +558,7 @@ class MainOpsTests(unittest.TestCase):
             "agent main queue is shared because 2 sessions currently map to the same agent queue",
         )
         self.assertEqual(summary["queues"][0]["shared_with_running_lane"], True)
+        self.assertEqual(summary["queues"][0]["execution_recommendation"], "serial")
         self.assertEqual(summary["queues"][0]["shared_sessions"], ["session:main:one", "session:main:two"])
         self.assertEqual(summary["queues"][0]["session_count"], 2)
         self.assertEqual(len(summary["queues"][0]["sessions"]), 2)

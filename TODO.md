@@ -157,6 +157,7 @@
   - 哪些 task 在 running / queued / paused
   - 哪些 session 正在共享同一个 agent queue / lane
   - 为什么当前 queue / lane 被判断为 shared，以及是否已有 running lane
+  - 当前更适合的执行建议：serial / serial-per-session / parallel-safe
 - 但还没最终回答：
   - 是否要开放真正并发执行
   - OpenClaw 当前天然并发能力边界
@@ -250,3 +251,5 @@
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --session-key '<session_key>' --limit 1`
 - 查看或切换 taskmonitor：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status`
+
+是否可以通过 /tasks 展示当前队列任务？ 特别是长任务执行时，很有必要； 
