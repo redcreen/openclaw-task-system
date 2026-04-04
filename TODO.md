@@ -161,6 +161,7 @@
 - `dashboard --only-issues --json` 的 `issue_summary` 也已统一输出这些顶层别名字段
 - `continuity` / `dashboard` / `resume result` 已统一输出 `runbook`
 - 恢复结果在仍需 follow-up 时，已直接附带 `next_followup_summary`
+- 恢复后的“再看一眼当前风险快照”已经内联到同一次结果里，不必立刻再跑第二条 continuity 命令
 - continuity / resume 结果附带推荐下一步命令
   - continuity / resume 结果附带当前建议执行方式
   - 可按当前建议执行方式收紧恢复范围

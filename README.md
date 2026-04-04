@@ -255,6 +255,7 @@
   恢复结果顶层和 `post_resume_summary` 都会附带统一结构的 `primary_action`
   恢复结果顶层和 `post_resume_summary.runbook` 都会把恢复后的首选动作和后续命令收成一组可直接消费的步骤
   如果恢复后仍需继续 follow-up，恢复结果还会直接附带 `next_followup_summary`
+  这样恢复后就不必立刻再跑第二条 continuity 命令才能看到该 session 的风险快照
   文本版 `continuity --resume-watchdog-blocked` 也会渲染 `Runbook` 段落
   每个 resumed session 还会带 `followup_state_reason`，直接说明为什么当前被判成 settled 或 needs-followup
   `post_resume_summary.top_followup_session` 会直接给出当前最值得优先跟进的 session，方便脚本和面板直接消费
