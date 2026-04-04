@@ -150,6 +150,7 @@
   - 恢复结果文本输出已支持 `Follow-up Priorities`
 - `continuity --resume-watchdog-blocked --json` 已直接提供 `top_followup_session`
 - `continuity` / `continuity --json` 已直接提供 `top_risk_session`
+- `dashboard / continuity / resume result` 已开始统一输出 `primary_action`
 - continuity / resume 结果附带推荐下一步命令
   - continuity / resume 结果附带当前建议执行方式
   - 可按当前建议执行方式收紧恢复范围

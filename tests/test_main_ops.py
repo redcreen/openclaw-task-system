@@ -165,6 +165,8 @@ class MainOpsTests(unittest.TestCase):
             summary["suggested_next_commands"][0],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:dashboard-risk'",
         )
+        self.assertEqual(summary["primary_action"]["kind"], "followup-session")
+        self.assertEqual(summary["primary_action"]["session_key"], "session:main:dashboard-risk")
         self.assertEqual(summary["health"]["main_blocked_task_count"], 1)
         self.assertEqual(summary["queues"]["queue_count"], 0)
         self.assertEqual(summary["taskmonitor"]["override_count"], 0)
@@ -295,6 +297,7 @@ class MainOpsTests(unittest.TestCase):
             summary["action_hint_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
         )
+        self.assertEqual(summary["primary_action"]["kind"], "review-lanes")
 
     def test_get_main_dashboard_summary_includes_compact_summary(self) -> None:
         summary = main_ops.get_main_dashboard_summary(
@@ -311,6 +314,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["action_hint"], "No immediate action needed.")
         self.assertIsNone(summary["action_hint_command"])
         self.assertEqual(summary["compact_summary"]["action_hint_command_summary"], "none")
+        self.assertEqual(summary["primary_action"]["kind"], "none")
         self.assertEqual(summary["compact_summary"]["taskmonitor_summary"], "override_count=0")
 
     def test_get_main_dashboard_summary_includes_issue_summary(self) -> None:
@@ -324,6 +328,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertFalse(summary["issue_summary"]["has_issues"])
         self.assertIsNone(summary["issue_summary"]["action_hint"])
         self.assertIsNone(summary["issue_summary"]["action_hint_command"])
+        self.assertEqual(summary["primary_action"]["kind"], "none")
 
     def test_get_main_dashboard_summary_can_hint_taskmonitor_enable_for_session(self) -> None:
         main_ops.set_taskmonitor_state(
@@ -346,6 +351,7 @@ class MainOpsTests(unittest.TestCase):
             summary["action_hint_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key 'session:main:dashboard-taskmonitor-off' --action on",
         )
+        self.assertEqual(summary["primary_action"]["kind"], "enable-taskmonitor")
 
     def test_render_main_continuity_reports_no_risk_when_idle(self) -> None:
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
@@ -361,6 +367,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["session_filter"], "all")
         self.assertEqual(summary["active_monitored_task_count"], 0)
         self.assertIsNone(summary["top_risk_session"])
+        self.assertEqual(summary["primary_action"]["kind"], "none")
         self.assertEqual(summary["auto_resumable"], [])
         self.assertEqual(summary["manual_review"], [])
         self.assertEqual(summary["not_recommended"], [])
@@ -494,6 +501,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(len(summary["by_session"]), 1)
         self.assertEqual(summary["by_session"][0]["session_key"], "session:main:focus-json")
         self.assertEqual(summary["top_risk_session"]["session_key"], "session:main:focus-json")
+        self.assertEqual(summary["primary_action"]["kind"], "followup-session")
         self.assertEqual(summary["execution_plan"]["execution_recommendation"], "parallel-safe")
         self.assertIn("Inspect continuity and lanes output again after any resume action.", summary["execution_plan"]["steps"])
         self.assertIn(
@@ -560,6 +568,7 @@ class MainOpsTests(unittest.TestCase):
             result["post_resume_summary"]["closure_hint_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
         )
+        self.assertEqual(result["post_resume_summary"]["primary_action"]["kind"], "followup-session")
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["status_counts"]["running"], 1)
@@ -761,6 +770,7 @@ class MainOpsTests(unittest.TestCase):
             result["post_resume_summary"]["closure_hint_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
         )
+        self.assertEqual(result["post_resume_summary"]["primary_action"]["kind"], "review-lanes")
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "settled")
         self.assertEqual(
@@ -866,6 +876,7 @@ class MainOpsTests(unittest.TestCase):
             "No continuity resume action is pending right now.",
         )
         self.assertIsNone(result["post_resume_summary"]["closure_hint_command"])
+        self.assertEqual(result["post_resume_summary"]["primary_action"]["kind"], "none")
         self.assertIsNone(result["post_resume_summary"]["top_followup_session"])
 
     def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:

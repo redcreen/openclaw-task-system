@@ -506,6 +506,19 @@ def get_main_continuity_summary(
                 f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{top_session['session_key']}'"
             ),
         }
+    primary_action = {
+        "kind": "none",
+        "summary": "No immediate continuity action is needed.",
+        "command": None,
+        "session_key": None,
+    }
+    if top_risk_session:
+        primary_action = {
+            "kind": "followup-session",
+            "summary": f"Inspect continuity for session {top_risk_session['session_key']} first.",
+            "command": top_risk_session["next_command"],
+            "session_key": top_risk_session["session_key"],
+        }
 
     return {
         "session_filter": normalized_session_key or "all",
@@ -554,6 +567,7 @@ def get_main_continuity_summary(
         ],
         "by_session": by_session,
         "top_risk_session": top_risk_session,
+        "primary_action": primary_action,
         "suggested_next_commands": suggested_next_commands,
         "execution_plan": execution_plan,
     }
@@ -759,6 +773,18 @@ def resume_watchdog_blocked_main_tasks(
             "closure_state_reason": closure_state_reason,
             "closure_hint": closure_hint,
             "closure_hint_command": closure_hint_command,
+            "primary_action": {
+                "kind": (
+                    "followup-session"
+                    if closure_state == "needs-followup" and top_followup_session
+                    else "review-lanes"
+                    if closure_state == "settled"
+                    else "none"
+                ),
+                "summary": closure_hint,
+                "command": closure_hint_command,
+                "session_key": top_followup_session["session_key"] if top_followup_session else None,
+            },
             "sessions": post_resume_session_summaries,
             "settled_session_count": settled_session_count,
             "needs_followup_session_count": needs_followup_session_count,
@@ -1194,6 +1220,22 @@ def get_main_dashboard_summary(
         "action_hint": action_hint if status != "ok" else None,
         "action_hint_command": action_hint_command if status != "ok" else None,
     }
+    primary_action = {
+        "kind": (
+            "followup-session"
+            if top_followup_session and action_hint_command
+            else "review-lanes"
+            if action_hint_command and "lanes --json" in action_hint_command
+            else "review-continuity"
+            if action_hint_command and "continuity" in action_hint_command
+            else "enable-taskmonitor"
+            if action_hint_command and "--action on" in action_hint_command
+            else "none"
+        ),
+        "summary": action_hint,
+        "command": action_hint_command,
+        "session_key": top_followup_session["session_key"] if top_followup_session else normalized_session_key,
+    }
     return {
         "generated_at": datetime.now(timezone.utc).astimezone().isoformat(),
         "session_filter": normalized_session_key or "all",
@@ -1209,6 +1251,7 @@ def get_main_dashboard_summary(
         "top_followup_session": top_followup_session,
         "action_hint": action_hint,
         "action_hint_command": action_hint_command,
+        "primary_action": primary_action,
         "taskmonitor": taskmonitor,
         "suggested_next_commands": suggested_next_commands,
     }
