@@ -212,6 +212,7 @@
   会把 `health / queues / lanes / continuity / taskmonitor` 收成一个统一入口
   `dashboard --json` 也会直接给出 `top_followup_session`，方便快速定位当前最该优先跟进的 session
   `dashboard` / `dashboard --compact` / `dashboard --json` 现在也会附带 `action_hint`，直接提示下一步更推荐先看什么
+  `action_hint_command` 会直接给出首选命令，并排在 `suggested_next_commands` 的第一位
   `dashboard --only-issues` 会只保留非 OK 项，更适合日常巡检
 
 - 当前队列拓扑：

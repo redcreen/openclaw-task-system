@@ -131,6 +131,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- continuity_auto_resumable_task_count: 0", rendered)
         self.assertIn("- top_followup_session: none", rendered)
         self.assertIn("- action_hint: No immediate action needed.", rendered)
+        self.assertIn("- action_hint_command: none", rendered)
         self.assertIn("main_ops.py continuity --json", rendered)
 
     def test_get_main_dashboard_summary_warns_when_continuity_risk_exists(self) -> None:
@@ -160,6 +161,10 @@ class MainOpsTests(unittest.TestCase):
             summary["action_hint_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:dashboard-risk'",
         )
+        self.assertEqual(
+            summary["suggested_next_commands"][0],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:dashboard-risk'",
+        )
         self.assertEqual(summary["health"]["main_blocked_task_count"], 1)
         self.assertEqual(summary["queues"]["queue_count"], 0)
         self.assertEqual(summary["taskmonitor"]["override_count"], 0)
@@ -183,6 +188,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- session_filter: session:main:dashboard-focus", rendered)
         self.assertIn("- top_followup_session: none", rendered)
         self.assertIn("- action_hint: Review current lanes before changing queue behavior.", rendered)
+        self.assertIn("- action_hint_command: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json", rendered)
         self.assertIn("main_ops.py continuity --session-key 'session:main:dashboard-focus'", rendered)
         self.assertIn("taskmonitor --session-key 'session:main:dashboard-focus' --action status --json", rendered)
 
@@ -199,6 +205,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- continuity_risk: auto=0 manual=0", rendered)
         self.assertIn("- top_followup_session: none", rendered)
         self.assertIn("- action_hint: No immediate action needed.", rendered)
+        self.assertIn("- action_hint_command: none", rendered)
         self.assertNotIn("## Commands", rendered)
 
     def test_render_main_dashboard_only_issues_reports_clean_state_briefly(self) -> None:
@@ -284,6 +291,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["continuity"]["session_filter"], "session:main:dashboard-focus-json")
         self.assertIsNone(summary["top_followup_session"])
         self.assertEqual(summary["action_hint"], "Review current lanes before changing queue behavior.")
+        self.assertEqual(
+            summary["action_hint_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+        )
 
     def test_get_main_dashboard_summary_includes_compact_summary(self) -> None:
         summary = main_ops.get_main_dashboard_summary(
@@ -297,6 +308,9 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["compact_summary"]["status"], "ok")
         self.assertEqual(summary["compact_summary"]["top_followup_session_summary"], "none")
         self.assertEqual(summary["compact_summary"]["action_hint"], "No immediate action needed.")
+        self.assertEqual(summary["action_hint"], "No immediate action needed.")
+        self.assertIsNone(summary["action_hint_command"])
+        self.assertEqual(summary["compact_summary"]["action_hint_command_summary"], "none")
         self.assertEqual(summary["compact_summary"]["taskmonitor_summary"], "override_count=0")
 
     def test_get_main_dashboard_summary_includes_issue_summary(self) -> None:

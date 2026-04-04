@@ -990,6 +990,7 @@ def render_main_dashboard(
             f"- continuity_risk: auto={compact_summary['continuity_auto_resumable_task_count']} manual={compact_summary['continuity_manual_review_task_count']}",
             f"- top_followup_session: {compact_summary['top_followup_session_summary']}",
             f"- action_hint: {compact_summary['action_hint']}",
+            f"- action_hint_command: {compact_summary['action_hint_command_summary']}",
             f"- taskmonitor: {compact_summary['taskmonitor_summary']}",
         ]
         return "\n".join(lines) + "\n"
@@ -1007,6 +1008,7 @@ def render_main_dashboard(
         f"- continuity_manual_review_task_count: {summary['continuity']['manual_review_task_count']}",
         f"- top_followup_session: {summary['top_followup_session']['session_key'] if summary['top_followup_session'] else 'none'}",
         f"- action_hint: {summary['action_hint']}",
+        f"- action_hint_command: {summary['action_hint_command'] or 'none'}",
         f"- taskmonitor_override_count: {summary['taskmonitor']['override_count']}",
         "",
         "## Commands",
@@ -1080,7 +1082,7 @@ def get_main_dashboard_summary(
             if normalized_session_key
             else "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json"
         )
-    elif health["main_active_task_count"] > 0 or queues["queue_count"] > 0:
+    elif health["main_active_task_count"] > 0:
         action_hint = "Review current lanes before changing queue behavior."
         action_hint_command = "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json"
     elif normalized_session_key and not bool(taskmonitor.get("enabled", True)):
@@ -1103,12 +1105,30 @@ def get_main_dashboard_summary(
             else "none"
         ),
         "action_hint": action_hint,
+        "action_hint_command_summary": action_hint_command or "none",
         "taskmonitor_summary": (
             f"session-enabled={taskmonitor['enabled']}"
             if normalized_session_key
             else f"override_count={taskmonitor['override_count']}"
         ),
     }
+    suggested_next_commands = (
+        [
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health",
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json",
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json",
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list --json",
+        ]
+        if normalized_session_key is None
+        else [
+            f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{normalized_session_key}'",
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+            f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '{normalized_session_key}' --action status --json",
+        ]
+    )
+    if action_hint_command:
+        suggested_next_commands = [action_hint_command, *[cmd for cmd in suggested_next_commands if cmd != action_hint_command]]
     issue_summary = {
         "has_issues": status != "ok",
         "main_active_task_count": health["main_active_task_count"],
@@ -1135,21 +1155,7 @@ def get_main_dashboard_summary(
         "action_hint": action_hint,
         "action_hint_command": action_hint_command,
         "taskmonitor": taskmonitor,
-        "suggested_next_commands": (
-            [
-                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health",
-                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json",
-                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
-                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json",
-                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list --json",
-            ]
-            if normalized_session_key is None
-            else [
-                f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{normalized_session_key}'",
-                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
-                f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '{normalized_session_key}' --action status --json",
-            ]
-        ),
+        "suggested_next_commands": suggested_next_commands,
     }
 
 
