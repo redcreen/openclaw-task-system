@@ -461,6 +461,7 @@ def resume_watchdog_blocked_main_tasks(
     session_key: Optional[str] = None,
     limit: Optional[int] = None,
     note: Optional[str] = None,
+    respect_execution_advice: bool = False,
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(config_path, paths=paths)
     store = TaskStore(paths=resolved_paths)
@@ -472,8 +473,36 @@ def resume_watchdog_blocked_main_tasks(
         and str(task.meta.get("watchdog_escalation") or "").strip()
         and (normalized_session_key is None or task.session_key == normalized_session_key)
     ]
+    candidate_tasks = list(watchdog_blocked)
+    pre_resume_tasks = [
+        task
+        for task in store.find_inflight_tasks(agent_id="main")
+        if task.status in {"received", "queued", "running", "paused"}
+        and (normalized_session_key is None or task.session_key == normalized_session_key)
+    ]
+    pre_resume_strategy = _summarize_agent_execution_strategy("main", pre_resume_tasks)
+    skipped: list[dict[str, object]] = []
+    if respect_execution_advice and pre_resume_strategy["execution_recommendation"] == "serial":
+        running_sessions = {
+            str(task.session_key)
+            for task in pre_resume_tasks
+            if str(task.status) == STATUS_RUNNING
+        }
+        if running_sessions:
+            candidate_tasks = [task for task in candidate_tasks if task.session_key in running_sessions]
+            for task in watchdog_blocked:
+                if task in candidate_tasks:
+                    continue
+                skipped.append(
+                    {
+                        "task_id": task.task_id,
+                        "session_key": task.session_key,
+                        "task_label": task.task_label,
+                        "reason": "blocked-by-serial-execution-advice",
+                    }
+                )
     selected = sorted(
-        watchdog_blocked,
+        candidate_tasks,
         key=lambda item: (
             str(item.updated_at or item.created_at or ""),
             str(item.task_id),
@@ -509,15 +538,19 @@ def resume_watchdog_blocked_main_tasks(
         "action": "resume-watchdog-blocked-main-tasks",
         "session_filter": normalized_session_key or "all",
         "candidate_count": len(watchdog_blocked),
+        "eligible_count": len(candidate_tasks),
         "resumed_count": len(resumed),
         "limit": limit,
         "note": resume_note,
+        "respect_execution_advice": respect_execution_advice,
+        "pre_resume_execution_recommendation": pre_resume_strategy["execution_recommendation"],
         "post_resume_summary": {
             "resumed_session_count": len(resumed_session_keys),
             "status_counts": post_resume_status_counts,
             "execution_recommendation": post_resume_strategy["execution_recommendation"],
             "execution_reason": post_resume_strategy["execution_reason"],
         },
+        "skipped": skipped,
         "suggested_next_commands": [
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
             *[
@@ -1631,6 +1664,11 @@ def main() -> None:
         default="继续推进并同步真实进展",
         help="Progress note recorded when resuming watchdog-blocked tasks.",
     )
+    continuity_parser.add_argument(
+        "--respect-execution-advice",
+        action="store_true",
+        help="Only resume tasks allowed by the current execution recommendation.",
+    )
     subparsers.add_parser("health", help="Show main-oriented health summary.")
     subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
     subparsers.add_parser("diagnose-delivery", help="Show host-side delivery diagnosis steps for retryable failures.")
@@ -1792,6 +1830,7 @@ def main() -> None:
                 session_key=args.session_key,
                 limit=args.limit,
                 note=args.note,
+                respect_execution_advice=args.respect_execution_advice,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return

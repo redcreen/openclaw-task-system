@@ -308,7 +308,9 @@ class MainOpsTests(unittest.TestCase):
         )
 
         self.assertEqual(result["candidate_count"], 2)
+        self.assertEqual(result["eligible_count"], 2)
         self.assertEqual(result["resumed_count"], 1)
+        self.assertEqual(result["respect_execution_advice"], False)
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["status_counts"]["running"], 1)
@@ -356,6 +358,7 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertEqual(result["session_filter"], "session:main:focus")
         self.assertEqual(result["candidate_count"], 1)
+        self.assertEqual(result["eligible_count"], 1)
         self.assertEqual(result["resumed_count"], 1)
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
@@ -369,6 +372,62 @@ class MainOpsTests(unittest.TestCase):
         untouched_other = self.store.load_task(other.task_id)
         self.assertEqual(resumed_first.status, task_state_module.STATUS_RUNNING)
         self.assertEqual(untouched_other.status, "blocked")
+
+    def test_resume_watchdog_blocked_main_tasks_can_respect_serial_execution_advice(self) -> None:
+        running = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:running",
+            channel="telegram",
+            chat_id="chat:main:running",
+            task_label="running task",
+        )
+        self.store.start_task(running.task_id)
+        resumable_same_session = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:running",
+            channel="telegram",
+            chat_id="chat:main:running",
+            task_label="same-session blocked task",
+        )
+        resumable_other_session = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:other",
+            channel="telegram",
+            chat_id="chat:main:other",
+            task_label="other-session blocked task",
+        )
+        self.store.register_task(
+            agent_id="main",
+            session_key="session:main:queued",
+            channel="telegram",
+            chat_id="chat:main:queued",
+            task_label="queued sibling task",
+        )
+        blocked_same = self.store.block_task(resumable_same_session.task_id, "watchdog blocked")
+        blocked_other = self.store.block_task(resumable_other_session.task_id, "watchdog blocked")
+        blocked_same.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        blocked_other.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked_same)
+        self.store.save_task(blocked_other)
+
+        result = main_ops.resume_watchdog_blocked_main_tasks(
+            config_path=self._config_path(),
+            paths=self.paths,
+            respect_execution_advice=True,
+            note="继续推进",
+        )
+
+        self.assertEqual(result["pre_resume_execution_recommendation"], "serial")
+        self.assertEqual(result["candidate_count"], 2)
+        self.assertEqual(result["eligible_count"], 1)
+        self.assertEqual(result["resumed_count"], 1)
+        self.assertEqual(result["resumed"][0]["task_id"], resumable_same_session.task_id)
+        self.assertEqual(len(result["skipped"]), 1)
+        self.assertEqual(result["skipped"][0]["task_id"], resumable_other_session.task_id)
+        resumed_same = self.store.load_task(resumable_same_session.task_id)
+        blocked_other_after = self.store.load_task(resumable_other_session.task_id)
+        self.assertEqual(resumed_same.status, task_state_module.STATUS_QUEUED)
+        self.assertEqual(blocked_other_after.status, "blocked")
 
     def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:
         main_running = self.store.register_task(
