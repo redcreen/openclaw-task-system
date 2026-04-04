@@ -140,6 +140,45 @@ function enqueueDebugLog(
   void appendDebugLog(config, event, payload);
 }
 
+type TextCapableAdapter = {
+  sendText?: (args: {
+    cfg: unknown;
+    to: string;
+    text: string;
+    accountId?: string;
+  }) => Promise<unknown>;
+};
+
+const outboundAdapterCache = new WeakMap<OpenClawPluginApi, Map<string, Promise<TextCapableAdapter | null>>>();
+
+async function loadOutboundAdapter(
+  api: OpenClawPluginApi,
+  channel: string,
+): Promise<TextCapableAdapter | null> {
+  const normalizedChannel = normalizeText(channel).toLowerCase();
+  if (!normalizedChannel) {
+    return null;
+  }
+  let cache = outboundAdapterCache.get(api);
+  if (!cache) {
+    cache = new Map<string, Promise<TextCapableAdapter | null>>();
+    outboundAdapterCache.set(api, cache);
+  }
+  const cached = cache.get(normalizedChannel);
+  if (cached) {
+    return cached;
+  }
+  const pending = api.runtime.channel.outbound
+    .loadAdapter(normalizedChannel)
+    .then((adapter) => (adapter as TextCapableAdapter | null) ?? null)
+    .catch(() => {
+      cache?.delete(normalizedChannel);
+      return null;
+    });
+  cache.set(normalizedChannel, pending);
+  return pending;
+}
+
 async function callHook(
   api: OpenClawPluginApi,
   config: Required<TaskSystemPluginConfig>,
@@ -407,7 +446,7 @@ async function processFeishuInstruction(
     return;
   }
 
-  const adapter = await api.runtime.channel.outbound.loadAdapter("feishu");
+  const adapter = await loadOutboundAdapter(api, "feishu");
   if (!adapter?.sendText) {
     await writeHostDispatchResult(config, name, payload, {
       action: "send",
@@ -522,7 +561,7 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         chatId,
         originalUserRequest: originalUserRequest || null,
       });
-      const adapter = await api.runtime.channel.outbound.loadAdapter(channel);
+      const adapter = await loadOutboundAdapter(api, channel);
       if (!adapter?.sendText) {
         await appendDebugLog(config, "continuation-delivery:adapter-unavailable", {
           taskId,
@@ -627,7 +666,7 @@ async function sendImmediateAck(
   }
 
   try {
-    const adapter = await api.runtime.channel.outbound.loadAdapter(channel);
+    const adapter = await loadOutboundAdapter(api, channel);
     if (!adapter?.sendText) {
       await appendDebugLog(config, "immediate-ack:adapter-unavailable", {
         channel,
@@ -798,7 +837,7 @@ async function sendStatusMessage(
     return;
   }
   try {
-    const adapter = await api.runtime.channel.outbound.loadAdapter(channel);
+    const adapter = await loadOutboundAdapter(api, channel);
     if (!adapter?.sendText) {
       await appendDebugLog(config, `${payload.eventName}:adapter-unavailable`, {
         channel,
