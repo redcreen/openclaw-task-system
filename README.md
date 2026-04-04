@@ -216,6 +216,7 @@
   `dashboard` 也会附带统一结构的 `primary_action`
   `dashboard` / `continuity` / `resume result` 也会直接给出顶层 `primary_action_kind / primary_action_command`
   `dashboard` / `continuity` / `resume result` 也会直接给出顶层 `runbook_status`
+  `dashboard` / `continuity` / `resume result` 也会直接给出顶层 `requires_action`
   `dashboard --json` 还会附带 `runbook`，把首选动作和后续命令收成一组可直接消费的步骤
   文本版 `dashboard` 现在也会渲染 `Runbook` 段落
   `dashboard --only-issues` 会只保留非 OK 项，更适合日常巡检
