@@ -162,6 +162,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("main_ops.py continuity --session-key 'session:main:blocked'", rendered)
         self.assertIn("main_ops.py lanes --json", rendered)
         self.assertIn("- execution_recommendation: parallel-safe", rendered)
+        self.assertIn("## Execution Plan", rendered)
+        self.assertIn("Run a dry-run first to preview which watchdog-blocked tasks are eligible.", rendered)
 
     def test_render_main_continuity_separates_manual_review_and_not_recommended(self) -> None:
         queued = self.store.register_task(
@@ -262,6 +264,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["manual_review"][0]["task_label"], "focus json task")
         self.assertEqual(len(summary["by_session"]), 1)
         self.assertEqual(summary["by_session"][0]["session_key"], "session:main:focus-json")
+        self.assertEqual(summary["execution_plan"]["execution_recommendation"], "parallel-safe")
+        self.assertIn("Inspect continuity and lanes output again after any resume action.", summary["execution_plan"]["steps"])
         self.assertIn(
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus-json'",
             summary["suggested_next_commands"],

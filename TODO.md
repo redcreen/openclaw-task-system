@@ -145,6 +145,7 @@
   - continuity / resume 结果附带当前建议执行方式
   - 可按当前建议执行方式收紧恢复范围
   - 真正恢复前可先 dry-run 预览
+  - continuity 输出内置 execution_plan / runbook 视图
 - 但还没有完全形成自动闭环：
   - 任务持续推进
   - 恢复后的后续收口

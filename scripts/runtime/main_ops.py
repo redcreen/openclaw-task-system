@@ -127,6 +127,30 @@ def _summarize_agent_execution_strategy(
     }
 
 
+def _build_continuity_execution_plan(
+    *,
+    session_filter: str,
+    execution_recommendation: str,
+    auto_resumable_task_count: int,
+    suggested_next_commands: list[str],
+) -> dict[str, object]:
+    plan_steps: list[str] = []
+    if auto_resumable_task_count > 0:
+        plan_steps.append("Run a dry-run first to preview which watchdog-blocked tasks are eligible.")
+        if execution_recommendation == "serial":
+            plan_steps.append("Use --respect-execution-advice so only the currently allowed session is resumed.")
+        plan_steps.append("If the dry-run looks correct, rerun without --dry-run to apply the resume.")
+    else:
+        plan_steps.append("No auto-resumable continuity action is pending right now.")
+    plan_steps.append("Inspect continuity and lanes output again after any resume action.")
+    return {
+        "session_filter": session_filter,
+        "execution_recommendation": execution_recommendation,
+        "steps": plan_steps,
+        "commands": suggested_next_commands,
+    }
+
+
 def render_main_continuity(
     *,
     config_path: Optional[Path] = None,
@@ -211,6 +235,23 @@ def render_main_continuity(
         bucket["not_recommended_count"] = int(bucket["not_recommended_count"]) + 1
         bucket["task_labels"].append(task.task_label)
 
+    suggested_next_commands = [
+        "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+        *(
+            [
+                f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{normalized_session_key}'"
+            ]
+            if normalized_session_key
+            else []
+        ),
+    ]
+    execution_plan = _build_continuity_execution_plan(
+        session_filter=normalized_session_key or "all",
+        execution_recommendation=str(execution_strategy["execution_recommendation"]),
+        auto_resumable_task_count=len(auto_resumable),
+        suggested_next_commands=suggested_next_commands,
+    )
+
     lines = [
         "# Main Continuity",
         "",
@@ -286,6 +327,14 @@ def render_main_continuity(
             )
             if unique_labels:
                 lines.append(f"  labels: {', '.join(unique_labels[:3])}")
+
+    lines.extend(["", "## Execution Plan", ""])
+    for step in execution_plan["steps"]:
+        lines.append(f"- {step}")
+    if execution_plan["commands"]:
+        lines.append("- suggested_commands:")
+        for command in execution_plan["commands"]:
+            lines.append(f"  {command}")
 
     if not auto_resumable and not manual_review and not not_recommended:
         lines.extend(["", "## Status", "", "- No continuity risk is currently detected for main."])
@@ -376,6 +425,23 @@ def get_main_continuity_summary(
         bucket["not_recommended_count"] = int(bucket["not_recommended_count"]) + 1
         bucket["task_labels"].append(task.task_label)
 
+    suggested_next_commands = [
+        "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+        *(
+            [
+                f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{normalized_session_key}'"
+            ]
+            if normalized_session_key
+            else []
+        ),
+    ]
+    execution_plan = _build_continuity_execution_plan(
+        session_filter=normalized_session_key or "all",
+        execution_recommendation=str(execution_strategy["execution_recommendation"]),
+        auto_resumable_task_count=len(auto_resumable),
+        suggested_next_commands=suggested_next_commands,
+    )
+
     return {
         "session_filter": normalized_session_key or "all",
         "silence_monitor_enabled": monitor.enabled,
@@ -441,16 +507,8 @@ def get_main_continuity_summary(
                 ),
             )
         ],
-        "suggested_next_commands": [
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
-            *(
-                [
-                    f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{normalized_session_key}'"
-                ]
-                if normalized_session_key
-                else []
-            ),
-        ],
+        "suggested_next_commands": suggested_next_commands,
+        "execution_plan": execution_plan,
     }
 
 
