@@ -298,7 +298,16 @@ def render_main_continuity(
         if auto_resumable
         else None
     )
-    if auto_resumable and auto_resume_preview_command:
+    auto_resume_has_blockers = bool(manual_review or not_recommended)
+    auto_resume_apply_command = " ".join(auto_resume_command_parts) if auto_resumable else None
+    if auto_resumable and not auto_resume_has_blockers and auto_resume_apply_command:
+        primary_action = {
+            "kind": "apply-auto-resume",
+            "summary": "Apply the watchdog auto-resume plan now.",
+            "command": auto_resume_apply_command,
+            "session_key": normalized_session_key or top_risk_session_key,
+        }
+    elif auto_resumable and auto_resume_preview_command:
         primary_action = {
             "kind": "preview-auto-resume",
             "summary": "Preview watchdog auto-resume candidates first.",
@@ -505,6 +514,12 @@ def get_main_continuity_summary(
         *(["--respect-execution-advice"] if str(execution_strategy["execution_recommendation"]) == "serial" else []),
     ]
     auto_resume_ready = len(auto_resumable) > 0
+    auto_resume_blockers: list[str] = []
+    if manual_review:
+        auto_resume_blockers.append("manual-review-present")
+    if not_recommended:
+        auto_resume_blockers.append("not-recommended-present")
+    auto_resume_safe_to_apply = auto_resume_ready and not auto_resume_blockers
     auto_resume_mode = (
         "respect-execution-advice"
         if auto_resume_ready and str(execution_strategy["execution_recommendation"]) == "serial"
@@ -563,7 +578,14 @@ def get_main_continuity_summary(
         "command": None,
         "session_key": None,
     }
-    if auto_resume_ready and auto_resume_preview_command:
+    if auto_resume_safe_to_apply and auto_resume_apply_command:
+        primary_action = {
+            "kind": "apply-auto-resume",
+            "summary": "Apply the watchdog auto-resume plan now.",
+            "command": auto_resume_apply_command,
+            "session_key": normalized_session_key or (top_risk_session["session_key"] if top_risk_session else None),
+        }
+    elif auto_resume_ready and auto_resume_preview_command:
         primary_action = {
             "kind": "preview-auto-resume",
             "summary": "Preview watchdog auto-resume candidates first.",
@@ -585,6 +607,11 @@ def get_main_continuity_summary(
             *(
                 ["If the dry-run looks right, apply the auto-resume plan next."]
                 if primary_action["kind"] == "preview-auto-resume" and auto_resume_apply_command
+                else []
+            ),
+            *(
+                [f"Auto-resume blockers are present: {', '.join(auto_resume_blockers)}."]
+                if auto_resume_blockers
                 else []
             ),
             "Review the suggested commands in order if the first action does not resolve the highest-risk session.",
@@ -651,6 +678,8 @@ def get_main_continuity_summary(
         "top_risk_session": top_risk_session,
         "focus_session_key": top_risk_session["session_key"] if top_risk_session else None,
         "auto_resume_ready": auto_resume_ready,
+        "auto_resume_safe_to_apply": auto_resume_safe_to_apply,
+        "auto_resume_blockers": auto_resume_blockers,
         "auto_resume_mode": auto_resume_mode,
         "auto_resume_preview_command": auto_resume_preview_command,
         "auto_resume_apply_command": auto_resume_apply_command,

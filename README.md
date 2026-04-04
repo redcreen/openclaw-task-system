@@ -265,6 +265,7 @@
   `continuity` / `continuity --json` 现在也会附带 `runbook`
   `continuity --json` 现在也会直接给出 `auto_resume_ready / auto_resume_mode / auto_resume_preview_command / auto_resume_apply_command`
   当存在 auto-resumable 任务时，`continuity` 的默认 `primary_action` 会优先指向 `preview-auto-resume`
+  当不存在额外 blocker 时，`continuity` 的默认 `primary_action` 会进一步升级成 `apply-auto-resume`
   文本输出和 JSON 输出都会附带推荐的下一步命令，方便继续检查对应 session 的连续执行状态
   同时会直接给出当前建议执行方式：`serial` / `serial-per-session` / `parallel-safe`
   并会附带一份 `execution_plan`，把 dry-run、尊重 advice、后续检查命令收成一份更像 runbook 的输出
