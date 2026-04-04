@@ -145,6 +145,7 @@
   - 恢复结果会区分哪些 resumed session 已经 settled、哪些仍需继续 follow-up
   - 每个 resumed session 已附带 `followup_state_reason`
   - 恢复结果已附带整体 `closure_state`
+  - 恢复结果已附带 `closure_hint / closure_hint_command`
   - 恢复结果文本输出已支持按 `Needs Follow-up` / `Settled` 分组
   - 恢复结果文本输出已支持 `Follow-up Priorities`
 - `continuity --resume-watchdog-blocked --json` 已直接提供 `top_followup_session`

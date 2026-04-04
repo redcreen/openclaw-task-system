@@ -725,13 +725,20 @@ def resume_watchdog_blocked_main_tasks(
     )
     closure_state = "no-resume-targets"
     closure_state_reason = "no-watchdog-blocked-main-tasks-were-resumed"
+    closure_hint = "No continuity resume action is pending right now."
+    closure_hint_command = None
     if resumed_session_keys:
         if needs_followup_session_count == 0:
             closure_state = "settled"
             closure_state_reason = "all-resumed-sessions-are-settled"
+            closure_hint = "All resumed sessions are settled; a quick lanes check is enough."
+            closure_hint_command = "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json"
         else:
             closure_state = "needs-followup"
             closure_state_reason = "resumed-sessions-still-have-active-tasks"
+            if top_followup_session:
+                closure_hint = f"Follow up session {top_followup_session['session_key']} next."
+                closure_hint_command = str(top_followup_session["next_command"])
     return {
         "action": "resume-watchdog-blocked-main-tasks",
         "session_filter": normalized_session_key or "all",
@@ -750,6 +757,8 @@ def resume_watchdog_blocked_main_tasks(
             "execution_reason": post_resume_strategy["execution_reason"],
             "closure_state": closure_state,
             "closure_state_reason": closure_state_reason,
+            "closure_hint": closure_hint,
+            "closure_hint_command": closure_hint_command,
             "sessions": post_resume_session_summaries,
             "settled_session_count": settled_session_count,
             "needs_followup_session_count": needs_followup_session_count,
@@ -798,6 +807,8 @@ def render_resume_watchdog_blocked_result(result: dict[str, object]) -> str:
                 f"- execution_recommendation: {post_resume_summary.get('execution_recommendation', 'unknown')}",
                 f"- closure_state: {post_resume_summary.get('closure_state', 'unknown')}",
                 f"- closure_state_reason: {post_resume_summary.get('closure_state_reason', 'unknown')}",
+                f"- closure_hint: {post_resume_summary.get('closure_hint', 'unknown')}",
+                f"- closure_hint_command: {post_resume_summary.get('closure_hint_command') or 'none'}",
             ]
         )
 

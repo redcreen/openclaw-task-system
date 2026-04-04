@@ -552,6 +552,14 @@ class MainOpsTests(unittest.TestCase):
             result["post_resume_summary"]["closure_state_reason"],
             "resumed-sessions-still-have-active-tasks",
         )
+        self.assertEqual(
+            result["post_resume_summary"]["closure_hint"],
+            "Follow up session session:main:blocked:one next.",
+        )
+        self.assertEqual(
+            result["post_resume_summary"]["closure_hint_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
+        )
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["status_counts"]["running"], 1)
@@ -615,6 +623,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
+        self.assertEqual(
+            result["post_resume_summary"]["closure_hint"],
+            "Follow up session session:main:focus next.",
+        )
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["status_counts"]["running"], 1)
@@ -688,6 +700,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed"][0]["task_id"], resumable_same_session.task_id)
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
+        self.assertEqual(
+            result["post_resume_summary"]["closure_hint"],
+            "Follow up session session:main:running next.",
+        )
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["session_key"], "session:main:running")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "needs-followup")
@@ -737,6 +753,14 @@ class MainOpsTests(unittest.TestCase):
             result["post_resume_summary"]["closure_state_reason"],
             "all-resumed-sessions-are-settled",
         )
+        self.assertEqual(
+            result["post_resume_summary"]["closure_hint"],
+            "All resumed sessions are settled; a quick lanes check is enough.",
+        )
+        self.assertEqual(
+            result["post_resume_summary"]["closure_hint_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+        )
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "settled")
         self.assertEqual(
@@ -763,6 +787,8 @@ class MainOpsTests(unittest.TestCase):
                     "execution_recommendation": "parallel-safe",
                     "closure_state": "needs-followup",
                     "closure_state_reason": "resumed-sessions-still-have-active-tasks",
+                    "closure_hint": "Follow up session session:main:followup next.",
+                    "closure_hint_command": "python3 ... continuity --session-key 'session:main:followup'",
                     "top_followup_session": {
                         "session_key": "session:main:followup",
                         "followup_priority": 1,
@@ -806,6 +832,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("# Continuity Resume", rendered)
         self.assertIn("- closure_state: needs-followup", rendered)
         self.assertIn("- closure_state_reason: resumed-sessions-still-have-active-tasks", rendered)
+        self.assertIn("- closure_hint: Follow up session session:main:followup next.", rendered)
+        self.assertIn("- closure_hint_command: python3 ... continuity --session-key 'session:main:followup'", rendered)
         self.assertIn("## Follow-up Priorities", rendered)
         self.assertIn("P1 | session:main:followup", rendered)
         self.assertIn("reason=active-tasks-remain-after-resume", rendered)
@@ -833,6 +861,11 @@ class MainOpsTests(unittest.TestCase):
             result["post_resume_summary"]["closure_state_reason"],
             "no-watchdog-blocked-main-tasks-were-resumed",
         )
+        self.assertEqual(
+            result["post_resume_summary"]["closure_hint"],
+            "No continuity resume action is pending right now.",
+        )
+        self.assertIsNone(result["post_resume_summary"]["closure_hint_command"])
         self.assertIsNone(result["post_resume_summary"]["top_followup_session"])
 
     def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:
