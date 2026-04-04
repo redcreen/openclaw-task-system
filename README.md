@@ -302,6 +302,7 @@
 - 当前问题分诊入口：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage --json`
+  `triage --json` 现在也会直接给出 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_blockers / auto_resume_command`
 
 - 陈旧 blocked 任务批处理入口：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py sweep`

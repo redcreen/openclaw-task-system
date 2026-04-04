@@ -1562,6 +1562,8 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertIn("Apply guarded auto-resume first", rendered)
         self.assertIn("continuity --auto-resume-if-safe", rendered)
+        self.assertIn("- auto_resume_ready: True", rendered)
+        self.assertIn("- auto_resume_safe_to_apply: True", rendered)
         self.assertIn("## Runbook", rendered)
 
     def test_render_main_triage_falls_back_to_preview_when_auto_resume_has_blockers(self) -> None:
@@ -1608,6 +1610,13 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["triage_status"], "warn")
         self.assertEqual(summary["blocked_main_task_count"], 1)
         self.assertEqual(summary["focus_session_key"], "session:main:triage-json")
+        self.assertTrue(summary["auto_resume_ready"])
+        self.assertTrue(summary["auto_resume_safe_to_apply"])
+        self.assertEqual(summary["auto_resume_blockers"], [])
+        self.assertEqual(
+            summary["auto_resume_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+        )
         self.assertEqual(summary["primary_action_kind"], "apply-auto-resume")
         self.assertEqual(
             summary["primary_action_command"],

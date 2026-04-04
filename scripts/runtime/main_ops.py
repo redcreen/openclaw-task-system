@@ -2440,6 +2440,12 @@ def get_main_triage_summary(
         "non_retryable_failed_instruction_count": failed_summary["non_retryable"],
         "unknown_failed_instruction_count": failed_summary["unknown"],
         "focus_session_key": focus_session_key,
+        "auto_resume_ready": bool(continuity.get("auto_resume_ready")),
+        "auto_resume_safe_to_apply": bool(continuity.get("auto_resume_safe_to_apply")),
+        "auto_resume_blockers": list(continuity.get("auto_resume_blockers", [])),
+        "auto_resume_command": continuity.get("primary_action_command")
+        if str(continuity.get("primary_action_kind") or "").strip() in {"apply-auto-resume", "preview-auto-resume"}
+        else None,
         "primary_action_kind": primary_action["kind"],
         "primary_action_command": primary_action["command"],
         "runbook_status": runbook["status"],
@@ -2470,6 +2476,9 @@ def render_main_triage(
         f"- non_retryable_failed_instruction_count: {summary['non_retryable_failed_instruction_count']}",
         f"- unknown_failed_instruction_count: {summary['unknown_failed_instruction_count']}",
         f"- focus_session_key: {summary.get('focus_session_key') or 'none'}",
+        f"- auto_resume_ready: {summary.get('auto_resume_ready')}",
+        f"- auto_resume_safe_to_apply: {summary.get('auto_resume_safe_to_apply')}",
+        f"- auto_resume_command: {summary.get('auto_resume_command') or 'none'}",
         f"- primary_action_kind: {summary.get('primary_action_kind')}",
         f"- primary_action_command: {summary.get('primary_action_command') or 'none'}",
         "",
