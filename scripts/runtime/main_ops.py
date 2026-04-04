@@ -825,6 +825,10 @@ def resume_watchdog_blocked_main_tasks(
         "respect_execution_advice": respect_execution_advice,
         "dry_run": dry_run,
         "pre_resume_execution_recommendation": pre_resume_strategy["execution_recommendation"],
+        "closure_state": closure_state,
+        "closure_state_reason": closure_state_reason,
+        "closure_hint": closure_hint,
+        "closure_hint_command": closure_hint_command,
         "primary_action": post_resume_runbook["primary_action"],
         "runbook": post_resume_runbook,
         "post_resume_summary": {

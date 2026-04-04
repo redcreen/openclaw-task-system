@@ -576,6 +576,9 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed_count"], 1)
         self.assertEqual(result["respect_execution_advice"], False)
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
+        self.assertEqual(result["closure_state"], "needs-followup")
+        self.assertEqual(result["closure_state_reason"], "resumed-sessions-still-have-active-tasks")
+        self.assertEqual(result["closure_hint"], "Follow up session session:main:blocked:one next.")
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
         self.assertEqual(
@@ -657,6 +660,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["eligible_count"], 1)
         self.assertEqual(result["resumed_count"], 1)
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
+        self.assertEqual(result["closure_state"], "needs-followup")
+        self.assertEqual(result["closure_hint"], "Follow up session session:main:focus next.")
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
         self.assertEqual(
@@ -736,6 +741,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["eligible_count"], 1)
         self.assertEqual(result["resumed_count"], 1)
         self.assertEqual(result["resumed"][0]["task_id"], resumable_same_session.task_id)
+        self.assertEqual(result["closure_state"], "needs-followup")
+        self.assertEqual(result["closure_hint"], "Follow up session session:main:running next.")
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
         self.assertEqual(
@@ -787,6 +794,9 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed_count"], 1)
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["resumed"][0]["dry_run"], True)
+        self.assertEqual(result["closure_state"], "settled")
+        self.assertEqual(result["closure_state_reason"], "all-resumed-sessions-are-settled")
+        self.assertEqual(result["closure_hint"], "All resumed sessions are settled; a quick lanes check is enough.")
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "settled")
         self.assertEqual(
@@ -900,6 +910,9 @@ class MainOpsTests(unittest.TestCase):
         )
 
         self.assertEqual(result["resumed_count"], 0)
+        self.assertEqual(result["closure_state"], "no-resume-targets")
+        self.assertEqual(result["closure_state_reason"], "no-watchdog-blocked-main-tasks-were-resumed")
+        self.assertEqual(result["closure_hint"], "No continuity resume action is pending right now.")
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "no-resume-targets")
         self.assertEqual(
