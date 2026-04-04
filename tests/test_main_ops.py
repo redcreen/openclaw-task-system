@@ -156,6 +156,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["status"], "warn")
         self.assertEqual(summary["continuity"]["auto_resumable_task_count"], 1)
         self.assertEqual(summary["top_followup_session"]["session_key"], "session:main:dashboard-risk")
+        self.assertEqual(summary["focus_session_key"], "session:main:dashboard-risk")
         self.assertEqual(summary["top_followup_session"]["auto_resumable_count"], 1)
         self.assertEqual(summary["action_hint"], "Follow up session session:main:dashboard-risk first.")
         self.assertEqual(
@@ -330,6 +331,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["compact_summary"]["top_followup_session_summary"], "none")
         self.assertEqual(summary["compact_summary"]["action_hint"], "No immediate action needed.")
         self.assertEqual(summary["action_hint"], "No immediate action needed.")
+        self.assertIsNone(summary["focus_session_key"])
         self.assertIsNone(summary["action_hint_command"])
         self.assertEqual(summary["compact_summary"]["action_hint_command_summary"], "none")
         self.assertEqual(summary["primary_action_kind"], "none")
@@ -536,6 +538,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(len(summary["by_session"]), 1)
         self.assertEqual(summary["by_session"][0]["session_key"], "session:main:focus-json")
         self.assertEqual(summary["top_risk_session"]["session_key"], "session:main:focus-json")
+        self.assertEqual(summary["focus_session_key"], "session:main:focus-json")
         self.assertEqual(summary["primary_action_kind"], "followup-session")
         self.assertEqual(
             summary["primary_action_command"],
@@ -615,6 +618,7 @@ class MainOpsTests(unittest.TestCase):
             result["post_resume_summary"]["closure_hint_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
         )
+        self.assertEqual(result["focus_session_key"], "session:main:blocked:one")
         self.assertEqual(result["primary_action_kind"], "followup-session")
         self.assertEqual(
             result["primary_action_command"],
@@ -691,6 +695,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["closure_state"], "needs-followup")
         self.assertEqual(result["closure_hint"], "Follow up session session:main:focus next.")
+        self.assertEqual(result["focus_session_key"], "session:main:focus")
         self.assertEqual(result["primary_action_kind"], "followup-session")
         self.assertEqual(
             result["primary_action_command"],
@@ -779,6 +784,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed"][0]["task_id"], resumable_same_session.task_id)
         self.assertEqual(result["closure_state"], "needs-followup")
         self.assertEqual(result["closure_hint"], "Follow up session session:main:running next.")
+        self.assertEqual(result["focus_session_key"], "session:main:running")
         self.assertEqual(result["primary_action_kind"], "followup-session")
         self.assertEqual(
             result["primary_action_command"],
@@ -840,6 +846,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["closure_state"], "settled")
         self.assertEqual(result["closure_state_reason"], "all-resumed-sessions-are-settled")
         self.assertEqual(result["closure_hint"], "All resumed sessions are settled; a quick lanes check is enough.")
+        self.assertIsNone(result["focus_session_key"])
         self.assertEqual(result["primary_action_kind"], "review-lanes")
         self.assertEqual(
             result["primary_action_command"],
@@ -963,6 +970,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["closure_state"], "no-resume-targets")
         self.assertEqual(result["closure_state_reason"], "no-watchdog-blocked-main-tasks-were-resumed")
         self.assertEqual(result["closure_hint"], "No continuity resume action is pending right now.")
+        self.assertIsNone(result["focus_session_key"])
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "no-resume-targets")
         self.assertEqual(
