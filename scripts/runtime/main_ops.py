@@ -125,8 +125,9 @@ def render_main_continuity(
     overdue_findings = [finding for finding in continuity_findings if finding.silence_seconds > monitor.silent_timeout_seconds]
     auto_resumable = sorted(watchdog_blocked, key=lambda item: item.updated_at, reverse=True)
     overdue_by_task_id = {finding.task_id: finding for finding in overdue_findings}
+    auto_resumable_ids = {task.task_id for task in auto_resumable}
     manual_review = sorted(
-        [finding for finding in overdue_findings if finding.task_id not in {task.task_id for task in auto_resumable}],
+        [finding for finding in overdue_findings if finding.task_id not in auto_resumable_ids],
         key=lambda item: (-item.silence_seconds, item.task_id),
     )
     not_recommended = sorted(
@@ -134,6 +135,35 @@ def render_main_continuity(
         key=lambda item: item.updated_at,
         reverse=True,
     )
+    session_summary: dict[str, dict[str, object]] = {}
+
+    def ensure_session(session_key: str) -> dict[str, object]:
+        bucket = session_summary.get(session_key)
+        if bucket is None:
+            bucket = {
+                "session_key": session_key,
+                "auto_resumable_count": 0,
+                "manual_review_count": 0,
+                "not_recommended_count": 0,
+                "task_labels": [],
+            }
+            session_summary[session_key] = bucket
+        return bucket
+
+    for task in auto_resumable:
+        bucket = ensure_session(task.session_key)
+        bucket["auto_resumable_count"] = int(bucket["auto_resumable_count"]) + 1
+        bucket["task_labels"].append(task.task_label)
+    for finding in manual_review:
+        task = main_tasks_by_id.get(finding.task_id)
+        bucket = ensure_session(finding.session_key)
+        bucket["manual_review_count"] = int(bucket["manual_review_count"]) + 1
+        if task:
+            bucket["task_labels"].append(task.task_label)
+    for task in not_recommended:
+        bucket = ensure_session(task.session_key)
+        bucket["not_recommended_count"] = int(bucket["not_recommended_count"]) + 1
+        bucket["task_labels"].append(task.task_label)
 
     lines = [
         "# Main Continuity",
@@ -181,6 +211,26 @@ def render_main_continuity(
             lines.append(
                 f"  inspect: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py show {task.task_id}"
             )
+
+    if session_summary:
+        lines.extend(["", "## By Session", ""])
+        for session_key, bucket in sorted(
+            session_summary.items(),
+            key=lambda item: (
+                -(
+                    int(item[1]["auto_resumable_count"])
+                    + int(item[1]["manual_review_count"])
+                    + int(item[1]["not_recommended_count"])
+                ),
+                item[0],
+            ),
+        ):
+            unique_labels = sorted({str(label) for label in bucket["task_labels"] if str(label).strip()})
+            lines.append(
+                f"- {session_key} | auto_resumable={bucket['auto_resumable_count']} | manual_review={bucket['manual_review_count']} | not_recommended={bucket['not_recommended_count']}"
+            )
+            if unique_labels:
+                lines.append(f"  labels: {', '.join(unique_labels[:3])}")
 
     if not auto_resumable and not manual_review and not not_recommended:
         lines.extend(["", "## Status", "", "- No continuity risk is currently detected for main."])

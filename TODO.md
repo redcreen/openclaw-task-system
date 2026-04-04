@@ -115,6 +115,7 @@
   - `Auto-Resumable`
   - `Needs Manual Review`
   - `Not Recommended For Auto Resume`
+- 也已按 `session` 聚合，便于直接看问题集中在哪几个会话
 
 原问题：
 

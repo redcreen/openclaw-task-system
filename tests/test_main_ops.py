@@ -156,6 +156,9 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("## Not Recommended For Auto Resume", rendered)
         self.assertIn("waiting for human confirmation", rendered)
         self.assertIn("main_ops.py show", rendered)
+        self.assertIn("## By Session", rendered)
+        self.assertIn("session:main:queued | auto_resumable=0 | manual_review=1 | not_recommended=0", rendered)
+        self.assertIn("session:main:blocked:manual | auto_resumable=0 | manual_review=0 | not_recommended=1", rendered)
 
     def test_resume_watchdog_blocked_main_tasks_resumes_only_selected_candidates(self) -> None:
         first = self.store.register_task(
