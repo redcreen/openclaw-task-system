@@ -130,6 +130,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- lane_agent_count: 0", rendered)
         self.assertIn("- continuity_auto_resumable_task_count: 0", rendered)
         self.assertIn("- top_followup_session: none", rendered)
+        self.assertIn("- action_hint: No immediate action needed.", rendered)
         self.assertIn("main_ops.py continuity --json", rendered)
 
     def test_get_main_dashboard_summary_warns_when_continuity_risk_exists(self) -> None:
@@ -154,6 +155,11 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["continuity"]["auto_resumable_task_count"], 1)
         self.assertEqual(summary["top_followup_session"]["session_key"], "session:main:dashboard-risk")
         self.assertEqual(summary["top_followup_session"]["auto_resumable_count"], 1)
+        self.assertEqual(summary["action_hint"], "Follow up session session:main:dashboard-risk first.")
+        self.assertEqual(
+            summary["action_hint_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:dashboard-risk'",
+        )
         self.assertEqual(summary["health"]["main_blocked_task_count"], 1)
         self.assertEqual(summary["queues"]["queue_count"], 0)
         self.assertEqual(summary["taskmonitor"]["override_count"], 0)
@@ -176,6 +182,7 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertIn("- session_filter: session:main:dashboard-focus", rendered)
         self.assertIn("- top_followup_session: none", rendered)
+        self.assertIn("- action_hint: Review current lanes before changing queue behavior.", rendered)
         self.assertIn("main_ops.py continuity --session-key 'session:main:dashboard-focus'", rendered)
         self.assertIn("taskmonitor --session-key 'session:main:dashboard-focus' --action status --json", rendered)
 
@@ -191,6 +198,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- status: ok", rendered)
         self.assertIn("- continuity_risk: auto=0 manual=0", rendered)
         self.assertIn("- top_followup_session: none", rendered)
+        self.assertIn("- action_hint: No immediate action needed.", rendered)
         self.assertNotIn("## Commands", rendered)
 
     def test_get_main_dashboard_summary_filters_to_one_session(self) -> None:
@@ -230,6 +238,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertFalse(summary["taskmonitor"]["enabled"])
         self.assertEqual(summary["continuity"]["session_filter"], "session:main:dashboard-focus-json")
         self.assertIsNone(summary["top_followup_session"])
+        self.assertEqual(summary["action_hint"], "Review current lanes before changing queue behavior.")
 
     def test_get_main_dashboard_summary_includes_compact_summary(self) -> None:
         summary = main_ops.get_main_dashboard_summary(
@@ -242,7 +251,30 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["compact_summary"]["scope"], "all")
         self.assertEqual(summary["compact_summary"]["status"], "ok")
         self.assertEqual(summary["compact_summary"]["top_followup_session_summary"], "none")
+        self.assertEqual(summary["compact_summary"]["action_hint"], "No immediate action needed.")
         self.assertEqual(summary["compact_summary"]["taskmonitor_summary"], "override_count=0")
+
+    def test_get_main_dashboard_summary_can_hint_taskmonitor_enable_for_session(self) -> None:
+        main_ops.set_taskmonitor_state(
+            "session:main:dashboard-taskmonitor-off",
+            False,
+            config_path=self._config_path(),
+        )
+
+        summary = main_ops.get_main_dashboard_summary(
+            config_path=self._config_path(),
+            paths=self.paths,
+            session_key="session:main:dashboard-taskmonitor-off",
+        )
+
+        self.assertEqual(
+            summary["action_hint"],
+            "Taskmonitor is disabled for session:main:dashboard-taskmonitor-off; re-enable if you want watchdog coverage.",
+        )
+        self.assertEqual(
+            summary["action_hint_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key 'session:main:dashboard-taskmonitor-off' --action on",
+        )
 
     def test_render_main_continuity_reports_no_risk_when_idle(self) -> None:
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)

@@ -202,6 +202,7 @@
   - `continuity`
   - `taskmonitor`
 - `dashboard --json` 已直接提供 `top_followup_session`
+- `dashboard` / `dashboard --compact` / `dashboard --json` 已直接提供 `action_hint`
 - 当前 dashboard 已支持按 `session` 聚焦，适合排某个具体会话
 - 当前 dashboard 已支持 `--compact`，适合日常快速扫一眼
 - 但更产品化的控制面板仍未完成，例如：

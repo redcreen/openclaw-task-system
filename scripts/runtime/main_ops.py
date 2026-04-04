@@ -962,6 +962,7 @@ def render_main_dashboard(
             f"- lanes: {compact_summary['lane_agent_count']}",
             f"- continuity_risk: auto={compact_summary['continuity_auto_resumable_task_count']} manual={compact_summary['continuity_manual_review_task_count']}",
             f"- top_followup_session: {compact_summary['top_followup_session_summary']}",
+            f"- action_hint: {compact_summary['action_hint']}",
             f"- taskmonitor: {compact_summary['taskmonitor_summary']}",
         ]
         return "\n".join(lines) + "\n"
@@ -978,6 +979,7 @@ def render_main_dashboard(
         f"- continuity_auto_resumable_task_count: {summary['continuity']['auto_resumable_task_count']}",
         f"- continuity_manual_review_task_count: {summary['continuity']['manual_review_task_count']}",
         f"- top_followup_session: {summary['top_followup_session']['session_key'] if summary['top_followup_session'] else 'none'}",
+        f"- action_hint: {summary['action_hint']}",
         f"- taskmonitor_override_count: {summary['taskmonitor']['override_count']}",
         "",
         "## Commands",
@@ -1038,6 +1040,26 @@ def get_main_dashboard_summary(
         or continuity["manual_review_task_count"] > 0
     ):
         status = "warn"
+    action_hint = "No immediate action needed."
+    action_hint_command = None
+    if top_followup_session:
+        action_hint = f"Follow up session {top_followup_session['session_key']} first."
+        action_hint_command = str(top_followup_session["next_command"])
+    elif continuity["auto_resumable_task_count"] > 0 or continuity["manual_review_task_count"] > 0:
+        action_hint = "Review continuity findings before changing execution state."
+        action_hint_command = (
+            f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{normalized_session_key}'"
+            if normalized_session_key
+            else "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json"
+        )
+    elif health["main_active_task_count"] > 0 or queues["queue_count"] > 0:
+        action_hint = "Review current lanes before changing queue behavior."
+        action_hint_command = "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json"
+    elif normalized_session_key and not bool(taskmonitor.get("enabled", True)):
+        action_hint = f"Taskmonitor is disabled for {normalized_session_key}; re-enable if you want watchdog coverage."
+        action_hint_command = (
+            f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '{normalized_session_key}' --action on"
+        )
     compact_summary = {
         "scope": normalized_session_key or "all",
         "status": status,
@@ -1052,6 +1074,7 @@ def get_main_dashboard_summary(
             if top_followup_session
             else "none"
         ),
+        "action_hint": action_hint,
         "taskmonitor_summary": (
             f"session-enabled={taskmonitor['enabled']}"
             if normalized_session_key
@@ -1069,6 +1092,8 @@ def get_main_dashboard_summary(
         "lanes": lanes,
         "continuity": continuity,
         "top_followup_session": top_followup_session,
+        "action_hint": action_hint,
+        "action_hint_command": action_hint_command,
         "taskmonitor": taskmonitor,
         "suggested_next_commands": (
             [
