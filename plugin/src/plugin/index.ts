@@ -132,6 +132,14 @@ async function appendDebugLog(
   }
 }
 
+function enqueueDebugLog(
+  config: Required<TaskSystemPluginConfig>,
+  event: string,
+  payload: Record<string, unknown>,
+): void {
+  void appendDebugLog(config, event, payload);
+}
+
 async function callHook(
   api: OpenClawPluginApi,
   config: Required<TaskSystemPluginConfig>,
@@ -144,7 +152,7 @@ async function callHook(
   await writeFile(tempPayloadPath, JSON.stringify(payload, null, 2), "utf-8");
 
   try {
-    await appendDebugLog(config, `hook:${command}:start`, payload);
+    enqueueDebugLog(config, `hook:${command}:start`, payload);
     const args = [script, command, tempPayloadPath];
     if (config.configPath) {
       args.push(config.configPath);
@@ -154,11 +162,11 @@ async function callHook(
       env: process.env,
     });
     const parsed = JSON.parse(result.stdout || "{}") as Record<string, unknown>;
-    await appendDebugLog(config, `hook:${command}:ok`, parsed);
+    enqueueDebugLog(config, `hook:${command}:ok`, parsed);
     return parsed;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await appendDebugLog(config, `hook:${command}:error`, { message });
+    enqueueDebugLog(config, `hook:${command}:error`, { message });
     api.logger.warn(`[task-system] hook ${command} failed: ${message}`);
     return null;
   } finally {
@@ -939,7 +947,7 @@ const taskSystemPlugin = {
         event.sessionKey || ctx.sessionKey || buildSessionKey(ctx.channelId ?? event.channel ?? "unknown", ctx.conversationId),
       );
       const agentId = resolveAgentId(ctx.agentId, sessionKey, config.defaultAgentId);
-      await appendDebugLog(config, "before_dispatch", {
+      enqueueDebugLog(config, "before_dispatch", {
         agentId,
         sessionKey,
         channel: event.channel ?? ctx.channelId ?? "unknown",
@@ -964,7 +972,7 @@ const taskSystemPlugin = {
         };
       }
       if (!(await isTaskMonitorEnabled(sessionKey))) {
-        await appendDebugLog(config, "before_dispatch:taskmonitor-disabled", {
+        enqueueDebugLog(config, "before_dispatch:taskmonitor-disabled", {
           agentId,
           sessionKey,
         });
@@ -980,7 +988,7 @@ const taskSystemPlugin = {
         user_request: event.body || event.content,
         observe_only: true,
       });
-      await appendDebugLog(config, "immediate-ack:decision", {
+      enqueueDebugLog(config, "immediate-ack:decision", {
         sessionKey,
         channel: event.channel ?? ctx.channelId ?? "unknown",
         shouldRegisterTask: registerResult?.should_register_task ?? null,
@@ -1076,7 +1084,7 @@ const taskSystemPlugin = {
       }
 
       if (classificationReason === "continuation-task") {
-        await appendDebugLog(config, "before_dispatch:continuation-handled", {
+        enqueueDebugLog(config, "before_dispatch:continuation-handled", {
           agentId,
           sessionKey,
           taskId: registerResult?.task_id ?? null,
