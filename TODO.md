@@ -175,6 +175,9 @@
   - `auto_resume_apply_command`
 - 当存在 auto-resumable 任务时，`continuity` 的默认 `primary_action` 已优先指向 `preview-auto-resume`
 - 当 auto-resume 没有额外 blocker 时，默认 `primary_action` 已可直接升级成 `apply-auto-resume`
+- `continuity --auto-resume-if-safe` 已提供受保护的直接执行入口：
+  - safe 时自动恢复
+  - 不 safe 时返回 `noop / skipped`
 - 现在剩余的真正残留主要是：
   - 恢复后的最终自动收口判定
   - watchdog 与长任务续跑的更完整自动策略

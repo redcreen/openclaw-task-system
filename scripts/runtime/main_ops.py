@@ -991,6 +991,91 @@ def resume_watchdog_blocked_main_tasks(
     }
 
 
+def auto_resume_watchdog_blocked_main_tasks_if_safe(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
+    limit: Optional[int] = None,
+    note: Optional[str] = None,
+    dry_run: bool = False,
+) -> dict[str, object]:
+    continuity = get_main_continuity_summary(
+        config_path=config_path,
+        paths=paths,
+        session_key=session_key,
+    )
+    safe_to_apply = bool(continuity.get("auto_resume_safe_to_apply"))
+    ready = bool(continuity.get("auto_resume_ready"))
+    blockers = [
+        str(item)
+        for item in continuity.get("auto_resume_blockers", [])
+        if str(item).strip()
+    ]
+    result: dict[str, object] = {
+        "action": "auto-resume-watchdog-blocked-main-tasks-if-safe",
+        "session_filter": str(continuity.get("session_filter") or "all"),
+        "safe_to_apply": safe_to_apply,
+        "auto_resume_ready": ready,
+        "auto_resume_mode": str(continuity.get("auto_resume_mode") or "none"),
+        "auto_resume_blockers": blockers,
+        "dry_run": dry_run,
+        "would_apply": safe_to_apply and ready,
+        "continuity": continuity,
+    }
+    if not ready:
+        result["status"] = "noop"
+        result["reason"] = "no-auto-resumable-tasks"
+        return result
+    if not safe_to_apply:
+        result["status"] = "skipped"
+        result["reason"] = "auto-resume-blocked"
+        return result
+
+    respect_execution_advice = str(continuity.get("auto_resume_mode") or "") == "respect-execution-advice"
+    resume_result = resume_watchdog_blocked_main_tasks(
+        config_path=config_path,
+        paths=paths,
+        session_key=session_key,
+        limit=limit,
+        note=note,
+        respect_execution_advice=respect_execution_advice,
+        dry_run=dry_run,
+    )
+    result["status"] = "applied" if not dry_run else "previewed"
+    result["respect_execution_advice"] = respect_execution_advice
+    result["resume_result"] = resume_result
+    result["closure_complete"] = bool(resume_result.get("closure_complete"))
+    result["primary_action_kind"] = str(resume_result.get("primary_action_kind") or "none")
+    result["primary_action_command"] = resume_result.get("primary_action_command")
+    result["focus_session_key"] = resume_result.get("focus_session_key")
+    return result
+
+
+def render_auto_resume_if_safe_result(result: dict[str, object]) -> str:
+    lines = [
+        "# Auto Resume",
+        "",
+        f"- session_filter: {result.get('session_filter')}",
+        f"- status: {result.get('status', 'unknown')}",
+        f"- safe_to_apply: {result.get('safe_to_apply')}",
+        f"- auto_resume_ready: {result.get('auto_resume_ready')}",
+        f"- auto_resume_mode: {result.get('auto_resume_mode')}",
+        f"- dry_run: {result.get('dry_run')}",
+    ]
+    blockers = result.get("auto_resume_blockers", [])
+    if isinstance(blockers, list) and blockers:
+        lines.append(f"- auto_resume_blockers: {', '.join(str(item) for item in blockers)}")
+    reason = result.get("reason")
+    if reason:
+        lines.append(f"- reason: {reason}")
+    if "closure_complete" in result:
+        lines.append(f"- closure_complete: {result.get('closure_complete')}")
+    if result.get("primary_action_command"):
+        lines.append(f"- next_command: {result.get('primary_action_command')}")
+    return "\n".join(lines) + "\n"
+
+
 def render_resume_watchdog_blocked_result(result: dict[str, object]) -> str:
     post_resume_summary = result.get("post_resume_summary", {})
     sessions = post_resume_summary.get("sessions", []) if isinstance(post_resume_summary, dict) else []
@@ -2560,6 +2645,11 @@ def main() -> None:
         action="store_true",
         help="Preview what would be resumed without changing task state.",
     )
+    continuity_parser.add_argument(
+        "--auto-resume-if-safe",
+        action="store_true",
+        help="Apply watchdog auto-resume only when continuity says it is safe to do so.",
+    )
     subparsers.add_parser("health", help="Show main-oriented health summary.")
     subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
     subparsers.add_parser("diagnose-delivery", help="Show host-side delivery diagnosis steps for retryable failures.")
@@ -2741,6 +2831,20 @@ def main() -> None:
         print(render_queue_topology(config_path=config_path, paths=paths), end="")
         return
     if args.command == "continuity":
+        if args.auto_resume_if_safe:
+            result = auto_resume_watchdog_blocked_main_tasks_if_safe(
+                config_path=config_path,
+                paths=paths,
+                session_key=args.session_key,
+                limit=args.limit,
+                note=args.note,
+                dry_run=args.dry_run,
+            )
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+                return
+            print(render_auto_resume_if_safe_result(result), end="")
+            return
         if args.resume_watchdog_blocked:
             result = resume_watchdog_blocked_main_tasks(
                 config_path=config_path,

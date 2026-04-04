@@ -1004,6 +1004,78 @@ class MainOpsTests(unittest.TestCase):
         refreshed = self.store.load_task(first.task_id)
         self.assertEqual(refreshed.status, "blocked")
 
+    def test_auto_resume_watchdog_blocked_main_tasks_if_safe_noop_when_nothing_ready(self) -> None:
+        result = main_ops.auto_resume_watchdog_blocked_main_tasks_if_safe(
+            config_path=self._config_path(),
+            paths=self.paths,
+        )
+
+        self.assertEqual(result["status"], "noop")
+        self.assertEqual(result["reason"], "no-auto-resumable-tasks")
+        self.assertFalse(result["safe_to_apply"])
+        self.assertFalse(result["auto_resume_ready"])
+
+    def test_auto_resume_watchdog_blocked_main_tasks_if_safe_skips_when_blocked(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:auto-blocked",
+            channel="telegram",
+            chat_id="chat:main:auto-blocked",
+            task_label="blocked auto task",
+        )
+        blocked = self.store.block_task(task.task_id, "watchdog blocked")
+        blocked.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked)
+
+        queued = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:auto-blocked",
+            channel="telegram",
+            chat_id="chat:main:auto-blocked",
+            task_label="manual review sibling",
+        )
+        queued_task = self.store.start_task(queued.task_id)
+        queued_task.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        self.store.save_task(queued_task)
+
+        result = main_ops.auto_resume_watchdog_blocked_main_tasks_if_safe(
+            config_path=self._config_path(),
+            paths=self.paths,
+        )
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "auto-resume-blocked")
+        self.assertTrue(result["auto_resume_ready"])
+        self.assertFalse(result["safe_to_apply"])
+        self.assertEqual(result["auto_resume_blockers"], ["manual-review-present"])
+
+    def test_auto_resume_watchdog_blocked_main_tasks_if_safe_applies_when_safe(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:auto-apply",
+            channel="telegram",
+            chat_id="chat:main:auto-apply",
+            task_label="auto apply blocked task",
+        )
+        blocked = self.store.block_task(task.task_id, "watchdog blocked")
+        blocked.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked)
+
+        result = main_ops.auto_resume_watchdog_blocked_main_tasks_if_safe(
+            config_path=self._config_path(),
+            paths=self.paths,
+            note="继续推进",
+        )
+
+        self.assertEqual(result["status"], "applied")
+        self.assertTrue(result["safe_to_apply"])
+        self.assertTrue(result["auto_resume_ready"])
+        self.assertEqual(result["auto_resume_blockers"], [])
+        self.assertIn("resume_result", result)
+        self.assertEqual(result["resume_result"]["resumed_count"], 1)
+        resumed = self.store.load_task(task.task_id)
+        self.assertEqual(resumed.status, task_state_module.STATUS_RUNNING)
+
     def test_render_resume_watchdog_blocked_result_groups_followup_state(self) -> None:
         rendered = main_ops.render_resume_watchdog_blocked_result(
             {
