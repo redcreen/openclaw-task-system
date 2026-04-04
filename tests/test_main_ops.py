@@ -352,6 +352,7 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertIn("# Main Continuity", rendered)
         self.assertIn("- session_filter: all", rendered)
+        self.assertIn("- top_risk_session: none", rendered)
         self.assertIn("- No continuity risk is currently detected for main.", rendered)
 
     def test_get_main_continuity_summary_reports_empty_state(self) -> None:
@@ -359,6 +360,7 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertEqual(summary["session_filter"], "all")
         self.assertEqual(summary["active_monitored_task_count"], 0)
+        self.assertIsNone(summary["top_risk_session"])
         self.assertEqual(summary["auto_resumable"], [])
         self.assertEqual(summary["manual_review"], [])
         self.assertEqual(summary["not_recommended"], [])
@@ -383,6 +385,7 @@ class MainOpsTests(unittest.TestCase):
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
 
         self.assertIn("## Auto-Resumable", rendered)
+        self.assertIn("- top_risk_session: session:main:blocked", rendered)
         self.assertIn("blocked-no-visible-progress", rendered)
         self.assertIn("main_ops.py resume", rendered)
         self.assertIn("main_ops.py continuity --session-key 'session:main:blocked'", rendered)
@@ -490,6 +493,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["manual_review"][0]["task_label"], "focus json task")
         self.assertEqual(len(summary["by_session"]), 1)
         self.assertEqual(summary["by_session"][0]["session_key"], "session:main:focus-json")
+        self.assertEqual(summary["top_risk_session"]["session_key"], "session:main:focus-json")
         self.assertEqual(summary["execution_plan"]["execution_recommendation"], "parallel-safe")
         self.assertIn("Inspect continuity and lanes output again after any resume action.", summary["execution_plan"]["steps"])
         self.assertIn(

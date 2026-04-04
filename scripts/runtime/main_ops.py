@@ -269,6 +269,19 @@ def render_main_continuity(
         auto_resumable_task_count=len(auto_resumable),
         suggested_next_commands=suggested_next_commands,
     )
+    top_risk_session_key = None
+    if session_summary:
+        top_risk_session_key = sorted(
+            session_summary,
+            key=lambda key: (
+                -(
+                    int(session_summary[key]["auto_resumable_count"])
+                    + int(session_summary[key]["manual_review_count"])
+                    + int(session_summary[key]["not_recommended_count"])
+                ),
+                key,
+            ),
+        )[0]
 
     lines = [
         "# Main Continuity",
@@ -285,6 +298,7 @@ def render_main_continuity(
         f"- auto_resumable_task_count: {len(auto_resumable)}",
         f"- manual_review_task_count: {len(manual_review)}",
         f"- not_recommended_auto_resume_count: {len(not_recommended)}",
+        f"- top_risk_session: {top_risk_session_key or 'none'}",
     ]
 
     if auto_resumable:
@@ -459,6 +473,39 @@ def get_main_continuity_summary(
         auto_resumable_task_count=len(auto_resumable),
         suggested_next_commands=suggested_next_commands,
     )
+    by_session = [
+        {
+            "session_key": session_entry["session_key"],
+            "auto_resumable_count": session_entry["auto_resumable_count"],
+            "manual_review_count": session_entry["manual_review_count"],
+            "not_recommended_count": session_entry["not_recommended_count"],
+            "task_labels": sorted({str(label) for label in session_entry["task_labels"] if str(label).strip()}),
+        }
+        for session_entry in sorted(
+            session_summary.values(),
+            key=lambda item: (
+                -(
+                    int(item["auto_resumable_count"])
+                    + int(item["manual_review_count"])
+                    + int(item["not_recommended_count"])
+                ),
+                str(item["session_key"]),
+            ),
+        )
+    ]
+    top_risk_session = None
+    if by_session:
+        top_session = by_session[0]
+        top_risk_session = {
+            "session_key": top_session["session_key"],
+            "auto_resumable_count": top_session["auto_resumable_count"],
+            "manual_review_count": top_session["manual_review_count"],
+            "not_recommended_count": top_session["not_recommended_count"],
+            "task_labels": top_session["task_labels"],
+            "next_command": (
+                f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{top_session['session_key']}'"
+            ),
+        }
 
     return {
         "session_filter": normalized_session_key or "all",
@@ -505,26 +552,8 @@ def get_main_continuity_summary(
             }
             for task in not_recommended
         ],
-        "by_session": [
-            {
-                "session_key": session_entry["session_key"],
-                "auto_resumable_count": session_entry["auto_resumable_count"],
-                "manual_review_count": session_entry["manual_review_count"],
-                "not_recommended_count": session_entry["not_recommended_count"],
-                "task_labels": sorted({str(label) for label in session_entry["task_labels"] if str(label).strip()}),
-            }
-            for session_entry in sorted(
-                session_summary.values(),
-                key=lambda item: (
-                    -(
-                        int(item["auto_resumable_count"])
-                        + int(item["manual_review_count"])
-                        + int(item["not_recommended_count"])
-                    ),
-                    str(item["session_key"]),
-                ),
-            )
-        ],
+        "by_session": by_session,
+        "top_risk_session": top_risk_session,
         "suggested_next_commands": suggested_next_commands,
         "execution_plan": execution_plan,
     }
