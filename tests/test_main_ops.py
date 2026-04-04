@@ -128,6 +128,57 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("blocked-no-visible-progress", rendered)
         self.assertIn("main_ops.py resume", rendered)
 
+    def test_resume_watchdog_blocked_main_tasks_resumes_only_selected_candidates(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:blocked:one",
+            channel="telegram",
+            chat_id="chat:main:blocked:one",
+            task_label="blocked main task one",
+        )
+        second = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:blocked:two",
+            channel="telegram",
+            chat_id="chat:main:blocked:two",
+            task_label="blocked main task two",
+        )
+        unrelated = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:manual",
+            channel="telegram",
+            chat_id="chat:main:manual",
+            task_label="manual blocked task",
+        )
+        self.store.block_task(first.task_id, "watchdog blocked")
+        blocked_second = self.store.block_task(second.task_id, "watchdog blocked")
+        self.store.block_task(unrelated.task_id, "manual waiting")
+        blocked_first = self.store.load_task(first.task_id)
+        blocked_first.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        blocked_first.updated_at = "2020-01-01T00:00:00+00:00"
+        self.store.save_task(blocked_first)
+        blocked_second.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        blocked_second.updated_at = "2020-01-01T00:01:00+00:00"
+        self.store.save_task(blocked_second)
+
+        result = main_ops.resume_watchdog_blocked_main_tasks(
+            config_path=self._config_path(),
+            paths=self.paths,
+            limit=1,
+            note="继续推进",
+        )
+
+        self.assertEqual(result["candidate_count"], 2)
+        self.assertEqual(result["resumed_count"], 1)
+        self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
+        resumed_first = self.store.load_task(first.task_id)
+        resumed_second = self.store.load_task(second.task_id)
+        resumed_unrelated = self.store.load_task(unrelated.task_id)
+        self.assertEqual(resumed_first.status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(resumed_first.meta["last_progress_note"], "继续推进")
+        self.assertEqual(resumed_second.status, "blocked")
+        self.assertEqual(resumed_unrelated.status, "blocked")
+
     def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:
         main_running = self.store.register_task(
             agent_id="main",

@@ -102,6 +102,7 @@
 已新增：
 
 - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`
+- `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --limit 1`
 
 当前可以直接看到：
 
@@ -109,6 +110,7 @@
 - watchdog 正在监控的超时任务数量
 - 是否已经出现 `watchdog_blocked_task`
 - 哪些任务可优先 `resume`
+- 也可以直接按限额恢复 watchdog 拦住的主任务
 
 原问题：
 
@@ -220,5 +222,8 @@
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues`
 - 查看当前 lane 摘要：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes`
+- 查看或恢复 main 连续执行风险：
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --limit 1`
 - 查看或切换 taskmonitor：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status`

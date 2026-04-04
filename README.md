@@ -212,6 +212,9 @@
 - 当前持续执行 / watchdog 风险摘要：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`
 
+- 恢复 watchdog 卡住的主任务：
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --limit 1`
+
 - `main` 健康检查：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health`
 

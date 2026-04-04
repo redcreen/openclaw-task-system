@@ -152,6 +152,52 @@ def render_main_continuity(
     return "\n".join(lines) + "\n"
 
 
+def resume_watchdog_blocked_main_tasks(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    limit: Optional[int] = None,
+    note: Optional[str] = None,
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    store = TaskStore(paths=resolved_paths)
+    watchdog_blocked = [
+        task
+        for task in store.find_inflight_tasks(agent_id="main")
+        if task.status == "blocked" and str(task.meta.get("watchdog_escalation") or "").strip()
+    ]
+    selected = sorted(
+        watchdog_blocked,
+        key=lambda item: (
+            str(item.updated_at or item.created_at or ""),
+            str(item.task_id),
+        ),
+    )
+    if limit is not None:
+        selected = selected[: max(0, int(limit))]
+    resume_note = note or "继续推进并同步真实进展"
+    resumed: list[dict[str, object]] = []
+    for task in selected:
+        updated = resume_main_task(task.task_id, progress_note=resume_note, paths=resolved_paths)
+        resumed.append(
+            {
+                "task_id": updated.task_id,
+                "status": updated.status,
+                "session_key": updated.session_key,
+                "task_label": updated.task_label,
+                "watchdog_escalation": str(task.meta.get("watchdog_escalation") or ""),
+            }
+        )
+    return {
+        "action": "resume-watchdog-blocked-main-tasks",
+        "candidate_count": len(watchdog_blocked),
+        "resumed_count": len(resumed),
+        "limit": limit,
+        "note": resume_note,
+        "resumed": resumed,
+    }
+
+
 def render_taskmonitor_status(
     session_key: str,
     *,
@@ -966,7 +1012,23 @@ def main() -> None:
     subparsers.add_parser("overview", help="Show task system overview.")
     subparsers.add_parser("lanes", help="Show current queue/lane summary across agents.")
     subparsers.add_parser("queues", help="Show current queue topology across agents and sessions.")
-    subparsers.add_parser("continuity", help="Show main-agent continuity/watchdog risk summary.")
+    continuity_parser = subparsers.add_parser("continuity", help="Show main-agent continuity/watchdog risk summary.")
+    continuity_parser.add_argument(
+        "--resume-watchdog-blocked",
+        action="store_true",
+        help="Resume watchdog-blocked main tasks instead of only showing the summary.",
+    )
+    continuity_parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum number of watchdog-blocked tasks to resume.",
+    )
+    continuity_parser.add_argument(
+        "--note",
+        default="继续推进并同步真实进展",
+        help="Progress note recorded when resuming watchdog-blocked tasks.",
+    )
     subparsers.add_parser("health", help="Show main-oriented health summary.")
     subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
     subparsers.add_parser("diagnose-delivery", help="Show host-side delivery diagnosis steps for retryable failures.")
@@ -1109,6 +1171,15 @@ def main() -> None:
         print(render_queue_topology(config_path=config_path, paths=paths), end="")
         return
     if args.command == "continuity":
+        if args.resume_watchdog_blocked:
+            result = resume_watchdog_blocked_main_tasks(
+                config_path=config_path,
+                paths=paths,
+                limit=args.limit,
+                note=args.note,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return
         print(render_main_continuity(config_path=config_path, paths=paths), end="")
         return
     if args.command == "health":
