@@ -825,6 +825,8 @@ def resume_watchdog_blocked_main_tasks(
         "respect_execution_advice": respect_execution_advice,
         "dry_run": dry_run,
         "pre_resume_execution_recommendation": pre_resume_strategy["execution_recommendation"],
+        "primary_action": post_resume_runbook["primary_action"],
+        "runbook": post_resume_runbook,
         "post_resume_summary": {
             "resumed_session_count": len(resumed_session_keys),
             "status_counts": post_resume_status_counts,
