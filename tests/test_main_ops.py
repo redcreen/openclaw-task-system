@@ -429,6 +429,34 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(resumed_same.status, task_state_module.STATUS_QUEUED)
         self.assertEqual(blocked_other_after.status, "blocked")
 
+    def test_resume_watchdog_blocked_main_tasks_supports_dry_run(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:dryrun",
+            channel="telegram",
+            chat_id="chat:main:dryrun",
+            task_label="dry-run blocked task",
+        )
+        blocked = self.store.block_task(first.task_id, "watchdog blocked")
+        blocked.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked)
+
+        result = main_ops.resume_watchdog_blocked_main_tasks(
+            config_path=self._config_path(),
+            paths=self.paths,
+            dry_run=True,
+            note="继续推进",
+        )
+
+        self.assertEqual(result["dry_run"], True)
+        self.assertEqual(result["candidate_count"], 1)
+        self.assertEqual(result["eligible_count"], 1)
+        self.assertEqual(result["resumed_count"], 1)
+        self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
+        self.assertEqual(result["resumed"][0]["dry_run"], True)
+        refreshed = self.store.load_task(first.task_id)
+        self.assertEqual(refreshed.status, "blocked")
+
     def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:
         main_running = self.store.register_task(
             agent_id="main",

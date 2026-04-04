@@ -462,6 +462,7 @@ def resume_watchdog_blocked_main_tasks(
     limit: Optional[int] = None,
     note: Optional[str] = None,
     respect_execution_advice: bool = False,
+    dry_run: bool = False,
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(config_path, paths=paths)
     store = TaskStore(paths=resolved_paths)
@@ -515,6 +516,22 @@ def resume_watchdog_blocked_main_tasks(
     post_resume_status_counts: dict[str, int] = {}
     resumed_session_keys: set[str] = set()
     for task in selected:
+        if dry_run:
+            target_status = STATUS_QUEUED if pre_resume_strategy["execution_recommendation"] == "serial" else STATUS_RUNNING
+            updated = task
+            resumed_session_keys.add(task.session_key)
+            post_resume_status_counts[target_status] = post_resume_status_counts.get(target_status, 0) + 1
+            resumed.append(
+                {
+                    "task_id": task.task_id,
+                    "status": target_status,
+                    "session_key": task.session_key,
+                    "task_label": task.task_label,
+                    "watchdog_escalation": str(task.meta.get("watchdog_escalation") or ""),
+                    "dry_run": True,
+                }
+            )
+            continue
         updated = resume_main_task(task.task_id, progress_note=resume_note, paths=resolved_paths)
         resumed_session_keys.add(updated.session_key)
         post_resume_status_counts[updated.status] = post_resume_status_counts.get(updated.status, 0) + 1
@@ -527,13 +544,16 @@ def resume_watchdog_blocked_main_tasks(
                 "watchdog_escalation": str(task.meta.get("watchdog_escalation") or ""),
             }
         )
-    post_resume_tasks = [
-        task
-        for task in store.find_inflight_tasks(agent_id="main")
-        if task.status in {"received", "queued", "running", "paused"}
-        and (normalized_session_key is None or task.session_key == normalized_session_key)
-    ]
-    post_resume_strategy = _summarize_agent_execution_strategy("main", post_resume_tasks)
+    if dry_run:
+        post_resume_strategy = pre_resume_strategy
+    else:
+        post_resume_tasks = [
+            task
+            for task in store.find_inflight_tasks(agent_id="main")
+            if task.status in {"received", "queued", "running", "paused"}
+            and (normalized_session_key is None or task.session_key == normalized_session_key)
+        ]
+        post_resume_strategy = _summarize_agent_execution_strategy("main", post_resume_tasks)
     return {
         "action": "resume-watchdog-blocked-main-tasks",
         "session_filter": normalized_session_key or "all",
@@ -543,6 +563,7 @@ def resume_watchdog_blocked_main_tasks(
         "limit": limit,
         "note": resume_note,
         "respect_execution_advice": respect_execution_advice,
+        "dry_run": dry_run,
         "pre_resume_execution_recommendation": pre_resume_strategy["execution_recommendation"],
         "post_resume_summary": {
             "resumed_session_count": len(resumed_session_keys),
@@ -1669,6 +1690,11 @@ def main() -> None:
         action="store_true",
         help="Only resume tasks allowed by the current execution recommendation.",
     )
+    continuity_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview what would be resumed without changing task state.",
+    )
     subparsers.add_parser("health", help="Show main-oriented health summary.")
     subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
     subparsers.add_parser("diagnose-delivery", help="Show host-side delivery diagnosis steps for retryable failures.")
@@ -1831,6 +1857,7 @@ def main() -> None:
                 limit=args.limit,
                 note=args.note,
                 respect_execution_advice=args.respect_execution_advice,
+                dry_run=args.dry_run,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return
