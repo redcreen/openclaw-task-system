@@ -457,6 +457,23 @@ def render_taskmonitor_status(
     return "\n".join(lines) + "\n"
 
 
+def get_taskmonitor_status(
+    session_key: str,
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, object]:
+    normalized = str(session_key or "").strip()
+    if not normalized:
+        raise ValueError("session_key is required")
+    overrides = list_taskmonitor_overrides(config_path=config_path)
+    return {
+        "session_key": normalized,
+        "enabled": get_taskmonitor_enabled(normalized, config_path=config_path),
+        "explicitly_overridden": normalized in overrides,
+        "override_count": len(overrides),
+    }
+
+
 def set_taskmonitor_state(
     session_key: str,
     enabled: bool,
@@ -483,6 +500,23 @@ def render_taskmonitor_overrides(
     for session_key, enabled in overrides.items():
         lines.append(f"- {session_key} | enabled={enabled}")
     return "\n".join(lines) + "\n"
+
+
+def get_taskmonitor_overrides(
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, object]:
+    overrides = list_taskmonitor_overrides(config_path=config_path)
+    return {
+        "override_count": len(overrides),
+        "overrides": [
+            {
+                "session_key": session_key,
+                "enabled": enabled,
+            }
+            for session_key, enabled in overrides.items()
+        ],
+    }
 
 
 def render_queue_lanes(
@@ -1390,6 +1424,7 @@ def main() -> None:
     taskmonitor_parser = subparsers.add_parser("taskmonitor", help="Inspect or change taskmonitor state for a session.")
     taskmonitor_parser.add_argument("--session-key", default=None)
     taskmonitor_parser.add_argument("--action", choices=["status", "on", "off", "list"], default="status")
+    taskmonitor_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
 
     subparsers.add_parser("overview", help="Show task system overview.")
     lanes_parser = subparsers.add_parser("lanes", help="Show current queue/lane summary across agents.")
@@ -1541,11 +1576,17 @@ def main() -> None:
         return
     if args.command == "taskmonitor":
         if args.action == "list":
+            if args.json:
+                print(json.dumps(get_taskmonitor_overrides(config_path=config_path), ensure_ascii=False, indent=2))
+                return
             print(render_taskmonitor_overrides(config_path=config_path), end="")
             return
         if not args.session_key:
             raise SystemExit("--session-key is required unless --action=list")
         if args.action == "status":
+            if args.json:
+                print(json.dumps(get_taskmonitor_status(args.session_key, config_path=config_path), ensure_ascii=False, indent=2))
+                return
             print(render_taskmonitor_status(args.session_key, config_path=config_path), end="")
             return
         result = set_taskmonitor_state(

@@ -171,8 +171,10 @@
 - 关闭后，该会话后续消息将跳过 task system 监控
 - 已新增运维命令：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status --json`
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action off`
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list --json`
 - runtime 命令级验证已通过
 
 

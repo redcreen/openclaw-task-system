@@ -229,8 +229,10 @@
 
 - 查看或切换某个会话的 taskmonitor：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status`
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status --json`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action off`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list`
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list --json`
 
 - 健康问题统一修复入口：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair`

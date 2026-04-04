@@ -88,6 +88,14 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- enabled: True", rendered)
         self.assertIn("- explicitly_overridden: False", rendered)
 
+    def test_get_taskmonitor_status_reports_default_enabled(self) -> None:
+        status = main_ops.get_taskmonitor_status("session:taskmonitor", config_path=self._config_path())
+
+        self.assertEqual(status["session_key"], "session:taskmonitor")
+        self.assertTrue(status["enabled"])
+        self.assertFalse(status["explicitly_overridden"])
+        self.assertEqual(status["override_count"], 0)
+
     def test_set_taskmonitor_state_updates_override_and_list(self) -> None:
         result = main_ops.set_taskmonitor_state(
             "session:taskmonitor",
@@ -99,6 +107,19 @@ class MainOpsTests(unittest.TestCase):
         rendered = main_ops.render_taskmonitor_overrides(config_path=self._config_path())
         self.assertIn("# TaskMonitor Overrides", rendered)
         self.assertIn("session:taskmonitor | enabled=False", rendered)
+
+    def test_get_taskmonitor_overrides_returns_structured_list(self) -> None:
+        main_ops.set_taskmonitor_state(
+            "session:taskmonitor",
+            False,
+            config_path=self._config_path(),
+        )
+
+        overrides = main_ops.get_taskmonitor_overrides(config_path=self._config_path())
+
+        self.assertEqual(overrides["override_count"], 1)
+        self.assertEqual(overrides["overrides"][0]["session_key"], "session:taskmonitor")
+        self.assertFalse(overrides["overrides"][0]["enabled"])
 
     def test_render_main_continuity_reports_no_risk_when_idle(self) -> None:
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
