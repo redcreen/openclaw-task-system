@@ -209,6 +209,7 @@
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --json`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --session-key '<session_key>'`
   会把 `health / queues / lanes / continuity / taskmonitor` 收成一个统一入口
+  `dashboard --json` 也会直接给出 `top_followup_session`，方便快速定位当前最该优先跟进的 session
 
 - 当前队列拓扑：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues`

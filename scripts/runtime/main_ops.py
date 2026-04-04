@@ -961,6 +961,7 @@ def render_main_dashboard(
             f"- queues: {compact_summary['queue_count']}",
             f"- lanes: {compact_summary['lane_agent_count']}",
             f"- continuity_risk: auto={compact_summary['continuity_auto_resumable_task_count']} manual={compact_summary['continuity_manual_review_task_count']}",
+            f"- top_followup_session: {compact_summary['top_followup_session_summary']}",
             f"- taskmonitor: {compact_summary['taskmonitor_summary']}",
         ]
         return "\n".join(lines) + "\n"
@@ -976,6 +977,7 @@ def render_main_dashboard(
         f"- lane_agent_count: {summary['lanes']['agent_count']}",
         f"- continuity_auto_resumable_task_count: {summary['continuity']['auto_resumable_task_count']}",
         f"- continuity_manual_review_task_count: {summary['continuity']['manual_review_task_count']}",
+        f"- top_followup_session: {summary['top_followup_session']['session_key'] if summary['top_followup_session'] else 'none'}",
         f"- taskmonitor_override_count: {summary['taskmonitor']['override_count']}",
         "",
         "## Commands",
@@ -1016,6 +1018,19 @@ def get_main_dashboard_summary(
             "mode": "global",
             **get_taskmonitor_overrides(config_path=config_path),
         }
+    top_followup_session = None
+    if continuity["by_session"]:
+        top_session = continuity["by_session"][0]
+        top_followup_session = {
+            "session_key": top_session["session_key"],
+            "auto_resumable_count": top_session["auto_resumable_count"],
+            "manual_review_count": top_session["manual_review_count"],
+            "not_recommended_count": top_session["not_recommended_count"],
+            "task_labels": top_session["task_labels"],
+            "next_command": (
+                f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{top_session['session_key']}'"
+            ),
+        }
     status = "ok"
     if (
         health["status"] != "ok"
@@ -1032,6 +1047,11 @@ def get_main_dashboard_summary(
         "lane_agent_count": lanes["agent_count"],
         "continuity_auto_resumable_task_count": continuity["auto_resumable_task_count"],
         "continuity_manual_review_task_count": continuity["manual_review_task_count"],
+        "top_followup_session_summary": (
+            str(top_followup_session["session_key"])
+            if top_followup_session
+            else "none"
+        ),
         "taskmonitor_summary": (
             f"session-enabled={taskmonitor['enabled']}"
             if normalized_session_key
@@ -1048,6 +1068,7 @@ def get_main_dashboard_summary(
         "queues": queues,
         "lanes": lanes,
         "continuity": continuity,
+        "top_followup_session": top_followup_session,
         "taskmonitor": taskmonitor,
         "suggested_next_commands": (
             [
