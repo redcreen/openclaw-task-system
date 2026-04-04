@@ -167,6 +167,11 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertEqual(summary["primary_action"]["kind"], "followup-session")
         self.assertEqual(summary["primary_action"]["session_key"], "session:main:dashboard-risk")
+        self.assertEqual(summary["runbook"]["primary_action"]["kind"], "followup-session")
+        self.assertEqual(
+            summary["runbook"]["commands"][0],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:dashboard-risk'",
+        )
         self.assertEqual(summary["health"]["main_blocked_task_count"], 1)
         self.assertEqual(summary["queues"]["queue_count"], 0)
         self.assertEqual(summary["taskmonitor"]["override_count"], 0)
@@ -315,6 +320,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIsNone(summary["action_hint_command"])
         self.assertEqual(summary["compact_summary"]["action_hint_command_summary"], "none")
         self.assertEqual(summary["primary_action"]["kind"], "none")
+        self.assertEqual(summary["runbook"]["primary_action"]["kind"], "none")
         self.assertEqual(summary["compact_summary"]["taskmonitor_summary"], "override_count=0")
 
     def test_get_main_dashboard_summary_includes_issue_summary(self) -> None:
@@ -329,6 +335,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIsNone(summary["issue_summary"]["action_hint"])
         self.assertIsNone(summary["issue_summary"]["action_hint_command"])
         self.assertEqual(summary["primary_action"]["kind"], "none")
+        self.assertEqual(summary["runbook"]["primary_action"]["kind"], "none")
 
     def test_get_main_dashboard_summary_can_hint_taskmonitor_enable_for_session(self) -> None:
         main_ops.set_taskmonitor_state(

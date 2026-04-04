@@ -1236,6 +1236,15 @@ def get_main_dashboard_summary(
         "command": action_hint_command,
         "session_key": top_followup_session["session_key"] if top_followup_session else normalized_session_key,
     }
+    runbook = {
+        "status": status,
+        "primary_action": primary_action,
+        "steps": [
+            primary_action["summary"],
+            "Review the suggested commands in order if the first action does not fully resolve the current state.",
+        ],
+        "commands": suggested_next_commands,
+    }
     return {
         "generated_at": datetime.now(timezone.utc).astimezone().isoformat(),
         "session_filter": normalized_session_key or "all",
@@ -1252,6 +1261,7 @@ def get_main_dashboard_summary(
         "action_hint": action_hint,
         "action_hint_command": action_hint_command,
         "primary_action": primary_action,
+        "runbook": runbook,
         "taskmonitor": taskmonitor,
         "suggested_next_commands": suggested_next_commands,
     }
