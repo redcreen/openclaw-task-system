@@ -1382,7 +1382,9 @@ def render_main_dashboard(
                 f"- main_active_task_count: {summary['health']['main_active_task_count']}",
                 f"- main_blocked_task_count: {summary['health']['main_blocked_task_count']}",
                 f"- continuity_risk: auto={summary['continuity']['auto_resumable_task_count']} manual={summary['continuity']['manual_review_task_count']}",
+                f"- auto_resume_ready: {summary['auto_resume_ready']}",
                 f"- auto_resume_safe_to_apply: {summary['auto_resume_safe_to_apply']}",
+                f"- auto_resume_command: {summary['auto_resume_command'] or 'none'}",
                 f"- top_followup_session: {summary['top_followup_session']['session_key'] if summary['top_followup_session'] else 'none'}",
                 f"- action_hint: {summary['action_hint']}",
             ]

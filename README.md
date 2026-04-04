@@ -270,6 +270,7 @@
   `dashboard` 在 continuity 风险场景下也会继承这条 `primary_action`，优先指向 guarded auto-resume 入口
   `continuity --auto-resume-if-safe --json` 也已直接提供顶层 `closure_complete / primary_action / runbook`
   `dashboard --json` / `dashboard --json --only-issues` 现在也会直接给出 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_blockers / auto_resume_command`
+  `dashboard --only-issues` 文本视图现在也会直接显示 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_command`
   文本输出和 JSON 输出都会附带推荐的下一步命令，方便继续检查对应 session 的连续执行状态
   同时会直接给出当前建议执行方式：`serial` / `serial-per-session` / `parallel-safe`
   并会附带一份 `execution_plan`，把 dry-run、尊重 advice、后续检查命令收成一份更像 runbook 的输出

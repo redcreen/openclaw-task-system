@@ -269,6 +269,12 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- status: warn", rendered)
         self.assertIn("- main_blocked_task_count: 1", rendered)
         self.assertIn("- continuity_risk: auto=1 manual=0", rendered)
+        self.assertIn("- auto_resume_ready: True", rendered)
+        self.assertIn("- auto_resume_safe_to_apply: True", rendered)
+        self.assertIn(
+            "- auto_resume_command: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            rendered,
+        )
         self.assertIn("- top_followup_session: session:main:issues-only", rendered)
         self.assertIn("- action_hint: Apply the watchdog auto-resume plan now.", rendered)
         self.assertIn(
