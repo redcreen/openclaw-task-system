@@ -87,6 +87,46 @@ def render_main_health(
     return "\n".join(lines) + "\n"
 
 
+def _derive_execution_recommendation(
+    *,
+    shared_kind: str,
+    shared_with_running_lane: bool,
+) -> str:
+    if shared_kind == "shared" and shared_with_running_lane:
+        return "serial"
+    if shared_kind == "shared":
+        return "serial-per-session"
+    return "parallel-safe"
+
+
+def _summarize_agent_execution_strategy(
+    agent_id: str,
+    tasks: list[object],
+) -> dict[str, object]:
+    session_keys = sorted({str(task.session_key) for task in tasks})
+    running_sessions = sorted({str(task.session_key) for task in tasks if str(task.status) == STATUS_RUNNING})
+    lane_kind = "shared" if len(session_keys) > 1 else "single-session"
+    shared_with_running_lane = len(running_sessions) > 0
+    execution_recommendation = _derive_execution_recommendation(
+        shared_kind=lane_kind,
+        shared_with_running_lane=shared_with_running_lane,
+    )
+    if lane_kind == "shared":
+        execution_reason = (
+            f"agent {agent_id} currently has {len(session_keys)} active sessions sharing the same lane"
+        )
+    else:
+        execution_reason = f"agent {agent_id} currently has one active session in the lane"
+    return {
+        "lane_kind": lane_kind,
+        "session_count": len(session_keys),
+        "shared_sessions": session_keys if len(session_keys) > 1 else [],
+        "shared_with_running_lane": shared_with_running_lane,
+        "execution_recommendation": execution_recommendation,
+        "execution_reason": execution_reason,
+    }
+
+
 def render_main_continuity(
     *,
     config_path: Optional[Path] = None,
@@ -100,6 +140,8 @@ def render_main_continuity(
     main_tasks = store.find_inflight_tasks(agent_id="main")
     if normalized_session_key:
         main_tasks = [task for task in main_tasks if task.session_key == normalized_session_key]
+    queue_like_tasks = [task for task in main_tasks if task.status in {"received", "queued", "running", "paused"}]
+    execution_strategy = _summarize_agent_execution_strategy("main", queue_like_tasks)
     blocked_without_watchdog = [
         task
         for task in main_tasks
@@ -176,6 +218,8 @@ def render_main_continuity(
         f"- silence_monitor_enabled: {monitor.enabled}",
         f"- silent_timeout_seconds: {monitor.silent_timeout_seconds}",
         f"- resend_interval_seconds: {monitor.resend_interval_seconds}",
+        f"- execution_recommendation: {execution_strategy['execution_recommendation']}",
+        f"- execution_reason: {execution_strategy['execution_reason']}",
         f"- active_monitored_task_count: {len(monitored_tasks)}",
         f"- overdue_monitored_task_count: {len(overdue_findings)}",
         f"- watchdog_blocked_task_count: {len(watchdog_blocked)}",
@@ -262,6 +306,8 @@ def get_main_continuity_summary(
     main_tasks = store.find_inflight_tasks(agent_id="main")
     if normalized_session_key:
         main_tasks = [task for task in main_tasks if task.session_key == normalized_session_key]
+    queue_like_tasks = [task for task in main_tasks if task.status in {"received", "queued", "running", "paused"}]
+    execution_strategy = _summarize_agent_execution_strategy("main", queue_like_tasks)
     blocked_without_watchdog = [
         task
         for task in main_tasks
@@ -335,6 +381,8 @@ def get_main_continuity_summary(
         "silence_monitor_enabled": monitor.enabled,
         "silent_timeout_seconds": monitor.silent_timeout_seconds,
         "resend_interval_seconds": monitor.resend_interval_seconds,
+        "execution_recommendation": execution_strategy["execution_recommendation"],
+        "execution_reason": execution_strategy["execution_reason"],
         "active_monitored_task_count": len(monitored_tasks),
         "overdue_monitored_task_count": len(overdue_findings),
         "watchdog_blocked_task_count": len(watchdog_blocked),
@@ -450,6 +498,13 @@ def resume_watchdog_blocked_main_tasks(
                 "watchdog_escalation": str(task.meta.get("watchdog_escalation") or ""),
             }
         )
+    post_resume_tasks = [
+        task
+        for task in store.find_inflight_tasks(agent_id="main")
+        if task.status in {"received", "queued", "running", "paused"}
+        and (normalized_session_key is None or task.session_key == normalized_session_key)
+    ]
+    post_resume_strategy = _summarize_agent_execution_strategy("main", post_resume_tasks)
     return {
         "action": "resume-watchdog-blocked-main-tasks",
         "session_filter": normalized_session_key or "all",
@@ -460,6 +515,8 @@ def resume_watchdog_blocked_main_tasks(
         "post_resume_summary": {
             "resumed_session_count": len(resumed_session_keys),
             "status_counts": post_resume_status_counts,
+            "execution_recommendation": post_resume_strategy["execution_recommendation"],
+            "execution_reason": post_resume_strategy["execution_reason"],
         },
         "suggested_next_commands": [
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
