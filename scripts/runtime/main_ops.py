@@ -293,6 +293,24 @@ def render_main_continuity(
         *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
         *(["--respect-execution-advice"] if str(execution_strategy["execution_recommendation"]) == "serial" else []),
     ]
+    auto_resume_if_safe_command = " ".join(
+        [
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
+        ]
+    )
+    auto_resume_if_safe_command = " ".join(
+        [
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
+        ]
+    )
+    auto_resume_if_safe_command = " ".join(
+        [
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
+        ]
+    )
     auto_resume_preview_command = (
         " ".join([*auto_resume_command_parts, "--dry-run"])
         if auto_resumable
@@ -304,7 +322,7 @@ def render_main_continuity(
         primary_action = {
             "kind": "apply-auto-resume",
             "summary": "Apply the watchdog auto-resume plan now.",
-            "command": auto_resume_apply_command,
+            "command": auto_resume_if_safe_command,
             "session_key": normalized_session_key or top_risk_session_key,
         }
     elif auto_resumable and auto_resume_preview_command:
@@ -513,6 +531,12 @@ def get_main_continuity_summary(
         *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
         *(["--respect-execution-advice"] if str(execution_strategy["execution_recommendation"]) == "serial" else []),
     ]
+    auto_resume_if_safe_command = " ".join(
+        [
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
+        ]
+    )
     auto_resume_ready = len(auto_resumable) > 0
     auto_resume_blockers: list[str] = []
     if manual_review:
@@ -582,7 +606,7 @@ def get_main_continuity_summary(
         primary_action = {
             "kind": "apply-auto-resume",
             "summary": "Apply the watchdog auto-resume plan now.",
-            "command": auto_resume_apply_command,
+            "command": auto_resume_if_safe_command,
             "session_key": normalized_session_key or (top_risk_session["session_key"] if top_risk_session else None),
         }
     elif auto_resume_ready and auto_resume_preview_command:
@@ -1468,16 +1492,14 @@ def get_main_dashboard_summary(
         status = "warn"
     action_hint = "No immediate action needed."
     action_hint_command = None
-    if top_followup_session:
-        action_hint = f"Follow up session {top_followup_session['session_key']} first."
-        action_hint_command = str(top_followup_session["next_command"])
-    elif continuity["auto_resumable_task_count"] > 0 or continuity["manual_review_task_count"] > 0:
-        action_hint = "Review continuity findings before changing execution state."
-        action_hint_command = (
-            f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{normalized_session_key}'"
-            if normalized_session_key
-            else "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json"
-        )
+    continuity_primary_action = continuity.get("primary_action", {})
+    if (
+        continuity.get("requires_action")
+        and isinstance(continuity_primary_action, dict)
+        and str(continuity_primary_action.get("command") or "").strip()
+    ):
+        action_hint = str(continuity_primary_action.get("summary") or action_hint)
+        action_hint_command = str(continuity_primary_action.get("command") or "")
     elif health["main_active_task_count"] > 0:
         action_hint = "Review current lanes before changing queue behavior."
         action_hint_command = "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json"
@@ -1535,22 +1557,34 @@ def get_main_dashboard_summary(
         "action_hint": action_hint if status != "ok" else None,
         "action_hint_command": action_hint_command if status != "ok" else None,
     }
-    primary_action = {
-        "kind": (
-            "followup-session"
-            if top_followup_session and action_hint_command
-            else "review-lanes"
-            if action_hint_command and "lanes --json" in action_hint_command
-            else "review-continuity"
-            if action_hint_command and "continuity" in action_hint_command
-            else "enable-taskmonitor"
-            if action_hint_command and "--action on" in action_hint_command
-            else "none"
-        ),
-        "summary": action_hint,
-        "command": action_hint_command,
-        "session_key": top_followup_session["session_key"] if top_followup_session else normalized_session_key,
-    }
+    if (
+        continuity.get("requires_action")
+        and isinstance(continuity_primary_action, dict)
+        and str(continuity_primary_action.get("command") or "").strip()
+    ):
+        primary_action = {
+            "kind": str(continuity_primary_action.get("kind") or "none"),
+            "summary": action_hint,
+            "command": action_hint_command,
+            "session_key": continuity_primary_action.get("session_key"),
+        }
+    else:
+        primary_action = {
+            "kind": (
+                "followup-session"
+                if top_followup_session and action_hint_command
+                else "review-lanes"
+                if action_hint_command and "lanes --json" in action_hint_command
+                else "review-continuity"
+                if action_hint_command and "continuity" in action_hint_command
+                else "enable-taskmonitor"
+                if action_hint_command and "--action on" in action_hint_command
+                else "none"
+            ),
+            "summary": action_hint,
+            "command": action_hint_command,
+            "session_key": top_followup_session["session_key"] if top_followup_session else normalized_session_key,
+        }
     runbook = {
         "status": status,
         "primary_action": primary_action,
