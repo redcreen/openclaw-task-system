@@ -547,6 +547,11 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["respect_execution_advice"], False)
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
+        self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
+        self.assertEqual(
+            result["post_resume_summary"]["closure_state_reason"],
+            "resumed-sessions-still-have-active-tasks",
+        )
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["status_counts"]["running"], 1)
@@ -609,6 +614,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed_count"], 1)
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
+        self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["status_counts"]["running"], 1)
@@ -681,6 +687,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed_count"], 1)
         self.assertEqual(result["resumed"][0]["task_id"], resumable_same_session.task_id)
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
+        self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["session_key"], "session:main:running")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "needs-followup")
@@ -725,6 +732,11 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["resumed"][0]["dry_run"], True)
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 1)
+        self.assertEqual(result["post_resume_summary"]["closure_state"], "settled")
+        self.assertEqual(
+            result["post_resume_summary"]["closure_state_reason"],
+            "all-resumed-sessions-are-settled",
+        )
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "settled")
         self.assertEqual(
@@ -749,6 +761,8 @@ class MainOpsTests(unittest.TestCase):
                     "settled_session_count": 1,
                     "needs_followup_session_count": 1,
                     "execution_recommendation": "parallel-safe",
+                    "closure_state": "needs-followup",
+                    "closure_state_reason": "resumed-sessions-still-have-active-tasks",
                     "top_followup_session": {
                         "session_key": "session:main:followup",
                         "followup_priority": 1,
@@ -790,6 +804,8 @@ class MainOpsTests(unittest.TestCase):
         )
 
         self.assertIn("# Continuity Resume", rendered)
+        self.assertIn("- closure_state: needs-followup", rendered)
+        self.assertIn("- closure_state_reason: resumed-sessions-still-have-active-tasks", rendered)
         self.assertIn("## Follow-up Priorities", rendered)
         self.assertIn("P1 | session:main:followup", rendered)
         self.assertIn("reason=active-tasks-remain-after-resume", rendered)
@@ -801,6 +817,23 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("## Skipped", rendered)
         self.assertIn("blocked-by-serial-execution-advice", rendered)
         self.assertIn("## Suggested Commands", rendered)
+
+    def test_resume_watchdog_blocked_main_tasks_reports_no_resume_targets(self) -> None:
+        result = main_ops.resume_watchdog_blocked_main_tasks(
+            config_path=self._config_path(),
+            paths=self.paths,
+            dry_run=True,
+            note="继续推进",
+        )
+
+        self.assertEqual(result["resumed_count"], 0)
+        self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 0)
+        self.assertEqual(result["post_resume_summary"]["closure_state"], "no-resume-targets")
+        self.assertEqual(
+            result["post_resume_summary"]["closure_state_reason"],
+            "no-watchdog-blocked-main-tasks-were-resumed",
+        )
+        self.assertIsNone(result["post_resume_summary"]["top_followup_session"])
 
     def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:
         main_running = self.store.register_task(

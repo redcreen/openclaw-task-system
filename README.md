@@ -241,6 +241,7 @@
   恢复结果会附带 `post_resume_summary`，用于快速确认恢复后任务是否已进入 `running/queued/...`
   `post_resume_summary.sessions` 会继续给出每个恢复 session 的后续状态摘要，减少恢复后再手动追查一轮
   `post_resume_summary` 还会标出哪些恢复 session 已经 `settled`、哪些仍然 `needs-followup`
+  `post_resume_summary.closure_state` 会直接标出本次恢复整体是否已收口：`no-resume-targets / settled / needs-followup`
   每个 resumed session 还会带 `followup_state_reason`，直接说明为什么当前被判成 settled 或 needs-followup
   `post_resume_summary.top_followup_session` 会直接给出当前最值得优先跟进的 session，方便脚本和面板直接消费
   `continuity` / `continuity --json` 也会直接给出 `top_risk_session`，方便先从风险最高的 session 开始排

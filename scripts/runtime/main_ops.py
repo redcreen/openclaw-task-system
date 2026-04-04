@@ -717,6 +717,21 @@ def resume_watchdog_blocked_main_tasks(
             "status_counts": top_entry["status_counts"],
             "next_command": top_entry["next_command"],
         }
+    settled_session_count = len(
+        [entry for entry in post_resume_session_summaries if entry.get("followup_state") == "settled"]
+    )
+    needs_followup_session_count = len(
+        [entry for entry in post_resume_session_summaries if entry.get("followup_state") == "needs-followup"]
+    )
+    closure_state = "no-resume-targets"
+    closure_state_reason = "no-watchdog-blocked-main-tasks-were-resumed"
+    if resumed_session_keys:
+        if needs_followup_session_count == 0:
+            closure_state = "settled"
+            closure_state_reason = "all-resumed-sessions-are-settled"
+        else:
+            closure_state = "needs-followup"
+            closure_state_reason = "resumed-sessions-still-have-active-tasks"
     return {
         "action": "resume-watchdog-blocked-main-tasks",
         "session_filter": normalized_session_key or "all",
@@ -733,13 +748,11 @@ def resume_watchdog_blocked_main_tasks(
             "status_counts": post_resume_status_counts,
             "execution_recommendation": post_resume_strategy["execution_recommendation"],
             "execution_reason": post_resume_strategy["execution_reason"],
+            "closure_state": closure_state,
+            "closure_state_reason": closure_state_reason,
             "sessions": post_resume_session_summaries,
-            "settled_session_count": len(
-                [entry for entry in post_resume_session_summaries if entry.get("followup_state") == "settled"]
-            ),
-            "needs_followup_session_count": len(
-                [entry for entry in post_resume_session_summaries if entry.get("followup_state") == "needs-followup"]
-            ),
+            "settled_session_count": settled_session_count,
+            "needs_followup_session_count": needs_followup_session_count,
             "followup_priorities": [
                 {
                     "session_key": entry["session_key"],
@@ -783,6 +796,8 @@ def render_resume_watchdog_blocked_result(result: dict[str, object]) -> str:
                 f"- settled_session_count: {post_resume_summary.get('settled_session_count', 0)}",
                 f"- needs_followup_session_count: {post_resume_summary.get('needs_followup_session_count', 0)}",
                 f"- execution_recommendation: {post_resume_summary.get('execution_recommendation', 'unknown')}",
+                f"- closure_state: {post_resume_summary.get('closure_state', 'unknown')}",
+                f"- closure_state_reason: {post_resume_summary.get('closure_state_reason', 'unknown')}",
             ]
         )
 
