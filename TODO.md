@@ -141,6 +141,7 @@
   - watchdog blocked 任务限额恢复
   - watchdog blocked 任务按 session 精准恢复
   - 恢复结果附带 post-resume 状态摘要
+  - 恢复结果附带每个 resumed session 的后续状态摘要
   - continuity / resume 结果附带推荐下一步命令
   - continuity / resume 结果附带当前建议执行方式
   - 可按当前建议执行方式收紧恢复范围

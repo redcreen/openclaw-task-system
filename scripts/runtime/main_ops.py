@@ -621,6 +621,7 @@ def resume_watchdog_blocked_main_tasks(
             }
         )
     if dry_run:
+        post_resume_tasks = pre_resume_tasks
         post_resume_strategy = pre_resume_strategy
     else:
         post_resume_tasks = [
@@ -630,6 +631,31 @@ def resume_watchdog_blocked_main_tasks(
             and (normalized_session_key is None or task.session_key == normalized_session_key)
         ]
         post_resume_strategy = _summarize_agent_execution_strategy("main", post_resume_tasks)
+    post_resume_session_summaries: list[dict[str, object]] = []
+    for resumed_session_key in sorted(resumed_session_keys):
+        session_tasks = [task for task in post_resume_tasks if task.session_key == resumed_session_key]
+        if not session_tasks:
+            post_resume_session_summaries.append(
+                {
+                    "session_key": resumed_session_key,
+                    "active_task_count": 0,
+                    "status_counts": {},
+                    "next_command": f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{resumed_session_key}'",
+                }
+            )
+            continue
+        status_counts: dict[str, int] = {}
+        for task in session_tasks:
+            status_counts[str(task.status)] = status_counts.get(str(task.status), 0) + 1
+        post_resume_session_summaries.append(
+            {
+                "session_key": resumed_session_key,
+                "active_task_count": len(session_tasks),
+                "status_counts": status_counts,
+                "task_labels": sorted({str(task.task_label) for task in session_tasks if str(task.task_label).strip()}),
+                "next_command": f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{resumed_session_key}'",
+            }
+        )
     return {
         "action": "resume-watchdog-blocked-main-tasks",
         "session_filter": normalized_session_key or "all",
@@ -646,6 +672,7 @@ def resume_watchdog_blocked_main_tasks(
             "status_counts": post_resume_status_counts,
             "execution_recommendation": post_resume_strategy["execution_recommendation"],
             "execution_reason": post_resume_strategy["execution_reason"],
+            "sessions": post_resume_session_summaries,
         },
         "skipped": skipped,
         "suggested_next_commands": [

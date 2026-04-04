@@ -232,6 +232,7 @@
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --respect-execution-advice`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run`
   恢复结果会附带 `post_resume_summary`，用于快速确认恢复后任务是否已进入 `running/queued/...`
+  `post_resume_summary.sessions` 会继续给出每个恢复 session 的后续状态摘要，减少恢复后再手动追查一轮
   文本输出和 JSON 输出都会附带推荐的下一步命令，方便继续检查对应 session 的连续执行状态
   同时会直接给出当前建议执行方式：`serial` / `serial-per-session` / `parallel-safe`
   并会附带一份 `execution_plan`，把 dry-run、尊重 advice、后续检查命令收成一份更像 runbook 的输出

@@ -435,6 +435,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["status_counts"]["running"], 1)
         self.assertEqual(result["post_resume_summary"]["execution_recommendation"], "parallel-safe")
+        self.assertEqual(result["post_resume_summary"]["sessions"][0]["session_key"], "session:main:blocked:one")
+        self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["running"], 1)
         self.assertIn(
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
             result["suggested_next_commands"],
@@ -484,6 +486,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["status_counts"]["running"], 1)
         self.assertEqual(result["post_resume_summary"]["execution_recommendation"], "parallel-safe")
+        self.assertEqual(result["post_resume_summary"]["sessions"][0]["session_key"], "session:main:focus")
+        self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["running"], 1)
         self.assertIn(
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus'",
             result["suggested_next_commands"],
@@ -542,6 +546,9 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["eligible_count"], 1)
         self.assertEqual(result["resumed_count"], 1)
         self.assertEqual(result["resumed"][0]["task_id"], resumable_same_session.task_id)
+        self.assertEqual(result["post_resume_summary"]["sessions"][0]["session_key"], "session:main:running")
+        self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["running"], 1)
+        self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["queued"], 1)
         self.assertEqual(len(result["skipped"]), 1)
         self.assertEqual(result["skipped"][0]["task_id"], resumable_other_session.task_id)
         resumed_same = self.store.load_task(resumable_same_session.task_id)
