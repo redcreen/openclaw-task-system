@@ -250,6 +250,7 @@
   `post_resume_summary.sessions` 会继续给出每个恢复 session 的后续状态摘要，减少恢复后再手动追查一轮
   `post_resume_summary` 还会标出哪些恢复 session 已经 `settled`、哪些仍然 `needs-followup`
   `post_resume_summary.closure_state` 会直接标出本次恢复整体是否已收口：`no-resume-targets / settled / needs-followup`
+  恢复结果顶层和 `post_resume_summary` 也会直接给出布尔值 `closure_complete`
   恢复结果顶层也会直接给出 `closure_state / closure_hint`，方便脚本和面板直接消费
   `post_resume_summary` 也会直接给出 `closure_hint / closure_hint_command`，提示恢复后下一步最推荐先做什么
   恢复结果顶层和 `post_resume_summary` 都会附带统一结构的 `primary_action`

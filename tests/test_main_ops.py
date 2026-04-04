@@ -603,6 +603,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["closure_state"], "needs-followup")
         self.assertEqual(result["closure_state_reason"], "resumed-sessions-still-have-active-tasks")
+        self.assertFalse(result["closure_complete"])
         self.assertEqual(result["closure_hint"], "Follow up session session:main:blocked:one next.")
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
@@ -610,6 +611,7 @@ class MainOpsTests(unittest.TestCase):
             result["post_resume_summary"]["closure_state_reason"],
             "resumed-sessions-still-have-active-tasks",
         )
+        self.assertFalse(result["post_resume_summary"]["closure_complete"])
         self.assertEqual(
             result["post_resume_summary"]["closure_hint"],
             "Follow up session session:main:blocked:one next.",
@@ -700,6 +702,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed_count"], 1)
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["closure_state"], "needs-followup")
+        self.assertFalse(result["closure_complete"])
         self.assertEqual(result["closure_hint"], "Follow up session session:main:focus next.")
         self.assertEqual(result["focus_session_key"], "session:main:focus")
         self.assertEqual(result["primary_action_kind"], "followup-session")
@@ -790,6 +793,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed_count"], 1)
         self.assertEqual(result["resumed"][0]["task_id"], resumable_same_session.task_id)
         self.assertEqual(result["closure_state"], "needs-followup")
+        self.assertFalse(result["closure_complete"])
         self.assertEqual(result["closure_hint"], "Follow up session session:main:running next.")
         self.assertEqual(result["focus_session_key"], "session:main:running")
         self.assertEqual(result["primary_action_kind"], "followup-session")
@@ -853,6 +857,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed"][0]["dry_run"], True)
         self.assertEqual(result["closure_state"], "settled")
         self.assertEqual(result["closure_state_reason"], "all-resumed-sessions-are-settled")
+        self.assertTrue(result["closure_complete"])
         self.assertEqual(result["closure_hint"], "All resumed sessions are settled; a quick lanes check is enough.")
         self.assertIsNone(result["focus_session_key"])
         self.assertEqual(result["primary_action_kind"], "review-lanes")
@@ -869,6 +874,7 @@ class MainOpsTests(unittest.TestCase):
             result["post_resume_summary"]["closure_state_reason"],
             "all-resumed-sessions-are-settled",
         )
+        self.assertTrue(result["post_resume_summary"]["closure_complete"])
         self.assertEqual(
             result["post_resume_summary"]["closure_hint"],
             "All resumed sessions are settled; a quick lanes check is enough.",
@@ -978,6 +984,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed_count"], 0)
         self.assertEqual(result["closure_state"], "no-resume-targets")
         self.assertEqual(result["closure_state_reason"], "no-watchdog-blocked-main-tasks-were-resumed")
+        self.assertTrue(result["closure_complete"])
         self.assertEqual(result["closure_hint"], "No continuity resume action is pending right now.")
         self.assertIsNone(result["focus_session_key"])
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 0)
@@ -986,6 +993,7 @@ class MainOpsTests(unittest.TestCase):
             result["post_resume_summary"]["closure_state_reason"],
             "no-watchdog-blocked-main-tasks-were-resumed",
         )
+        self.assertTrue(result["post_resume_summary"]["closure_complete"])
         self.assertEqual(
             result["post_resume_summary"]["closure_hint"],
             "No continuity resume action is pending right now.",

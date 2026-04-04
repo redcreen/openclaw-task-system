@@ -794,6 +794,7 @@ def resume_watchdog_blocked_main_tasks(
             if top_followup_session:
                 closure_hint = f"Follow up session {top_followup_session['session_key']} next."
                 closure_hint_command = str(top_followup_session["next_command"])
+    closure_complete = closure_state in {"settled", "no-resume-targets"}
     post_resume_runbook = {
         "status": closure_state,
         "primary_action": {
@@ -840,6 +841,7 @@ def resume_watchdog_blocked_main_tasks(
         "pre_resume_execution_recommendation": pre_resume_strategy["execution_recommendation"],
         "closure_state": closure_state,
         "closure_state_reason": closure_state_reason,
+        "closure_complete": closure_complete,
         "closure_hint": closure_hint,
         "closure_hint_command": closure_hint_command,
         "focus_session_key": top_followup_session["session_key"] if top_followup_session else None,
@@ -857,6 +859,7 @@ def resume_watchdog_blocked_main_tasks(
             "execution_reason": post_resume_strategy["execution_reason"],
             "closure_state": closure_state,
             "closure_state_reason": closure_state_reason,
+            "closure_complete": closure_complete,
             "closure_hint": closure_hint,
             "closure_hint_command": closure_hint_command,
             "primary_action": {

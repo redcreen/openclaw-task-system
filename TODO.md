@@ -145,6 +145,7 @@
   - 恢复结果会区分哪些 resumed session 已经 settled、哪些仍需继续 follow-up
   - 每个 resumed session 已附带 `followup_state_reason`
   - 恢复结果已附带整体 `closure_state`
+  - 恢复结果已附带布尔值 `closure_complete`
   - 恢复结果顶层也已附带 `closure_state / closure_hint`
   - 恢复结果已附带 `closure_hint / closure_hint_command`
   - 恢复结果已附带 `runbook`
