@@ -175,6 +175,21 @@ async function loadOutboundAdapter(
   return pending;
 }
 
+async function warmOutboundAdapters(
+  api: OpenClawPluginApi,
+  channels: string[],
+): Promise<void> {
+  await Promise.allSettled(
+    channels.map(async (channel) => {
+      const normalized = normalizeText(channel).toLowerCase();
+      if (!normalized) {
+        return;
+      }
+      await loadOutboundAdapter(api, normalized);
+    }),
+  );
+}
+
 async function callHook(
   api: OpenClawPluginApi,
   config: Required<TaskSystemPluginConfig>,
@@ -677,28 +692,35 @@ async function sendImmediateAck(
   }
 
   try {
+    const loadStartedAt = Date.now();
     const adapter = await loadOutboundAdapter(api, channel);
+    const adapterLoadMs = Date.now() - loadStartedAt;
     if (!adapter?.sendText) {
       await appendDebugLog(config, "immediate-ack:adapter-unavailable", {
         channel,
         taskId: payload.taskId,
         sessionKey: payload.sessionKey,
+        adapterLoadMs,
       });
       return;
     }
 
+    const sendStartedAt = Date.now();
     await adapter.sendText({
       cfg: api.config,
       to: chatId,
       text: message,
       accountId: payload.accountId || "",
     });
+    const sendMs = Date.now() - sendStartedAt;
     await appendDebugLog(config, "immediate-ack:sent", {
       channel,
       chatId,
       taskId: payload.taskId,
       sessionKey: payload.sessionKey,
       message,
+      adapterLoadMs,
+      sendMs,
     });
   } catch (error) {
     const messageText = error instanceof Error ? error.message : String(error);
@@ -848,26 +870,33 @@ async function sendStatusMessage(
     return;
   }
   try {
+    const loadStartedAt = Date.now();
     const adapter = await loadOutboundAdapter(api, channel);
+    const adapterLoadMs = Date.now() - loadStartedAt;
     if (!adapter?.sendText) {
       await appendDebugLog(config, `${payload.eventName}:adapter-unavailable`, {
         channel,
         chatId,
         sessionKey: payload.sessionKey,
+        adapterLoadMs,
       });
       return;
     }
+    const sendStartedAt = Date.now();
     await adapter.sendText({
       cfg: api.config,
       to: chatId,
       text: message,
       accountId: payload.accountId || "",
     });
+    const sendMs = Date.now() - sendStartedAt;
     await appendDebugLog(config, `${payload.eventName}:sent`, {
       channel,
       chatId,
       sessionKey: payload.sessionKey,
       message,
+      adapterLoadMs,
+      sendMs,
     });
   } catch (error) {
     const messageText = error instanceof Error ? error.message : String(error);
@@ -1450,6 +1479,7 @@ const taskSystemPlugin = {
     api.registerService({
       id: "openclaw-task-system-host-delivery",
       async start() {
+        await warmOutboundAdapters(api, ["telegram", "feishu"]);
         if (!config.enableHostFeishuDelivery) {
           if (config.enableContinuationRunner) {
             continuationTimer = setInterval(() => {
