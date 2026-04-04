@@ -1,10 +1,7 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { appendFile, mkdir, readdir, readFile, rename } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { promisify } from "node:util";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-
-const execFileAsync = promisify(execFile);
 
 type TaskSystemPluginConfig = {
   enabled?: boolean;
@@ -191,10 +188,30 @@ async function callHook(
     if (config.configPath) {
       args.push(config.configPath);
     }
-    const result = await execFileAsync(config.pythonBin, args, {
-      cwd: config.runtimeRoot,
-      env: process.env,
-      input: JSON.stringify(payload),
+    const result = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      const child = spawn(config.pythonBin, args, {
+        cwd: config.runtimeRoot,
+        env: process.env,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk) => {
+        stdout += String(chunk);
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += String(chunk);
+      });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolve({ stdout, stderr });
+          return;
+        }
+        reject(new Error(stderr.trim() || `hook exited with code ${code}`));
+      });
+      child.stdin.write(JSON.stringify(payload));
+      child.stdin.end();
     });
     const parsed = JSON.parse(result.stdout || "{}") as Record<string, unknown>;
     enqueueDebugLog(config, `hook:${command}:ok`, parsed);
