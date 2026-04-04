@@ -181,6 +181,7 @@
 - `dashboard` 在 continuity 风险场景下也已继承这条主动作，不再只停在“follow up session”
 - `continuity --auto-resume-if-safe --json` 也已统一提供顶层 `closure_complete / primary_action / runbook`
 - `continuity --auto-resume-if-safe --json` 也已统一提供顶层 `closure_state / closure_hint / next_followup_summary`
+- 文本版 `continuity --auto-resume-if-safe` 也已渲染 `Next Follow-up / Suggested Commands / Runbook`
 - `dashboard --json` / `issue_summary` 也已统一提供 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_blockers / auto_resume_command`
 - `dashboard --only-issues` 文本视图也已直接显示 auto-resume 状态
 - `triage` 也已接入这条主线，在 watchdog-blocked 场景下优先提示 guarded auto-resume

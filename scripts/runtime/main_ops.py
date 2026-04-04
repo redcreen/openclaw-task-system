@@ -1128,8 +1128,49 @@ def render_auto_resume_if_safe_result(result: dict[str, object]) -> str:
         lines.append(f"- reason: {reason}")
     if "closure_complete" in result:
         lines.append(f"- closure_complete: {result.get('closure_complete')}")
+    if "closure_state" in result:
+        lines.append(f"- closure_state: {result.get('closure_state')}")
+    if "closure_state_reason" in result:
+        lines.append(f"- closure_state_reason: {result.get('closure_state_reason')}")
+    if "closure_hint" in result:
+        lines.append(f"- closure_hint: {result.get('closure_hint')}")
+    if "closure_hint_command" in result:
+        lines.append(f"- closure_hint_command: {result.get('closure_hint_command') or 'none'}")
+    if result.get("focus_session_key"):
+        lines.append(f"- focus_session_key: {result.get('focus_session_key')}")
+    if result.get("primary_action_kind"):
+        lines.append(f"- primary_action_kind: {result.get('primary_action_kind')}")
     if result.get("primary_action_command"):
         lines.append(f"- next_command: {result.get('primary_action_command')}")
+
+    next_followup_summary = result.get("next_followup_summary")
+    if isinstance(next_followup_summary, dict):
+        lines.extend(["", "## Next Follow-up", ""])
+        lines.append(f"- session_filter: {next_followup_summary.get('session_filter')}")
+        lines.append(f"- focus_session_key: {next_followup_summary.get('focus_session_key')}")
+        if next_followup_summary.get("primary_action_kind"):
+            lines.append(f"- primary_action_kind: {next_followup_summary.get('primary_action_kind')}")
+        if next_followup_summary.get("primary_action_command"):
+            lines.append(f"- next_command: {next_followup_summary.get('primary_action_command')}")
+        if next_followup_summary.get("auto_resume_ready") is not None:
+            lines.append(f"- auto_resume_ready: {next_followup_summary.get('auto_resume_ready')}")
+
+    suggested_next_commands = result.get("suggested_next_commands", [])
+    if isinstance(suggested_next_commands, list) and suggested_next_commands:
+        lines.extend(["", "## Suggested Commands", ""])
+        for command in suggested_next_commands:
+            lines.append(f"- {command}")
+
+    runbook = result.get("runbook")
+    if isinstance(runbook, dict):
+        lines.extend(["", "## Runbook", ""])
+        for step in runbook.get("steps", []):
+            lines.append(f"- {step}")
+        commands = runbook.get("commands", [])
+        if isinstance(commands, list) and commands:
+            lines.append("- commands:")
+            for command in commands:
+                lines.append(f"  {command}")
     return "\n".join(lines) + "\n"
 
 

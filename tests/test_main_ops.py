@@ -1203,6 +1203,64 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("## Suggested Commands", rendered)
         self.assertIn("## Runbook", rendered)
 
+    def test_render_auto_resume_if_safe_result_renders_followup_and_runbook(self) -> None:
+        rendered = main_ops.render_auto_resume_if_safe_result(
+            {
+                "session_filter": "all",
+                "status": "applied",
+                "safe_to_apply": True,
+                "auto_resume_ready": True,
+                "auto_resume_mode": "direct",
+                "dry_run": False,
+                "closure_complete": False,
+                "closure_state": "needs-followup",
+                "closure_state_reason": "resumed-sessions-still-have-active-tasks",
+                "closure_hint": "Follow up session session:main:auto next.",
+                "closure_hint_command": "python3 ... continuity --session-key 'session:main:auto'",
+                "focus_session_key": "session:main:auto",
+                "primary_action_kind": "followup-session",
+                "primary_action_command": "python3 ... continuity --session-key 'session:main:auto'",
+                "next_followup_summary": {
+                    "session_filter": "session:main:auto",
+                    "focus_session_key": "session:main:auto",
+                    "primary_action_kind": "followup-session",
+                    "primary_action_command": "python3 ... continuity --session-key 'session:main:auto'",
+                    "auto_resume_ready": False,
+                },
+                "suggested_next_commands": [
+                    "python3 ... continuity --session-key 'session:main:auto'",
+                    "python3 ... lanes --json",
+                ],
+                "runbook": {
+                    "status": "needs-followup",
+                    "primary_action": {
+                        "kind": "followup-session",
+                        "summary": "Follow up session session:main:auto next.",
+                        "command": "python3 ... continuity --session-key 'session:main:auto'",
+                    },
+                    "steps": [
+                        "Follow up session session:main:auto next.",
+                        "Review the suggested commands in order if the first action does not settle the session.",
+                    ],
+                    "commands": [
+                        "python3 ... continuity --session-key 'session:main:auto'",
+                        "python3 ... lanes --json",
+                    ],
+                },
+            }
+        )
+
+        self.assertIn("# Auto Resume", rendered)
+        self.assertIn("- closure_state: needs-followup", rendered)
+        self.assertIn("- closure_state_reason: resumed-sessions-still-have-active-tasks", rendered)
+        self.assertIn("- closure_hint: Follow up session session:main:auto next.", rendered)
+        self.assertIn("- closure_hint_command: python3 ... continuity --session-key 'session:main:auto'", rendered)
+        self.assertIn("- primary_action_kind: followup-session", rendered)
+        self.assertIn("## Next Follow-up", rendered)
+        self.assertIn("session:main:auto", rendered)
+        self.assertIn("## Suggested Commands", rendered)
+        self.assertIn("## Runbook", rendered)
+
     def test_resume_watchdog_blocked_main_tasks_reports_no_resume_targets(self) -> None:
         result = main_ops.resume_watchdog_blocked_main_tasks(
             config_path=self._config_path(),

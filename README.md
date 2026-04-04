@@ -270,6 +270,7 @@
   `dashboard` 在 continuity 风险场景下也会继承这条 `primary_action`，优先指向 guarded auto-resume 入口
   `continuity --auto-resume-if-safe --json` 也已直接提供顶层 `closure_complete / primary_action / runbook`
   `continuity --auto-resume-if-safe --json` 现在还会统一给出顶层 `closure_state / closure_hint / next_followup_summary`
+  文本版 `continuity --auto-resume-if-safe` 现在也会渲染 `Next Follow-up / Suggested Commands / Runbook`
   `dashboard --json` / `dashboard --json --only-issues` 现在也会直接给出 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_blockers / auto_resume_command`
   `dashboard --only-issues` 文本视图现在也会直接显示 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_command`
   `triage` 在识别到 watchdog-blocked 主任务且满足条件时，也会优先提示 guarded auto-resume，而不是裸 `resume task_id`
