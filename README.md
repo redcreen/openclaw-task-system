@@ -215,6 +215,7 @@
   `action_hint_command` 会直接给出首选命令，并排在 `suggested_next_commands` 的第一位
   `dashboard` 也会附带统一结构的 `primary_action`
   `dashboard --json` 还会附带 `runbook`，把首选动作和后续命令收成一组可直接消费的步骤
+  文本版 `dashboard` 现在也会渲染 `Runbook` 段落
   `dashboard --only-issues` 会只保留非 OK 项，更适合日常巡检
 
 - 当前队列拓扑：
@@ -247,6 +248,7 @@
   `post_resume_summary` 也会直接给出 `closure_hint / closure_hint_command`，提示恢复后下一步最推荐先做什么
   `post_resume_summary` 也会附带统一结构的 `primary_action`
   `post_resume_summary.runbook` 会把恢复后的首选动作和后续命令收成一组可直接消费的步骤
+  文本版 `continuity --resume-watchdog-blocked` 也会渲染 `Runbook` 段落
   每个 resumed session 还会带 `followup_state_reason`，直接说明为什么当前被判成 settled 或 needs-followup
   `post_resume_summary.top_followup_session` 会直接给出当前最值得优先跟进的 session，方便脚本和面板直接消费
   `continuity` / `continuity --json` 也会直接给出 `top_risk_session`，方便先从风险最高的 session 开始排

@@ -133,6 +133,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- action_hint: No immediate action needed.", rendered)
         self.assertIn("- action_hint_command: none", rendered)
         self.assertIn("main_ops.py continuity --json", rendered)
+        self.assertIn("## Runbook", rendered)
 
     def test_get_main_dashboard_summary_warns_when_continuity_risk_exists(self) -> None:
         task = self.store.register_task(
@@ -872,6 +873,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("## Skipped", rendered)
         self.assertIn("blocked-by-serial-execution-advice", rendered)
         self.assertIn("## Suggested Commands", rendered)
+        self.assertIn("## Runbook", rendered)
 
     def test_resume_watchdog_blocked_main_tasks_reports_no_resume_targets(self) -> None:
         result = main_ops.resume_watchdog_blocked_main_tasks(

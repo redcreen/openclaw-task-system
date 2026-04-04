@@ -949,6 +949,37 @@ def render_resume_watchdog_blocked_result(result: dict[str, object]) -> str:
         for command in suggested_next_commands:
             lines.append(f"- {command}")
 
+    if isinstance(post_resume_summary, dict):
+        runbook = post_resume_summary.get("runbook")
+        if not isinstance(runbook, dict):
+            closure_hint = post_resume_summary.get("closure_hint")
+            closure_hint_command = post_resume_summary.get("closure_hint_command")
+            runbook = {
+                "status": post_resume_summary.get("closure_state", "unknown"),
+                "primary_action": post_resume_summary.get("primary_action", {}),
+                "steps": [
+                    closure_hint or "Review resumed session state.",
+                    "Review the suggested commands in order if the resumed sessions are not fully settled yet.",
+                ],
+                "commands": [
+                    *( [closure_hint_command] if isinstance(closure_hint_command, str) and closure_hint_command.strip() else [] ),
+                    *[
+                        command
+                        for command in result.get("suggested_next_commands", [])
+                        if command != closure_hint_command
+                    ],
+                ],
+            }
+        if isinstance(runbook, dict):
+            lines.extend(["", "## Runbook", ""])
+            for step in runbook.get("steps", []):
+                lines.append(f"- {step}")
+            commands = runbook.get("commands", [])
+            if isinstance(commands, list) and commands:
+                lines.append("- commands:")
+                for command in commands:
+                    lines.append(f"  {command}")
+
     return "\n".join(lines) + "\n"
 
 
@@ -1159,6 +1190,16 @@ def render_main_dashboard(
     ]
     for command in summary["suggested_next_commands"]:
         lines.append(f"- {command}")
+    runbook = summary.get("runbook")
+    if isinstance(runbook, dict):
+        lines.extend(["", "## Runbook", ""])
+        for step in runbook.get("steps", []):
+            lines.append(f"- {step}")
+        commands = runbook.get("commands", [])
+        if isinstance(commands, list) and commands:
+            lines.append("- commands:")
+            for command in commands:
+                lines.append(f"  {command}")
     return "\n".join(lines) + "\n"
 
 
