@@ -626,6 +626,8 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertEqual(result["runbook_status"], "needs-followup")
         self.assertTrue(result["requires_action"])
+        self.assertEqual(result["next_followup_summary"]["session_filter"], "session:main:blocked:one")
+        self.assertEqual(result["next_followup_summary"]["focus_session_key"], "session:main:blocked:one")
         self.assertEqual(result["primary_action"]["kind"], "followup-session")
         self.assertEqual(result["runbook"]["status"], "needs-followup")
         self.assertEqual(result["runbook"]["primary_action"]["kind"], "followup-session")
@@ -646,6 +648,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["followup_priorities"][0]["session_key"], "session:main:blocked:one")
         self.assertEqual(result["post_resume_summary"]["top_followup_session"]["session_key"], "session:main:blocked:one")
         self.assertEqual(result["post_resume_summary"]["top_followup_session"]["followup_priority"], 1)
+        self.assertEqual(
+            result["post_resume_summary"]["next_followup_summary"]["session_filter"],
+            "session:main:blocked:one",
+        )
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["running"], 1)
         self.assertIn(
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
@@ -703,6 +709,7 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertEqual(result["runbook_status"], "needs-followup")
         self.assertTrue(result["requires_action"])
+        self.assertEqual(result["next_followup_summary"]["session_filter"], "session:main:focus")
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
         self.assertEqual(
@@ -792,6 +799,7 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertEqual(result["runbook_status"], "needs-followup")
         self.assertTrue(result["requires_action"])
+        self.assertEqual(result["next_followup_summary"]["session_filter"], "session:main:running")
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
         self.assertEqual(
@@ -854,6 +862,7 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertEqual(result["runbook_status"], "settled")
         self.assertFalse(result["requires_action"])
+        self.assertIsNone(result["next_followup_summary"])
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "settled")
         self.assertEqual(
@@ -986,6 +995,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIsNone(result["primary_action_command"])
         self.assertEqual(result["runbook_status"], "no-resume-targets")
         self.assertFalse(result["requires_action"])
+        self.assertIsNone(result["next_followup_summary"])
         self.assertEqual(result["primary_action"]["kind"], "none")
         self.assertEqual(result["runbook"]["status"], "no-resume-targets")
         self.assertEqual(result["post_resume_summary"]["primary_action"]["kind"], "none")

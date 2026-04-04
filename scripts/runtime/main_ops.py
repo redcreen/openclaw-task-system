@@ -764,6 +764,14 @@ def resume_watchdog_blocked_main_tasks(
             "status_counts": top_entry["status_counts"],
             "next_command": top_entry["next_command"],
         }
+    next_followup_summary = None
+    if top_followup_session:
+        next_followup_summary = get_main_continuity_summary(
+            config_path=config_path,
+            paths=resolved_paths,
+            session_key=top_followup_session["session_key"],
+        )
+        next_followup_summary["focus_session_key"] = top_followup_session["session_key"]
     settled_session_count = len(
         [entry for entry in post_resume_session_summaries if entry.get("followup_state") == "settled"]
     )
@@ -839,6 +847,7 @@ def resume_watchdog_blocked_main_tasks(
         "primary_action_command": post_resume_runbook["primary_action"]["command"],
         "runbook_status": post_resume_runbook["status"],
         "requires_action": closure_state == "needs-followup",
+        "next_followup_summary": next_followup_summary,
         "primary_action": post_resume_runbook["primary_action"],
         "runbook": post_resume_runbook,
         "post_resume_summary": {
@@ -877,6 +886,7 @@ def resume_watchdog_blocked_main_tasks(
                 for entry in prioritized_followups
             ],
             "top_followup_session": top_followup_session,
+            "next_followup_summary": next_followup_summary,
         },
         "skipped": skipped,
         "suggested_next_commands": [
