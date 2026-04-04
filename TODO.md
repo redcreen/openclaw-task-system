@@ -182,13 +182,22 @@
 
 ### 1. 更产品化的开关与控制面板
 
-当前状态：未开始
+当前状态：部分完成
 
 - runtime 侧的 `/taskmonitor` 开关和运维命令已经完成
-- 但更产品化的控制面板仍未开始，例如：
-  - 更直观的统一状态入口
+- 已新增统一状态入口：
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --json`
+- 当前 dashboard 已能汇总：
+  - `health`
+  - `queues`
+  - `lanes`
+  - `continuity`
+  - `taskmonitor`
+- 但更产品化的控制面板仍未完成，例如：
   - 面向普通使用者的开关与提示
   - 更低成本的日常管理界面
+  - 更接近面板/小组件的交互入口
 
 
 ## 未单独处理的历史问题

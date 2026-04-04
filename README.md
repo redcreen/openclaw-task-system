@@ -203,6 +203,11 @@
 - `main` 运维入口：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py list`
 
+- 统一状态总览：
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard`
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --json`
+  会把 `health / queues / lanes / continuity / taskmonitor` 收成一个统一入口
+
 - 当前队列拓扑：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json`

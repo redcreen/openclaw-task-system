@@ -121,6 +121,40 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(overrides["overrides"][0]["session_key"], "session:taskmonitor")
         self.assertFalse(overrides["overrides"][0]["enabled"])
 
+    def test_render_main_dashboard_reports_unified_summary(self) -> None:
+        rendered = main_ops.render_main_dashboard(config_path=self._config_path(), paths=self.paths)
+
+        self.assertIn("# Main Ops Dashboard", rendered)
+        self.assertIn("- status: ok", rendered)
+        self.assertIn("- queue_count: 0", rendered)
+        self.assertIn("- lane_agent_count: 0", rendered)
+        self.assertIn("- continuity_auto_resumable_task_count: 0", rendered)
+        self.assertIn("main_ops.py continuity --json", rendered)
+
+    def test_get_main_dashboard_summary_warns_when_continuity_risk_exists(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:dashboard-risk",
+            channel="telegram",
+            chat_id="chat:main:dashboard-risk",
+            task_label="dashboard blocked task",
+        )
+        running = self.store.start_task(task.task_id)
+        running.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        running.meta["finalize_skipped_reason"] = "success-without-visible-progress"
+        self.store.save_task(running)
+
+        silence_monitor = load_runtime_module("silence_monitor")
+        silence_monitor.process_overdue_tasks(paths=self.paths)
+
+        summary = main_ops.get_main_dashboard_summary(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(summary["status"], "warn")
+        self.assertEqual(summary["continuity"]["auto_resumable_task_count"], 1)
+        self.assertEqual(summary["health"]["main_blocked_task_count"], 1)
+        self.assertEqual(summary["queues"]["queue_count"], 0)
+        self.assertEqual(summary["taskmonitor"]["override_count"], 0)
+
     def test_render_main_continuity_reports_no_risk_when_idle(self) -> None:
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
 

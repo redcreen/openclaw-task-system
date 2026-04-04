@@ -64,27 +64,45 @@ def render_main_health(
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
 ) -> str:
+    summary = get_main_health_summary(config_path=config_path, paths=paths)
+    lines = [
+        "# Main Ops Health",
+        "",
+        f"- status: {summary['status']}",
+        f"- main_active_task_count: {summary['main_active_task_count']}",
+        f"- main_blocked_task_count: {summary['main_blocked_task_count']}",
+        f"- failed_instruction_count: {summary['failed_instruction_count']}",
+        f"- active_stale_delivery_task_count: {summary['active_stale_delivery_task_count']}",
+    ]
+    if summary["blocked_main_tasks"]:
+        lines.append("")
+        lines.append("## Blocked Main Tasks")
+        lines.append("")
+        for task in summary["blocked_main_tasks"]:
+            lines.append(f"- {task['task_id']} | {task['task_label']}")
+    return "\n".join(lines) + "\n"
+
+
+def get_main_health_summary(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> dict[str, object]:
     report = build_health_report(config_path=config_path, paths=paths)
     overview = report["overview"]
     blocked_main = [
         task for task in overview["active_tasks"] if task["agent_id"] == "main" and task["status"] == "blocked"
     ]
-    lines = [
-        "# Main Ops Health",
-        "",
-        f"- status: {report['status']}",
-        f"- main_active_task_count: {len([task for task in overview['active_tasks'] if task['agent_id'] == 'main'])}",
-        f"- main_blocked_task_count: {len(blocked_main)}",
-        f"- failed_instruction_count: {overview['failed_instruction_count']}",
-        f"- active_stale_delivery_task_count: {overview['active_stale_delivery_task_count']}",
-    ]
-    if blocked_main:
-        lines.append("")
-        lines.append("## Blocked Main Tasks")
-        lines.append("")
-        for task in blocked_main:
-            lines.append(f"- {task['task_id']} | {task['task_label']}")
-    return "\n".join(lines) + "\n"
+    return {
+        "status": report["status"],
+        "main_active_task_count": len(
+            [task for task in overview["active_tasks"] if task["agent_id"] == "main"]
+        ),
+        "main_blocked_task_count": len(blocked_main),
+        "failed_instruction_count": overview["failed_instruction_count"],
+        "active_stale_delivery_task_count": overview["active_stale_delivery_task_count"],
+        "blocked_main_tasks": blocked_main,
+    }
 
 
 def _derive_execution_recommendation(
@@ -720,6 +738,69 @@ def get_taskmonitor_overrides(
                 "enabled": enabled,
             }
             for session_key, enabled in overrides.items()
+        ],
+    }
+
+
+def render_main_dashboard(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> str:
+    summary = get_main_dashboard_summary(config_path=config_path, paths=paths)
+    lines = [
+        "# Main Ops Dashboard",
+        "",
+        f"- generated_at: {summary['generated_at']}",
+        f"- status: {summary['status']}",
+        f"- main_active_task_count: {summary['health']['main_active_task_count']}",
+        f"- main_blocked_task_count: {summary['health']['main_blocked_task_count']}",
+        f"- queue_count: {summary['queues']['queue_count']}",
+        f"- lane_agent_count: {summary['lanes']['agent_count']}",
+        f"- continuity_auto_resumable_task_count: {summary['continuity']['auto_resumable_task_count']}",
+        f"- continuity_manual_review_task_count: {summary['continuity']['manual_review_task_count']}",
+        f"- taskmonitor_override_count: {summary['taskmonitor']['override_count']}",
+        "",
+        "## Commands",
+        "",
+    ]
+    for command in summary["suggested_next_commands"]:
+        lines.append(f"- {command}")
+    return "\n".join(lines) + "\n"
+
+
+def get_main_dashboard_summary(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    health = get_main_health_summary(config_path=config_path, paths=resolved_paths)
+    queues = get_queue_topology_summary(config_path=config_path, paths=resolved_paths)
+    lanes = get_queue_lanes_summary(config_path=config_path, paths=resolved_paths)
+    continuity = get_main_continuity_summary(config_path=config_path, paths=resolved_paths)
+    taskmonitor = get_taskmonitor_overrides(config_path=config_path)
+    status = "ok"
+    if (
+        health["status"] != "ok"
+        or continuity["auto_resumable_task_count"] > 0
+        or continuity["manual_review_task_count"] > 0
+    ):
+        status = "warn"
+    return {
+        "generated_at": datetime.now(timezone.utc).astimezone().isoformat(),
+        "status": status,
+        "health": health,
+        "queues": queues,
+        "lanes": lanes,
+        "continuity": continuity,
+        "taskmonitor": taskmonitor,
+        "suggested_next_commands": [
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health",
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json",
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json",
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list --json",
         ],
     }
 
@@ -1710,6 +1791,8 @@ def main() -> None:
     taskmonitor_parser.add_argument("--session-key", default=None)
     taskmonitor_parser.add_argument("--action", choices=["status", "on", "off", "list"], default="status")
     taskmonitor_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
+    dashboard_parser = subparsers.add_parser("dashboard", help="Show a unified main-ops dashboard summary.")
+    dashboard_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
 
     subparsers.add_parser("overview", help="Show task system overview.")
     lanes_parser = subparsers.add_parser("lanes", help="Show current queue/lane summary across agents.")
@@ -1890,6 +1973,12 @@ def main() -> None:
             config_path=config_path,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    if args.command == "dashboard":
+        if args.json:
+            print(json.dumps(get_main_dashboard_summary(config_path=config_path, paths=paths), ensure_ascii=False, indent=2))
+            return
+        print(render_main_dashboard(config_path=config_path, paths=paths), end="")
         return
     if args.command == "overview":
         print(render_overview_markdown(config_path=config_path), end="")
