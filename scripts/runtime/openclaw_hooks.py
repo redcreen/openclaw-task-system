@@ -41,6 +41,17 @@ def load_payload_from_stdin() -> dict[str, Any]:
     return json.loads(raw)
 
 
+def load_payload_for_command(command: str, payload_source: str) -> dict[str, Any]:
+    if payload_source != "-":
+        return load_payload(Path(payload_source).expanduser().resolve())
+    try:
+        return load_payload_from_stdin()
+    except KeyboardInterrupt:
+        if command == "claim-due-continuations":
+            return {}
+        raise
+
+
 def _build_context(payload: dict[str, Any]) -> OpenClawInboundContext:
     return OpenClawInboundContext(
         agent_id=payload["agent_id"],
@@ -649,6 +660,6 @@ if __name__ == "__main__":
     command = args[0]
     payload_source = args[1]
     config_path = Path(args[2]).expanduser().resolve() if len(args) > 2 else None
-    payload = load_payload_from_stdin() if payload_source == "-" else load_payload(Path(payload_source).expanduser().resolve())
+    payload = load_payload_for_command(command, payload_source)
     result = dispatch(command, payload, config_path=config_path)
     print(json.dumps(result, ensure_ascii=False, indent=2))

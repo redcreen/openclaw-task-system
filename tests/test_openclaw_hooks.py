@@ -76,6 +76,33 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertTrue(parsed["should_register_task"])
         self.assertEqual(parsed["classification_reason"], "observed-task")
 
+    def test_load_payload_for_claim_due_continuations_tolerates_keyboard_interrupt(self) -> None:
+        original = openclaw_hooks.load_payload_from_stdin
+
+        def raising_loader() -> dict[str, object]:
+            raise KeyboardInterrupt
+
+        openclaw_hooks.load_payload_from_stdin = raising_loader
+        try:
+            parsed = openclaw_hooks.load_payload_for_command("claim-due-continuations", "-")
+        finally:
+            openclaw_hooks.load_payload_from_stdin = original
+
+        self.assertEqual(parsed, {})
+
+    def test_load_payload_for_other_commands_preserves_keyboard_interrupt(self) -> None:
+        original = openclaw_hooks.load_payload_from_stdin
+
+        def raising_loader() -> dict[str, object]:
+            raise KeyboardInterrupt
+
+        openclaw_hooks.load_payload_from_stdin = raising_loader
+        try:
+            with self.assertRaises(KeyboardInterrupt):
+                openclaw_hooks.load_payload_for_command("register", "-")
+        finally:
+            openclaw_hooks.load_payload_from_stdin = original
+
     def test_register_from_payload_includes_estimated_wait_seconds(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         done = store.register_task(
