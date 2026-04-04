@@ -1562,6 +1562,7 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertIn("Apply guarded auto-resume first", rendered)
         self.assertIn("continuity --auto-resume-if-safe", rendered)
+        self.assertIn("## Runbook", rendered)
 
     def test_render_main_triage_falls_back_to_preview_when_auto_resume_has_blockers(self) -> None:
         task = self.store.register_task(
@@ -1589,6 +1590,37 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertIn("Preview guarded auto-resume first", rendered)
         self.assertIn("continuity --resume-watchdog-blocked --dry-run", rendered)
+
+    def test_get_main_triage_summary_exposes_structured_primary_action(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:triage-json",
+            channel="telegram",
+            chat_id="chat:main:triage-json",
+            task_label="triage json task",
+        )
+        blocked = self.store.block_task(task.task_id, "watchdog blocked")
+        blocked.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked)
+
+        summary = main_ops.get_main_triage_summary(paths=self.paths)
+
+        self.assertEqual(summary["triage_status"], "warn")
+        self.assertEqual(summary["blocked_main_task_count"], 1)
+        self.assertEqual(summary["focus_session_key"], "session:main:triage-json")
+        self.assertEqual(summary["primary_action_kind"], "apply-auto-resume")
+        self.assertEqual(
+            summary["primary_action_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+        )
+        self.assertEqual(summary["runbook_status"], "warn")
+        self.assertTrue(summary["requires_action"])
+        self.assertEqual(summary["primary_action"]["kind"], "apply-auto-resume")
+        self.assertEqual(summary["runbook"]["primary_action"]["kind"], "apply-auto-resume")
+        self.assertIn(
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            summary["suggested_next_commands"],
+        )
 
     def test_render_main_triage_includes_blocked_age_and_sweep_hint(self) -> None:
         task = self.store.register_task(

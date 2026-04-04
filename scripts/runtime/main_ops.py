@@ -2309,11 +2309,11 @@ def clear_delivery_outage(
     }
 
 
-def render_main_triage(
+def get_main_triage_summary(
     *,
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
-) -> str:
+) -> dict[str, object]:
     report = build_health_report(config_path=config_path, paths=paths)
     overview = report["overview"]
     blocked_main = [
@@ -2321,72 +2321,166 @@ def render_main_triage(
     ]
     continuity = get_main_continuity_summary(config_path=config_path, paths=paths)
     failed_summary = report["failed_instruction_summary"]
-
-    lines = [
-        "# Main Ops Triage",
-        "",
-        f"- status: {report['status']}",
-        f"- blocked_main_task_count: {len(blocked_main)}",
-        f"- retryable_failed_instruction_count: {failed_summary['retryable']}",
-        f"- persistent_retryable_failed_instruction_count: {failed_summary['persistent_retryable']}",
-        f"- non_retryable_failed_instruction_count: {failed_summary['non_retryable']}",
-        f"- unknown_failed_instruction_count: {failed_summary['unknown']}",
-        "",
-        "## Next Actions",
-        "",
-    ]
+    next_actions: list[str] = []
+    primary_action = {
+        "kind": "none",
+        "summary": "No blocked main task requires manual action.",
+        "command": None,
+        "session_key": None,
+    }
+    focus_session_key = None
 
     if blocked_main:
         task = blocked_main[0]
         blocked_age = _blocked_age_minutes(task)
         if bool(continuity.get("auto_resume_safe_to_apply")) and str(continuity.get("primary_action_command") or "").strip():
-            lines.append(
-                f"- Apply guarded auto-resume first: `{continuity['primary_action_command']}`"
-            )
+            primary_action = {
+                "kind": "apply-auto-resume",
+                "summary": "Apply guarded auto-resume first.",
+                "command": str(continuity["primary_action_command"]),
+                "session_key": continuity.get("focus_session_key"),
+            }
+            next_actions.append(f"Apply guarded auto-resume first: `{continuity['primary_action_command']}`")
         elif bool(continuity.get("auto_resume_ready")) and str(continuity.get("auto_resume_preview_command") or "").strip():
-            lines.append(
-                f"- Preview guarded auto-resume first: `{continuity['auto_resume_preview_command']}`"
-            )
+            primary_action = {
+                "kind": "preview-auto-resume",
+                "summary": "Preview guarded auto-resume first.",
+                "command": str(continuity["auto_resume_preview_command"]),
+                "session_key": continuity.get("focus_session_key"),
+            }
+            next_actions.append(f"Preview guarded auto-resume first: `{continuity['auto_resume_preview_command']}`")
         else:
-            lines.append(
-                f"- Resume blocked main task: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resume {task['task_id']} --note \"继续推进并同步真实进展\"`"
+            resume_command = (
+                f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resume {task['task_id']} --note \"继续推进并同步真实进展\""
             )
-        lines.append(
-            f"- Or fail it explicitly: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py fail {task['task_id']} --reason \"manual close after triage\"`"
+            primary_action = {
+                "kind": "resume-task",
+                "summary": "Resume blocked main task.",
+                "command": resume_command,
+                "session_key": task.get("session_key"),
+            }
+            next_actions.append(f"Resume blocked main task: `{resume_command}`")
+        focus_session_key = primary_action.get("session_key") or task.get("session_key")
+        next_actions.append(
+            f"Or fail it explicitly: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py fail {task['task_id']} --reason \"manual close after triage\"`"
         )
         if blocked_age is not None:
-            lines.append(f"- Current blocked age: {blocked_age} minute(s)")
+            next_actions.append(f"Current blocked age: {blocked_age} minute(s)")
             if blocked_age >= 60:
-                lines.append(
-                    f"- Optional stale cleanup: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py sweep --fail-stale-blocked-after-minutes 60 --reason \"stale blocked main task\"`"
+                next_actions.append(
+                    "Optional stale cleanup: "
+                    "`python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py sweep --fail-stale-blocked-after-minutes 60 --reason \"stale blocked main task\"`"
                 )
     else:
-        lines.append("- No blocked main task requires manual action.")
+        next_actions.append("No blocked main task requires manual action.")
 
     persistent_retryable_items = [
         item for item in failed_summary["items"] if item["retryable"] and item["retry_count"] > 0
     ]
 
     if failed_summary["retryable"] and not persistent_retryable_items:
-        lines.append(
-            "- Retry retryable failed instructions on host: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair --execute-retries --execution-context host`"
+        next_actions.append(
+            "Retry retryable failed instructions on host: "
+            "`python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair --execute-retries --execution-context host`"
         )
     elif persistent_retryable_items:
-        lines.append(
-            "- Persistent retryable failures detected. Investigate host network/connectivity before running more retries."
+        next_actions.append(
+            "Persistent retryable failures detected. Investigate host network/connectivity before running more retries."
         )
     else:
-        lines.append("- No retryable failed instructions are waiting.")
+        next_actions.append("No retryable failed instructions are waiting.")
 
     if failed_summary["non_retryable"]:
-        lines.append("- Review non-retryable failures in `data/failed-instructions/` and correct target/auth/config before retrying.")
+        next_actions.append(
+            "Review non-retryable failures in `data/failed-instructions/` and correct target/auth/config before retrying."
+        )
     else:
-        lines.append("- No non-retryable failed instructions are waiting.")
+        next_actions.append("No non-retryable failed instructions are waiting.")
 
     retryable_items = [item for item in failed_summary["items"] if item["retryable"]]
     non_retryable_items = [item for item in failed_summary["items"] if item["retryable"] is False]
+    suggested_next_commands: list[str] = []
+    if primary_action.get("command"):
+        suggested_next_commands.append(str(primary_action["command"]))
+    if bool(failed_summary["retryable"]) and not persistent_retryable_items:
+        suggested_next_commands.append(
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair --execute-retries --execution-context host"
+        )
+    if focus_session_key:
+        suggested_next_commands.append(
+            f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{focus_session_key}'"
+        )
+    suggested_next_commands.append(
+        "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --only-issues"
+    )
+    deduped_commands: list[str] = []
+    for command in suggested_next_commands:
+        if command and command not in deduped_commands:
+            deduped_commands.append(command)
+    triage_status = (
+        "warn"
+        if blocked_main or failed_summary["retryable"] or failed_summary["non_retryable"] or failed_summary["unknown"]
+        else "ok"
+    )
+    runbook = {
+        "status": triage_status,
+        "primary_action": primary_action,
+        "steps": [
+            primary_action["summary"],
+            "Review the suggested commands in order if the first action does not fully resolve triage findings.",
+        ],
+        "commands": deduped_commands,
+    }
+    return {
+        "status": report["status"],
+        "triage_status": triage_status,
+        "blocked_main_task_count": len(blocked_main),
+        "retryable_failed_instruction_count": failed_summary["retryable"],
+        "persistent_retryable_failed_instruction_count": failed_summary["persistent_retryable"],
+        "non_retryable_failed_instruction_count": failed_summary["non_retryable"],
+        "unknown_failed_instruction_count": failed_summary["unknown"],
+        "focus_session_key": focus_session_key,
+        "primary_action_kind": primary_action["kind"],
+        "primary_action_command": primary_action["command"],
+        "runbook_status": runbook["status"],
+        "requires_action": triage_status != "ok",
+        "primary_action": primary_action,
+        "runbook": runbook,
+        "next_actions": next_actions,
+        "suggested_next_commands": deduped_commands,
+        "retryable_items": retryable_items,
+        "non_retryable_items": non_retryable_items,
+    }
 
-    if retryable_items:
+
+def render_main_triage(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> str:
+    summary = get_main_triage_summary(config_path=config_path, paths=paths)
+    lines = [
+        "# Main Ops Triage",
+        "",
+        f"- status: {summary['status']}",
+        f"- triage_status: {summary['triage_status']}",
+        f"- blocked_main_task_count: {summary['blocked_main_task_count']}",
+        f"- retryable_failed_instruction_count: {summary['retryable_failed_instruction_count']}",
+        f"- persistent_retryable_failed_instruction_count: {summary['persistent_retryable_failed_instruction_count']}",
+        f"- non_retryable_failed_instruction_count: {summary['non_retryable_failed_instruction_count']}",
+        f"- unknown_failed_instruction_count: {summary['unknown_failed_instruction_count']}",
+        f"- focus_session_key: {summary.get('focus_session_key') or 'none'}",
+        f"- primary_action_kind: {summary.get('primary_action_kind')}",
+        f"- primary_action_command: {summary.get('primary_action_command') or 'none'}",
+        "",
+        "## Next Actions",
+        "",
+    ]
+    for action in summary.get("next_actions", []):
+        lines.append(f"- {action}")
+
+    retryable_items = summary.get("retryable_items", [])
+    if isinstance(retryable_items, list) and retryable_items:
         lines.append("")
         lines.append("## Retryable Failed Instructions")
         lines.append("")
@@ -2397,7 +2491,8 @@ def render_main_triage(
             if item.get("last_error_summary"):
                 lines.append(f"  last_error: {item['last_error_summary']}")
 
-    if non_retryable_items:
+    non_retryable_items = summary.get("non_retryable_items", [])
+    if isinstance(non_retryable_items, list) and non_retryable_items:
         lines.append("")
         lines.append("## Non-Retryable Failed Instructions")
         lines.append("")
@@ -2407,6 +2502,17 @@ def render_main_triage(
             )
             if item.get("last_error_summary"):
                 lines.append(f"  last_error: {item['last_error_summary']}")
+
+    runbook = summary.get("runbook")
+    if isinstance(runbook, dict):
+        lines.extend(["", "## Runbook", ""])
+        for step in runbook.get("steps", []):
+            lines.append(f"- {step}")
+        commands = runbook.get("commands", [])
+        if isinstance(commands, list) and commands:
+            lines.append("- commands:")
+            for command in commands:
+                lines.append(f"  {command}")
 
     return "\n".join(lines) + "\n"
 
@@ -2795,7 +2901,8 @@ def main() -> None:
         help="Apply watchdog auto-resume only when continuity says it is safe to do so.",
     )
     subparsers.add_parser("health", help="Show main-oriented health summary.")
-    subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
+    triage_parser = subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
+    triage_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
     subparsers.add_parser("diagnose-delivery", help="Show host-side delivery diagnosis steps for retryable failures.")
     ack_parser = subparsers.add_parser("ack-delivery-outage", help="Acknowledge a known external delivery outage.")
     ack_parser.add_argument("--channel", required=True)
@@ -3030,6 +3137,9 @@ def main() -> None:
         print(render_main_health(config_path=config_path), end="")
         return
     if args.command == "triage":
+        if getattr(args, "json", False):
+            print(json.dumps(get_main_triage_summary(config_path=config_path, paths=paths), ensure_ascii=False, indent=2))
+            return
         print(render_main_triage(config_path=config_path, paths=paths), end="")
         return
     if args.command == "diagnose-delivery":

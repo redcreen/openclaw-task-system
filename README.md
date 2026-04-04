@@ -301,6 +301,7 @@
 
 - 当前问题分诊入口：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage`
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage --json`
 
 - 陈旧 blocked 任务批处理入口：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py sweep`
