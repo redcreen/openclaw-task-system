@@ -694,6 +694,72 @@ def resume_watchdog_blocked_main_tasks(
     }
 
 
+def render_resume_watchdog_blocked_result(result: dict[str, object]) -> str:
+    post_resume_summary = result.get("post_resume_summary", {})
+    sessions = post_resume_summary.get("sessions", []) if isinstance(post_resume_summary, dict) else []
+    lines = [
+        "# Continuity Resume",
+        "",
+        f"- session_filter: {result.get('session_filter')}",
+        f"- candidate_count: {result.get('candidate_count')}",
+        f"- eligible_count: {result.get('eligible_count')}",
+        f"- resumed_count: {result.get('resumed_count')}",
+        f"- dry_run: {result.get('dry_run')}",
+        f"- respect_execution_advice: {result.get('respect_execution_advice')}",
+    ]
+    if isinstance(post_resume_summary, dict):
+        lines.extend(
+            [
+                f"- settled_session_count: {post_resume_summary.get('settled_session_count', 0)}",
+                f"- needs_followup_session_count: {post_resume_summary.get('needs_followup_session_count', 0)}",
+                f"- execution_recommendation: {post_resume_summary.get('execution_recommendation', 'unknown')}",
+            ]
+        )
+
+    needs_followup = [
+        entry for entry in sessions if isinstance(entry, dict) and entry.get("followup_state") == "needs-followup"
+    ]
+    settled = [entry for entry in sessions if isinstance(entry, dict) and entry.get("followup_state") == "settled"]
+
+    if needs_followup:
+        lines.extend(["", "## Needs Follow-up", ""])
+        for entry in needs_followup:
+            lines.append(
+                f"- {entry.get('session_key')} | active_task_count={entry.get('active_task_count', 0)} | status_counts={json.dumps(entry.get('status_counts', {}), ensure_ascii=False, sort_keys=True)}"
+            )
+            if entry.get("task_labels"):
+                lines.append(f"  labels: {', '.join(list(entry['task_labels'])[:3])}")
+            if entry.get("next_command"):
+                lines.append(f"  next: {entry['next_command']}")
+
+    if settled:
+        lines.extend(["", "## Settled", ""])
+        for entry in settled:
+            lines.append(
+                f"- {entry.get('session_key')} | active_task_count={entry.get('active_task_count', 0)}"
+            )
+            if entry.get("next_command"):
+                lines.append(f"  next: {entry['next_command']}")
+
+    skipped = result.get("skipped", [])
+    if isinstance(skipped, list) and skipped:
+        lines.extend(["", "## Skipped", ""])
+        for entry in skipped:
+            if not isinstance(entry, dict):
+                continue
+            lines.append(
+                f"- {entry.get('task_id')} | session_key={entry.get('session_key')} | reason={entry.get('reason')}"
+            )
+
+    suggested_next_commands = result.get("suggested_next_commands", [])
+    if isinstance(suggested_next_commands, list) and suggested_next_commands:
+        lines.extend(["", "## Suggested Commands", ""])
+        for command in suggested_next_commands:
+            lines.append(f"- {command}")
+
+    return "\n".join(lines) + "\n"
+
+
 def render_taskmonitor_status(
     session_key: str,
     *,
@@ -2176,7 +2242,10 @@ def main() -> None:
                 respect_execution_advice=args.respect_execution_advice,
                 dry_run=args.dry_run,
             )
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+                return
+            print(render_resume_watchdog_blocked_result(result), end="")
             return
         if args.json:
             print(

@@ -231,6 +231,7 @@
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --session-key '<session_key>' --limit 1`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --respect-execution-advice`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run`
+  文本输出会把恢复结果按 `Needs Follow-up` / `Settled` 分组显示
   恢复结果会附带 `post_resume_summary`，用于快速确认恢复后任务是否已进入 `running/queued/...`
   `post_resume_summary.sessions` 会继续给出每个恢复 session 的后续状态摘要，减少恢复后再手动追查一轮
   `post_resume_summary` 还会标出哪些恢复 session 已经 `settled`、哪些仍然 `needs-followup`

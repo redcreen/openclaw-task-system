@@ -596,6 +596,57 @@ class MainOpsTests(unittest.TestCase):
         refreshed = self.store.load_task(first.task_id)
         self.assertEqual(refreshed.status, "blocked")
 
+    def test_render_resume_watchdog_blocked_result_groups_followup_state(self) -> None:
+        rendered = main_ops.render_resume_watchdog_blocked_result(
+            {
+                "session_filter": "all",
+                "candidate_count": 2,
+                "eligible_count": 2,
+                "resumed_count": 2,
+                "dry_run": False,
+                "respect_execution_advice": False,
+                "post_resume_summary": {
+                    "settled_session_count": 1,
+                    "needs_followup_session_count": 1,
+                    "execution_recommendation": "parallel-safe",
+                    "sessions": [
+                        {
+                            "session_key": "session:main:followup",
+                            "followup_state": "needs-followup",
+                            "active_task_count": 1,
+                            "status_counts": {"running": 1},
+                            "task_labels": ["followup task"],
+                            "next_command": "python3 ... continuity --session-key 'session:main:followup'",
+                        },
+                        {
+                            "session_key": "session:main:settled",
+                            "followup_state": "settled",
+                            "active_task_count": 0,
+                            "status_counts": {},
+                            "next_command": "python3 ... continuity --session-key 'session:main:settled'",
+                        },
+                    ],
+                },
+                "suggested_next_commands": ["python3 ... lanes --json"],
+                "skipped": [
+                    {
+                        "task_id": "task_skip",
+                        "session_key": "session:main:skipped",
+                        "reason": "blocked-by-serial-execution-advice",
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("# Continuity Resume", rendered)
+        self.assertIn("## Needs Follow-up", rendered)
+        self.assertIn("session:main:followup", rendered)
+        self.assertIn("## Settled", rendered)
+        self.assertIn("session:main:settled", rendered)
+        self.assertIn("## Skipped", rendered)
+        self.assertIn("blocked-by-serial-execution-advice", rendered)
+        self.assertIn("## Suggested Commands", rendered)
+
     def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:
         main_running = self.store.register_task(
             agent_id="main",
