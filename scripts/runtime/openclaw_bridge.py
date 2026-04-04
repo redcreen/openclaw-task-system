@@ -102,10 +102,13 @@ def _estimate_wait_seconds(
     agent_id: str,
     queue_position: Optional[int],
     task_status: Optional[str],
+    classification_reason: Optional[str] = None,
 ) -> Optional[int]:
     if task_status not in {"received", "queued", "running"}:
         return None
     if queue_position is None or queue_position < 1:
+        return None
+    if str(classification_reason or "").strip() == "observed-task":
         return None
 
     samples: list[int] = []
@@ -236,6 +239,7 @@ def register_inbound_task(
                 agent_id=ctx.agent_id,
                 queue_position=1 if resumed.status == "running" else None,
                 task_status=resumed.status,
+                classification_reason="resume-blocked-task",
             ),
             continuation_due_at=str(resumed.meta.get("continuation_due_at") or "") or None,
         )
@@ -267,6 +271,7 @@ def register_inbound_task(
             agent_id=ctx.agent_id,
             queue_position=queue_position,
             task_status=task.status,
+            classification_reason=decision.reason,
         ),
         continuation_due_at=str(task.meta.get("continuation_due_at") or "") or None,
     )

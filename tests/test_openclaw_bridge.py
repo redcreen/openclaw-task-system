@@ -182,6 +182,35 @@ class OpenClawBridgeTests(unittest.TestCase):
         self.assertEqual(queued.task_status, task_state_module.STATUS_QUEUED)
         self.assertEqual(queued.estimated_wait_seconds, 60)
 
+    def test_observed_task_does_not_reuse_long_task_wait_estimate(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        done = store.register_task(
+            agent_id="main",
+            session_key="feishu:main:chat:history",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="oc_history",
+            user_id="ou_history",
+            task_label="历史完成任务",
+        )
+        started = store.start_task(done.task_id)
+        archived = store.complete_task(started.task_id, archive=True)
+        archive_path = self.paths.archive_dir / f"{archived.task_id}.json"
+        payload = json.loads(archive_path.read_text(encoding="utf-8"))
+        payload["created_at"] = "2026-04-04T10:00:00+08:00"
+        payload["started_at"] = "2026-04-04T10:00:10+08:00"
+        payload["updated_at"] = "2026-04-04T10:00:40+08:00"
+        task_state_module.atomic_write_json(archive_path, payload)
+
+        observed = openclaw_bridge.register_inbound_task(
+            self.make_context("在么"),
+            paths=self.paths,
+            observe_only=True,
+        )
+
+        self.assertEqual(observed.classification_reason, "observed-task")
+        self.assertIsNone(observed.estimated_wait_seconds)
+
     def test_second_long_request_queues_until_first_completes(self) -> None:
         first = openclaw_bridge.register_inbound_task(
             self.make_context("第一个长任务", estimated_steps=4, needs_verification=True),
