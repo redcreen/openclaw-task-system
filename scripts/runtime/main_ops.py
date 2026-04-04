@@ -20,6 +20,7 @@ from main_task_adapter import block_main_task, fail_main_task, finish_main_task,
 from task_config import load_task_system_config
 from task_status import list_inflight_statuses, render_overview_markdown, render_status_markdown
 from task_state import STATUS_QUEUED, STATUS_RUNNING, TaskPaths, TaskStore, default_paths
+from taskmonitor_state import get_taskmonitor_enabled, list_taskmonitor_overrides, set_taskmonitor_enabled
 
 
 def _resolve_paths(config_path: Optional[Path], *, paths: Optional[TaskPaths] = None) -> TaskPaths:
@@ -82,6 +83,55 @@ def render_main_health(
         lines.append("")
         for task in blocked_main:
             lines.append(f"- {task['task_id']} | {task['task_label']}")
+    return "\n".join(lines) + "\n"
+
+
+def render_taskmonitor_status(
+    session_key: str,
+    *,
+    config_path: Optional[Path] = None,
+) -> str:
+    normalized = str(session_key or "").strip()
+    if not normalized:
+        raise ValueError("session_key is required")
+    enabled = get_taskmonitor_enabled(normalized, config_path=config_path)
+    overrides = list_taskmonitor_overrides(config_path=config_path)
+    lines = [
+        "# TaskMonitor",
+        "",
+        f"- session_key: {normalized}",
+        f"- enabled: {enabled}",
+        f"- explicitly_overridden: {normalized in overrides}",
+        f"- override_count: {len(overrides)}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def set_taskmonitor_state(
+    session_key: str,
+    enabled: bool,
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, object]:
+    normalized = str(session_key or "").strip()
+    if not normalized:
+        raise ValueError("session_key is required")
+    result = set_taskmonitor_enabled(normalized, enabled, config_path=config_path)
+    result["override_count"] = len(list_taskmonitor_overrides(config_path=config_path))
+    return result
+
+
+def render_taskmonitor_overrides(
+    *,
+    config_path: Optional[Path] = None,
+) -> str:
+    overrides = list_taskmonitor_overrides(config_path=config_path)
+    lines = ["# TaskMonitor Overrides", ""]
+    if not overrides:
+        lines.append("- none")
+        return "\n".join(lines) + "\n"
+    for session_key, enabled in overrides.items():
+        lines.append(f"- {session_key} | enabled={enabled}")
     return "\n".join(lines) + "\n"
 
 
@@ -843,6 +893,9 @@ def main() -> None:
     purge_parser.add_argument("--session-key", default=None)
     purge_parser.add_argument("--chat-id", default=None)
     purge_parser.add_argument("--inflight-only", action="store_true", help="Only delete inflight records.")
+    taskmonitor_parser = subparsers.add_parser("taskmonitor", help="Inspect or change taskmonitor state for a session.")
+    taskmonitor_parser.add_argument("--session-key", default=None)
+    taskmonitor_parser.add_argument("--action", choices=["status", "on", "off", "list"], default="status")
 
     subparsers.add_parser("overview", help="Show task system overview.")
     subparsers.add_parser("lanes", help="Show current queue/lane summary across agents.")
@@ -960,6 +1013,22 @@ def main() -> None:
             session_key=args.session_key,
             chat_id=args.chat_id,
             include_archive=not args.inflight_only,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    if args.command == "taskmonitor":
+        if args.action == "list":
+            print(render_taskmonitor_overrides(config_path=config_path), end="")
+            return
+        if not args.session_key:
+            raise SystemExit("--session-key is required unless --action=list")
+        if args.action == "status":
+            print(render_taskmonitor_status(args.session_key, config_path=config_path), end="")
+            return
+        result = set_taskmonitor_state(
+            args.session_key,
+            enabled=args.action == "on",
+            config_path=config_path,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return

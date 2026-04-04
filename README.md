@@ -203,8 +203,19 @@
 - `main` 运维入口：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py list`
 
+- 当前队列拓扑：
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues`
+
+- 当前 lane 摘要：
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes`
+
 - `main` 健康检查：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health`
+
+- 查看或切换某个会话的 taskmonitor：
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status`
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action off`
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list`
 
 - 健康问题统一修复入口：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py repair`

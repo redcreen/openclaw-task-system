@@ -60,6 +60,11 @@ def get_taskmonitor_enabled(session_key: str, *, config_path: Optional[Path] = N
     return sessions.get(normalized, True)
 
 
+def list_taskmonitor_overrides(*, config_path: Optional[Path] = None) -> dict[str, bool]:
+    path = _state_path(config_path=config_path)
+    return dict(sorted(_read_state(path).items()))
+
+
 def set_taskmonitor_enabled(
     session_key: str,
     enabled: bool,

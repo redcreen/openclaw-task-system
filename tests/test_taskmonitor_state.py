@@ -44,6 +44,16 @@ class TaskMonitorStateTests(unittest.TestCase):
         self.assertTrue(enabled["enabled"])
         self.assertTrue(taskmonitor_state.get_taskmonitor_enabled("session:test"))
 
+    def test_list_taskmonitor_overrides_returns_sorted_mapping(self) -> None:
+        taskmonitor_state.set_taskmonitor_enabled("session:b", False)
+        taskmonitor_state.set_taskmonitor_enabled("session:a", True)
+
+        overrides = taskmonitor_state.list_taskmonitor_overrides()
+
+        self.assertEqual(list(overrides.keys()), ["session:a", "session:b"])
+        self.assertTrue(overrides["session:a"])
+        self.assertFalse(overrides["session:b"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,6 +22,14 @@ class MainOpsTests(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
+    def _config_path(self) -> Path:
+        config_path = self.temp_dir / "task_system.json"
+        config_path.write_text(
+            json.dumps({"taskSystem": {"storageDir": str(self.paths.data_dir)}}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return config_path
+
     def test_list_main_tasks_filters_non_main_agents(self) -> None:
         main_task = self.store.register_task(
             agent_id="main",
@@ -71,6 +79,26 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertIn("# Main Ops Health", rendered)
         self.assertIn("- main_blocked_task_count: 1", rendered)
+
+    def test_render_taskmonitor_status_reports_default_enabled(self) -> None:
+        rendered = main_ops.render_taskmonitor_status("session:taskmonitor", config_path=self._config_path())
+
+        self.assertIn("# TaskMonitor", rendered)
+        self.assertIn("- session_key: session:taskmonitor", rendered)
+        self.assertIn("- enabled: True", rendered)
+        self.assertIn("- explicitly_overridden: False", rendered)
+
+    def test_set_taskmonitor_state_updates_override_and_list(self) -> None:
+        result = main_ops.set_taskmonitor_state(
+            "session:taskmonitor",
+            False,
+            config_path=self._config_path(),
+        )
+
+        self.assertFalse(result["enabled"])
+        rendered = main_ops.render_taskmonitor_overrides(config_path=self._config_path())
+        self.assertIn("# TaskMonitor Overrides", rendered)
+        self.assertIn("session:taskmonitor | enabled=False", rendered)
 
     def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:
         main_running = self.store.register_task(

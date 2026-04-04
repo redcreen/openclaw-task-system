@@ -41,7 +41,7 @@
 
 ### 1. 连续延迟回复
 
-待继续真实通路验证：
+当前状态：已通过真实验证
 
 - `1分钟后回复我111`
 - `2分钟后回复我222`
@@ -137,7 +137,7 @@
 
 ### 3. 临时关闭功能 / `/taskmonitor`
 
-当前状态：已完成，待真实验证
+当前状态：已完成
 
 - 已支持：
   - `/taskmonitor`
@@ -146,6 +146,11 @@
   - `/taskmonitor off`
 - 当前为按 session 粒度持久化开关
 - 关闭后，该会话后续消息将跳过 task system 监控
+- 已新增运维命令：
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action off`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list`
+- runtime 命令级验证已通过
 
 
 ## 未单独处理的历史问题
@@ -156,10 +161,11 @@
 
 - `Telegram recipient @slash could not be resolved to a numeric chat ID`
 
-当前状态：
+当前状态：已处理
 
-- 仍未单独处理
-- 需要确认 slash 路由是否应跳过 immediate-ack，或应走另一种 chat 解析方式
+- `telegram:slash:*` 这类虚拟 recipient 不再尝试发送即时回执 / follow-up
+- 插件现在会记录 `immediate-ack:skipped`
+- 已避免再次触发 `chat not found`
 
 
 ## 历史样例保留
@@ -197,3 +203,9 @@
   - `openclaw models auth order get --agent main --provider openai-codex`
 - 清理测试残留：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py purge --session-key '<session_key>'`
+- 查看当前队列拓扑：
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues`
+- 查看当前 lane 摘要：
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes`
+- 查看或切换 taskmonitor：
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status`
