@@ -1053,16 +1053,30 @@ def auto_resume_watchdog_blocked_main_tasks_if_safe(
         "requires_action": bool(continuity.get("requires_action")),
         "primary_action": continuity.get("primary_action"),
         "runbook": continuity.get("runbook"),
+        "suggested_next_commands": list(continuity.get("suggested_next_commands", [])),
     }
     if not ready:
         result["status"] = "noop"
         result["reason"] = "no-auto-resumable-tasks"
         result["closure_complete"] = True
+        result["closure_state"] = "no-resume-targets"
+        result["closure_state_reason"] = "no-auto-resumable-tasks"
+        result["closure_hint"] = "No auto-resume action is pending right now."
+        result["closure_hint_command"] = None
+        result["next_followup_summary"] = None
         return result
     if not safe_to_apply:
         result["status"] = "skipped"
         result["reason"] = "auto-resume-blocked"
         result["closure_complete"] = False
+        result["closure_state"] = "blocked"
+        result["closure_state_reason"] = "auto-resume-blockers-present"
+        result["closure_hint"] = str(
+            (result.get("primary_action") or {}).get("summary")
+            or "Review continuity blockers before auto-resume."
+        )
+        result["closure_hint_command"] = result.get("primary_action_command")
+        result["next_followup_summary"] = None
         return result
 
     respect_execution_advice = str(continuity.get("auto_resume_mode") or "") == "respect-execution-advice"
@@ -1079,6 +1093,10 @@ def auto_resume_watchdog_blocked_main_tasks_if_safe(
     result["respect_execution_advice"] = respect_execution_advice
     result["resume_result"] = resume_result
     result["closure_complete"] = bool(resume_result.get("closure_complete"))
+    result["closure_state"] = resume_result.get("closure_state")
+    result["closure_state_reason"] = resume_result.get("closure_state_reason")
+    result["closure_hint"] = resume_result.get("closure_hint")
+    result["closure_hint_command"] = resume_result.get("closure_hint_command")
     result["primary_action_kind"] = str(resume_result.get("primary_action_kind") or "none")
     result["primary_action_command"] = resume_result.get("primary_action_command")
     result["focus_session_key"] = resume_result.get("focus_session_key")
@@ -1086,6 +1104,8 @@ def auto_resume_watchdog_blocked_main_tasks_if_safe(
     result["requires_action"] = bool(resume_result.get("requires_action"))
     result["primary_action"] = resume_result.get("primary_action")
     result["runbook"] = resume_result.get("runbook")
+    result["suggested_next_commands"] = list(resume_result.get("suggested_next_commands", []))
+    result["next_followup_summary"] = resume_result.get("next_followup_summary")
     return result
 
 

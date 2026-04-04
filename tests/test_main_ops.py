@@ -1035,6 +1035,11 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["status"], "noop")
         self.assertEqual(result["reason"], "no-auto-resumable-tasks")
         self.assertTrue(result["closure_complete"])
+        self.assertEqual(result["closure_state"], "no-resume-targets")
+        self.assertEqual(result["closure_state_reason"], "no-auto-resumable-tasks")
+        self.assertEqual(result["closure_hint"], "No auto-resume action is pending right now.")
+        self.assertIsNone(result["closure_hint_command"])
+        self.assertIsNone(result["next_followup_summary"])
         self.assertFalse(result["safe_to_apply"])
         self.assertFalse(result["auto_resume_ready"])
         self.assertEqual(result["primary_action_kind"], "none")
@@ -1071,6 +1076,14 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(result["reason"], "auto-resume-blocked")
         self.assertFalse(result["closure_complete"])
+        self.assertEqual(result["closure_state"], "blocked")
+        self.assertEqual(result["closure_state_reason"], "auto-resume-blockers-present")
+        self.assertEqual(result["closure_hint"], "Preview watchdog auto-resume candidates first.")
+        self.assertEqual(
+            result["closure_hint_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run",
+        )
+        self.assertIsNone(result["next_followup_summary"])
         self.assertTrue(result["auto_resume_ready"])
         self.assertFalse(result["safe_to_apply"])
         self.assertEqual(result["auto_resume_blockers"], ["manual-review-present"])
@@ -1097,11 +1110,19 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "applied")
         self.assertFalse(result["closure_complete"])
+        self.assertEqual(result["closure_state"], "needs-followup")
+        self.assertEqual(result["closure_state_reason"], "resumed-sessions-still-have-active-tasks")
+        self.assertEqual(result["closure_hint"], "Follow up session session:main:auto-apply next.")
+        self.assertEqual(
+            result["closure_hint_command"],
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:auto-apply'",
+        )
         self.assertTrue(result["safe_to_apply"])
         self.assertTrue(result["auto_resume_ready"])
         self.assertEqual(result["auto_resume_blockers"], [])
         self.assertIn("resume_result", result)
         self.assertEqual(result["resume_result"]["resumed_count"], 1)
+        self.assertIsNotNone(result["next_followup_summary"])
         self.assertEqual(result["primary_action_kind"], "followup-session")
         self.assertTrue(result["requires_action"])
         resumed = self.store.load_task(task.task_id)
