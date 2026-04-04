@@ -260,6 +260,11 @@ class MainOpsTests(unittest.TestCase):
             "- action_hint_command: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:issues-only'",
             rendered,
         )
+        self.assertIn("## Runbook", rendered)
+        self.assertIn(
+            "- Follow up session session:main:issues-only first.",
+            rendered,
+        )
 
     def test_get_main_dashboard_summary_filters_to_one_session(self) -> None:
         focus = self.store.register_task(
@@ -335,6 +340,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertFalse(summary["issue_summary"]["has_issues"])
         self.assertIsNone(summary["issue_summary"]["action_hint"])
         self.assertIsNone(summary["issue_summary"]["action_hint_command"])
+        self.assertEqual(summary["issue_summary"]["primary_action"]["kind"], "none")
+        self.assertEqual(summary["issue_summary"]["runbook"]["status"], "ok")
         self.assertEqual(summary["primary_action"]["kind"], "none")
         self.assertEqual(summary["runbook"]["primary_action"]["kind"], "none")
 

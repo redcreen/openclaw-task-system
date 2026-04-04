@@ -1151,6 +1151,16 @@ def render_main_dashboard(
         )
         if summary["action_hint_command"]:
             lines.append(f"- action_hint_command: {summary['action_hint_command']}")
+        runbook = issue_summary.get("runbook")
+        if isinstance(runbook, dict):
+            lines.extend(["", "## Runbook", ""])
+            for step in runbook.get("steps", []):
+                lines.append(f"- {step}")
+            commands = runbook.get("commands", [])
+            if isinstance(commands, list) and commands:
+                lines.append("- commands:")
+                for command in commands:
+                    lines.append(f"  {command}")
         return "\n".join(lines) + "\n"
     if compact:
         compact_summary = summary["compact_summary"]
@@ -1350,6 +1360,26 @@ def get_main_dashboard_summary(
         ],
         "commands": suggested_next_commands,
     }
+    issue_summary["primary_action"] = (
+        primary_action
+        if status != "ok"
+        else {
+            "kind": "none",
+            "summary": "No immediate action needed.",
+            "command": None,
+            "session_key": None,
+        }
+    )
+    issue_summary["runbook"] = (
+        runbook
+        if status != "ok"
+        else {
+            "status": "ok",
+            "primary_action": issue_summary["primary_action"],
+            "steps": ["No immediate action needed."],
+            "commands": [],
+        }
+    )
     return {
         "generated_at": datetime.now(timezone.utc).astimezone().isoformat(),
         "session_filter": normalized_session_key or "all",
