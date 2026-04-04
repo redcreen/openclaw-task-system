@@ -217,6 +217,7 @@
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --session-key '<session_key>' --limit 1`
   恢复结果会附带 `post_resume_summary`，用于快速确认恢复后任务是否已进入 `running/queued/...`
+  文本输出和 JSON 输出都会附带推荐的下一步命令，方便继续检查对应 session 的连续执行状态
   输出会分成：
   - `Auto-Resumable`
   - `Needs Manual Review`

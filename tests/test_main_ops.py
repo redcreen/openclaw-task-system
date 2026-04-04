@@ -159,6 +159,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("## Auto-Resumable", rendered)
         self.assertIn("blocked-no-visible-progress", rendered)
         self.assertIn("main_ops.py resume", rendered)
+        self.assertIn("main_ops.py continuity --session-key 'session:main:blocked'", rendered)
+        self.assertIn("main_ops.py lanes --json", rendered)
 
     def test_render_main_continuity_separates_manual_review_and_not_recommended(self) -> None:
         queued = self.store.register_task(
@@ -258,6 +260,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["manual_review"][0]["task_label"], "focus json task")
         self.assertEqual(len(summary["by_session"]), 1)
         self.assertEqual(summary["by_session"][0]["session_key"], "session:main:focus-json")
+        self.assertIn(
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus-json'",
+            summary["suggested_next_commands"],
+        )
 
     def test_resume_watchdog_blocked_main_tasks_resumes_only_selected_candidates(self) -> None:
         first = self.store.register_task(
@@ -304,6 +310,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["status_counts"]["running"], 1)
+        self.assertIn(
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
+            result["suggested_next_commands"],
+        )
         resumed_first = self.store.load_task(first.task_id)
         resumed_second = self.store.load_task(second.task_id)
         resumed_unrelated = self.store.load_task(unrelated.task_id)
@@ -347,6 +357,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["status_counts"]["running"], 1)
+        self.assertIn(
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus'",
+            result["suggested_next_commands"],
+        )
         resumed_first = self.store.load_task(first.task_id)
         untouched_other = self.store.load_task(other.task_id)
         self.assertEqual(resumed_first.status, task_state_module.STATUS_RUNNING)

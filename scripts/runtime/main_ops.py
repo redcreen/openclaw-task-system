@@ -198,6 +198,12 @@ def render_main_continuity(
             lines.append(
                 f"  resume: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resume {task.task_id} --note \"继续推进并同步真实进展\""
             )
+            lines.append(
+                f"  next: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{task.session_key}'"
+            )
+            lines.append(
+                f"  lanes: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json"
+            )
 
     if manual_review:
         lines.extend(["", "## Needs Manual Review", ""])
@@ -387,6 +393,16 @@ def get_main_continuity_summary(
                 ),
             )
         ],
+        "suggested_next_commands": [
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+            *(
+                [
+                    f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{normalized_session_key}'"
+                ]
+                if normalized_session_key
+                else []
+            ),
+        ],
     }
 
 
@@ -445,6 +461,13 @@ def resume_watchdog_blocked_main_tasks(
             "resumed_session_count": len(resumed_session_keys),
             "status_counts": post_resume_status_counts,
         },
+        "suggested_next_commands": [
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+            *[
+                f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{resumed_session_key}'"
+                for resumed_session_key in sorted(resumed_session_keys)
+            ],
+        ],
         "resumed": resumed,
     }
 
