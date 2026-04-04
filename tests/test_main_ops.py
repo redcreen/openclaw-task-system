@@ -155,6 +155,63 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["queues"]["queue_count"], 0)
         self.assertEqual(summary["taskmonitor"]["override_count"], 0)
 
+    def test_render_main_dashboard_can_focus_one_session(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:dashboard-focus",
+            channel="telegram",
+            chat_id="chat:main:dashboard-focus",
+            task_label="dashboard focus task",
+        )
+        self.store.start_task(task.task_id)
+
+        rendered = main_ops.render_main_dashboard(
+            config_path=self._config_path(),
+            paths=self.paths,
+            session_key="session:main:dashboard-focus",
+        )
+
+        self.assertIn("- session_filter: session:main:dashboard-focus", rendered)
+        self.assertIn("main_ops.py continuity --session-key 'session:main:dashboard-focus'", rendered)
+        self.assertIn("taskmonitor --session-key 'session:main:dashboard-focus' --action status --json", rendered)
+
+    def test_get_main_dashboard_summary_filters_to_one_session(self) -> None:
+        focus = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:dashboard-focus-json",
+            channel="telegram",
+            chat_id="chat:main:dashboard-focus-json",
+            task_label="focus queue task",
+        )
+        self.store.start_task(focus.task_id)
+        other = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:dashboard-other-json",
+            channel="telegram",
+            chat_id="chat:main:dashboard-other-json",
+            task_label="other queue task",
+        )
+        self.store.start_task(other.task_id)
+        main_ops.set_taskmonitor_state(
+            "session:main:dashboard-focus-json",
+            False,
+            config_path=self._config_path(),
+        )
+
+        summary = main_ops.get_main_dashboard_summary(
+            config_path=self._config_path(),
+            paths=self.paths,
+            session_key="session:main:dashboard-focus-json",
+        )
+
+        self.assertEqual(summary["session_filter"], "session:main:dashboard-focus-json")
+        self.assertEqual(summary["queues"]["queue_count"], 1)
+        self.assertEqual(summary["lanes"]["agent_count"], 1)
+        self.assertEqual(summary["taskmonitor"]["mode"], "session")
+        self.assertEqual(summary["taskmonitor"]["session_key"], "session:main:dashboard-focus-json")
+        self.assertFalse(summary["taskmonitor"]["enabled"])
+        self.assertEqual(summary["continuity"]["session_filter"], "session:main:dashboard-focus-json")
+
     def test_render_main_continuity_reports_no_risk_when_idle(self) -> None:
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
 

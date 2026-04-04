@@ -188,12 +188,14 @@
 - 已新增统一状态入口：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard`
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --json`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --session-key '<session_key>'`
 - 当前 dashboard 已能汇总：
   - `health`
   - `queues`
   - `lanes`
   - `continuity`
   - `taskmonitor`
+- 当前 dashboard 已支持按 `session` 聚焦，适合排某个具体会话
 - 但更产品化的控制面板仍未完成，例如：
   - 面向普通使用者的开关与提示
   - 更低成本的日常管理界面

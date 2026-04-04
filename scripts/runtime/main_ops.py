@@ -742,16 +742,64 @@ def get_taskmonitor_overrides(
     }
 
 
+def _filter_queue_topology_by_session(
+    summary: dict[str, object],
+    *,
+    session_key: str,
+) -> dict[str, object]:
+    queues = []
+    for queue in summary.get("queues", []):
+        sessions = queue.get("sessions", [])
+        if any(str(entry.get("session_key") or "") == session_key for entry in sessions):
+            queues.append(queue)
+    return {
+        "queue_statuses": list(summary.get("queue_statuses", [])),
+        "queue_count": len(queues),
+        "queues": queues,
+    }
+
+
+def _filter_lanes_by_session(
+    summary: dict[str, object],
+    *,
+    session_key: str,
+) -> dict[str, object]:
+    agents = []
+    for agent in summary.get("agents", []):
+        shared_sessions = [str(item) for item in agent.get("shared_sessions", [])]
+        task_buckets = [
+            agent.get("running_tasks", []),
+            agent.get("queued_head", []),
+            agent.get("paused_tasks", []),
+            agent.get("due_paused_tasks", []),
+        ]
+        matches_task_bucket = any(
+            str(task.get("session_key") or "") == session_key
+            for bucket in task_buckets
+            for task in bucket
+            if isinstance(task, dict)
+        )
+        if session_key in shared_sessions or matches_task_bucket:
+            agents.append(agent)
+    return {
+        "queue_statuses": list(summary.get("queue_statuses", [])),
+        "agent_count": len(agents),
+        "agents": agents,
+    }
+
+
 def render_main_dashboard(
     *,
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
 ) -> str:
-    summary = get_main_dashboard_summary(config_path=config_path, paths=paths)
+    summary = get_main_dashboard_summary(config_path=config_path, paths=paths, session_key=session_key)
     lines = [
         "# Main Ops Dashboard",
         "",
         f"- generated_at: {summary['generated_at']}",
+        f"- session_filter: {summary['session_filter']}",
         f"- status: {summary['status']}",
         f"- main_active_task_count: {summary['health']['main_active_task_count']}",
         f"- main_blocked_task_count: {summary['health']['main_blocked_task_count']}",
@@ -773,13 +821,31 @@ def get_main_dashboard_summary(
     *,
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(config_path, paths=paths)
+    normalized_session_key = str(session_key or "").strip() or None
     health = get_main_health_summary(config_path=config_path, paths=resolved_paths)
     queues = get_queue_topology_summary(config_path=config_path, paths=resolved_paths)
     lanes = get_queue_lanes_summary(config_path=config_path, paths=resolved_paths)
-    continuity = get_main_continuity_summary(config_path=config_path, paths=resolved_paths)
-    taskmonitor = get_taskmonitor_overrides(config_path=config_path)
+    continuity = get_main_continuity_summary(
+        config_path=config_path,
+        paths=resolved_paths,
+        session_key=normalized_session_key,
+    )
+    taskmonitor: dict[str, object]
+    if normalized_session_key:
+        queues = _filter_queue_topology_by_session(queues, session_key=normalized_session_key)
+        lanes = _filter_lanes_by_session(lanes, session_key=normalized_session_key)
+        taskmonitor = {
+            "mode": "session",
+            **get_taskmonitor_status(normalized_session_key, config_path=config_path),
+        }
+    else:
+        taskmonitor = {
+            "mode": "global",
+            **get_taskmonitor_overrides(config_path=config_path),
+        }
     status = "ok"
     if (
         health["status"] != "ok"
@@ -789,19 +855,28 @@ def get_main_dashboard_summary(
         status = "warn"
     return {
         "generated_at": datetime.now(timezone.utc).astimezone().isoformat(),
+        "session_filter": normalized_session_key or "all",
         "status": status,
         "health": health,
         "queues": queues,
         "lanes": lanes,
         "continuity": continuity,
         "taskmonitor": taskmonitor,
-        "suggested_next_commands": [
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health",
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json",
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json",
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list --json",
-        ],
+        "suggested_next_commands": (
+            [
+                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health",
+                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json",
+                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json",
+                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list --json",
+            ]
+            if normalized_session_key is None
+            else [
+                f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{normalized_session_key}'",
+                "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+                f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '{normalized_session_key}' --action status --json",
+            ]
+        ),
     }
 
 
@@ -1792,6 +1867,7 @@ def main() -> None:
     taskmonitor_parser.add_argument("--action", choices=["status", "on", "off", "list"], default="status")
     taskmonitor_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
     dashboard_parser = subparsers.add_parser("dashboard", help="Show a unified main-ops dashboard summary.")
+    dashboard_parser.add_argument("--session-key", default=None, help="Focus the dashboard on one session.")
     dashboard_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
 
     subparsers.add_parser("overview", help="Show task system overview.")
@@ -1976,9 +2052,19 @@ def main() -> None:
         return
     if args.command == "dashboard":
         if args.json:
-            print(json.dumps(get_main_dashboard_summary(config_path=config_path, paths=paths), ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    get_main_dashboard_summary(
+                        config_path=config_path,
+                        paths=paths,
+                        session_key=args.session_key,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
             return
-        print(render_main_dashboard(config_path=config_path, paths=paths), end="")
+        print(render_main_dashboard(config_path=config_path, paths=paths, session_key=args.session_key), end="")
         return
     if args.command == "overview":
         print(render_overview_markdown(config_path=config_path), end="")
