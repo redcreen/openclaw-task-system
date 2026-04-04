@@ -310,6 +310,44 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(resumed_second.status, "blocked")
         self.assertEqual(resumed_unrelated.status, "blocked")
 
+    def test_resume_watchdog_blocked_main_tasks_can_filter_one_session(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:focus",
+            channel="telegram",
+            chat_id="chat:main:focus",
+            task_label="focus blocked task",
+        )
+        other = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:other",
+            channel="telegram",
+            chat_id="chat:main:other",
+            task_label="other blocked task",
+        )
+        blocked_first = self.store.block_task(first.task_id, "watchdog blocked")
+        blocked_other = self.store.block_task(other.task_id, "watchdog blocked")
+        blocked_first.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        blocked_other.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked_first)
+        self.store.save_task(blocked_other)
+
+        result = main_ops.resume_watchdog_blocked_main_tasks(
+            config_path=self._config_path(),
+            paths=self.paths,
+            session_key="session:main:focus",
+            note="继续推进",
+        )
+
+        self.assertEqual(result["session_filter"], "session:main:focus")
+        self.assertEqual(result["candidate_count"], 1)
+        self.assertEqual(result["resumed_count"], 1)
+        self.assertEqual(result["resumed"][0]["task_id"], first.task_id)
+        resumed_first = self.store.load_task(first.task_id)
+        untouched_other = self.store.load_task(other.task_id)
+        self.assertEqual(resumed_first.status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(untouched_other.status, "blocked")
+
     def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:
         main_running = self.store.register_task(
             agent_id="main",

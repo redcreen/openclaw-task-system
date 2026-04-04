@@ -215,6 +215,7 @@
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '<session_key>'`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json`
+  `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --session-key '<session_key>' --limit 1`
   输出会分成：
   - `Auto-Resumable`
   - `Needs Manual Review`

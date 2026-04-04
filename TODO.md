@@ -139,6 +139,7 @@
   - 分类输出
   - 指定 session 过滤
   - watchdog blocked 任务限额恢复
+  - watchdog blocked 任务按 session 精准恢复
 - 但还没有完全形成自动闭环：
   - 任务持续推进
   - 恢复后的后续收口
@@ -242,5 +243,6 @@
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '<session_key>'`
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json`
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --limit 1`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --session-key '<session_key>' --limit 1`
 - 查看或切换 taskmonitor：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status`

@@ -394,15 +394,19 @@ def resume_watchdog_blocked_main_tasks(
     *,
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
     limit: Optional[int] = None,
     note: Optional[str] = None,
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(config_path, paths=paths)
     store = TaskStore(paths=resolved_paths)
+    normalized_session_key = str(session_key or "").strip() or None
     watchdog_blocked = [
         task
         for task in store.find_inflight_tasks(agent_id="main")
-        if task.status == "blocked" and str(task.meta.get("watchdog_escalation") or "").strip()
+        if task.status == "blocked"
+        and str(task.meta.get("watchdog_escalation") or "").strip()
+        and (normalized_session_key is None or task.session_key == normalized_session_key)
     ]
     selected = sorted(
         watchdog_blocked,
@@ -428,6 +432,7 @@ def resume_watchdog_blocked_main_tasks(
         )
     return {
         "action": "resume-watchdog-blocked-main-tasks",
+        "session_filter": normalized_session_key or "all",
         "candidate_count": len(watchdog_blocked),
         "resumed_count": len(resumed),
         "limit": limit,
@@ -1616,6 +1621,7 @@ def main() -> None:
             result = resume_watchdog_blocked_main_tasks(
                 config_path=config_path,
                 paths=paths,
+                session_key=args.session_key,
                 limit=args.limit,
                 note=args.note,
             )
