@@ -156,6 +156,7 @@
   - 当前有几个 lane
   - 哪些 task 在 running / queued / paused
   - 哪些 session 正在共享同一个 agent queue / lane
+  - 为什么当前 queue / lane 被判断为 shared，以及是否已有 running lane
 - 但还没最终回答：
   - 是否要开放真正并发执行
   - OpenClaw 当前天然并发能力边界

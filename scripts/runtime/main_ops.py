@@ -592,11 +592,19 @@ def render_queue_lanes(
         session_keys = sorted({str(status["session_key"]) for status in agent_tasks})
         lane_kind = "shared" if len(session_keys) > 1 else "single-session"
         running_sessions = sorted({str(status["session_key"]) for status in running_tasks})
+        shared_with_running_lane = len(running_sessions) > 0
+        sharing_reason = (
+            f"agent {agent_id} currently has {len(session_keys)} active sessions in the same lane"
+            if lane_kind == "shared"
+            else f"agent {agent_id} currently has only one active session in the lane"
+        )
         lines.extend(
             [
                 f"## Agent: {agent_id}",
                 "",
                 f"- lane_kind: {lane_kind}",
+                f"- sharing_reason: {sharing_reason}",
+                f"- shared_with_running_lane: {shared_with_running_lane}",
                 f"- active_task_count: {len(agent_tasks)}",
                 f"- running_task_count: {len(running_tasks)}",
                 f"- queued_task_count: {len(queued_tasks)}",
@@ -696,10 +704,18 @@ def get_queue_lanes_summary(
         session_keys = sorted({str(status["session_key"]) for status in agent_tasks})
         lane_kind = "shared" if len(session_keys) > 1 else "single-session"
         running_sessions = sorted({str(status["session_key"]) for status in running_tasks})
+        shared_with_running_lane = len(running_sessions) > 0
+        sharing_reason = (
+            f"agent {agent_id} currently has {len(session_keys)} active sessions in the same lane"
+            if lane_kind == "shared"
+            else f"agent {agent_id} currently has only one active session in the lane"
+        )
         agents.append(
             {
                 "agent_id": agent_id,
                 "lane_kind": lane_kind,
+                "sharing_reason": sharing_reason,
+                "shared_with_running_lane": shared_with_running_lane,
                 "active_task_count": len(agent_tasks),
                 "running_task_count": len(running_tasks),
                 "queued_task_count": len(queued_tasks),
@@ -807,11 +823,19 @@ def render_queue_topology(
         running_count = len([status for status in agent_tasks if str(status["status"]) == STATUS_RUNNING])
         queued_count = len([status for status in agent_tasks if str(status["status"]) in {STATUS_QUEUED, "received"}])
         paused_count = len([status for status in agent_tasks if str(status["status"]) == "paused"])
+        shared_with_running_lane = running_count > 0 and len(session_keys) > 1
+        sharing_reason = (
+            f"agent {agent_id} queue is shared because {len(session_keys)} sessions currently map to the same agent queue"
+            if queue_kind == "shared"
+            else f"agent {agent_id} queue is currently dedicated to one session"
+        )
         lines.extend(
             [
                 f"## Queue: {agent_id}",
                 "",
                 f"- queue_kind: {queue_kind}",
+                f"- sharing_reason: {sharing_reason}",
+                f"- shared_with_running_lane: {shared_with_running_lane}",
                 f"- session_count: {len(session_keys)}",
                 f"- active_task_count: {len(agent_tasks)}",
                 f"- running_task_count: {running_count}",
@@ -849,10 +873,18 @@ def get_queue_topology_summary(
         running_count = len([status for status in agent_tasks if str(status["status"]) == STATUS_RUNNING])
         queued_count = len([status for status in agent_tasks if str(status["status"]) in {STATUS_QUEUED, "received"}])
         paused_count = len([status for status in agent_tasks if str(status["status"]) == "paused"])
+        shared_with_running_lane = running_count > 0 and len(session_keys) > 1
+        sharing_reason = (
+            f"agent {agent_id} queue is shared because {len(session_keys)} sessions currently map to the same agent queue"
+            if queue_kind == "shared"
+            else f"agent {agent_id} queue is currently dedicated to one session"
+        )
         queues.append(
             {
                 "agent_id": agent_id,
                 "queue_kind": queue_kind,
+                "sharing_reason": sharing_reason,
+                "shared_with_running_lane": shared_with_running_lane,
                 "shared_sessions": shared_sessions,
                 "session_count": len(session_keys),
                 "active_task_count": len(agent_tasks),
