@@ -595,6 +595,107 @@ def render_queue_lanes(
     return "\n".join(lines).rstrip() + "\n"
 
 
+def get_queue_lanes_summary(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> dict[str, object]:
+    statuses = list_inflight_statuses(config_path=config_path, paths=paths)
+    queue_statuses = {"received", "queued", "running", "paused"}
+    relevant = [status for status in statuses if str(status["status"]) in queue_statuses]
+    now_dt = datetime.now(timezone.utc).astimezone()
+    agents: list[dict[str, object]] = []
+    for agent_id in sorted({str(status["agent_id"]) for status in relevant}):
+        agent_tasks = [status for status in relevant if str(status["agent_id"]) == agent_id]
+        running_tasks = [status for status in agent_tasks if str(status["status"]) == STATUS_RUNNING]
+        queued_tasks = [status for status in agent_tasks if str(status["status"]) in {STATUS_QUEUED, "received"}]
+        paused_tasks = [status for status in agent_tasks if str(status["status"]) == "paused"]
+        due_paused_tasks = []
+        for task in paused_tasks:
+            continuation_due_at = _parse_iso8601(
+                str(((task.get("meta", {}) if isinstance(task.get("meta"), dict) else {}).get("continuation_due_at")) or "")
+            )
+            if continuation_due_at and continuation_due_at <= now_dt:
+                due_paused_tasks.append(task)
+        session_keys = sorted({str(status["session_key"]) for status in agent_tasks})
+        running_sessions = sorted({str(status["session_key"]) for status in running_tasks})
+        agents.append(
+            {
+                "agent_id": agent_id,
+                "active_task_count": len(agent_tasks),
+                "running_task_count": len(running_tasks),
+                "queued_task_count": len(queued_tasks),
+                "paused_task_count": len(paused_tasks),
+                "due_paused_task_count": len(due_paused_tasks),
+                "session_lane_count": len(session_keys),
+                "running_lane_count": len(running_sessions),
+                "running_tasks": [
+                    {
+                        "task_id": str(task["task_id"]),
+                        "session_key": str(task["session_key"]),
+                        "task_label": str(task["task_label"]),
+                    }
+                    for task in sorted(
+                        running_tasks,
+                        key=lambda item: (
+                            str(item.get("started_at") or item.get("created_at") or ""),
+                            str(item["task_id"]),
+                        ),
+                    )
+                ],
+                "queued_head": [
+                    {
+                        "position": int(task["queue"]["position"] or 999999),
+                        "task_id": str(task["task_id"]),
+                        "session_key": str(task["session_key"]),
+                        "task_label": str(task["task_label"]),
+                    }
+                    for task in sorted(
+                        queued_tasks,
+                        key=lambda item: (
+                            int(item["queue"]["position"] or 999999),
+                            str(item.get("created_at") or ""),
+                            str(item["task_id"]),
+                        ),
+                    )[:5]
+                ],
+                "paused_tasks": [
+                    {
+                        "task_id": str(task["task_id"]),
+                        "session_key": str(task["session_key"]),
+                        "task_label": str(task["task_label"]),
+                    }
+                    for task in sorted(
+                        paused_tasks,
+                        key=lambda item: (
+                            str(item.get("updated_at") or item.get("created_at") or ""),
+                            str(item["task_id"]),
+                        ),
+                    )[:5]
+                ],
+                "due_paused_tasks": [
+                    {
+                        "task_id": str(task["task_id"]),
+                        "session_key": str(task["session_key"]),
+                        "task_label": str(task["task_label"]),
+                    }
+                    for task in sorted(
+                        due_paused_tasks,
+                        key=lambda item: (
+                            str(((item.get("meta", {}) if isinstance(item.get("meta"), dict) else {}).get("continuation_due_at")) or ""),
+                            str(item["task_id"]),
+                        ),
+                    )[:5]
+                ],
+            }
+        )
+    return {
+        "queue_statuses": sorted(queue_statuses),
+        "agent_count": len(agents),
+        "agents": agents,
+    }
+
+
 def render_queue_topology(
     *,
     config_path: Optional[Path] = None,
@@ -645,6 +746,49 @@ def render_queue_topology(
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def get_queue_topology_summary(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> dict[str, object]:
+    statuses = list_inflight_statuses(config_path=config_path, paths=paths)
+    queue_statuses = {"received", "queued", "running", "paused"}
+    relevant = [status for status in statuses if str(status["status"]) in queue_statuses]
+    queues: list[dict[str, object]] = []
+    for agent_id in sorted({str(status["agent_id"]) for status in relevant}):
+        agent_tasks = [status for status in relevant if str(status["agent_id"]) == agent_id]
+        session_keys = sorted({str(status["session_key"]) for status in agent_tasks})
+        queue_kind = "shared" if len(session_keys) > 1 else "single-session"
+        running_count = len([status for status in agent_tasks if str(status["status"]) == STATUS_RUNNING])
+        queued_count = len([status for status in agent_tasks if str(status["status"]) in {STATUS_QUEUED, "received"}])
+        paused_count = len([status for status in agent_tasks if str(status["status"]) == "paused"])
+        queues.append(
+            {
+                "agent_id": agent_id,
+                "queue_kind": queue_kind,
+                "session_count": len(session_keys),
+                "active_task_count": len(agent_tasks),
+                "running_task_count": running_count,
+                "queued_task_count": queued_count,
+                "paused_task_count": paused_count,
+                "sessions": [
+                    {
+                        "session_key": session_key,
+                        "task_count": len(
+                            [status for status in agent_tasks if str(status["session_key"]) == session_key]
+                        ),
+                    }
+                    for session_key in session_keys
+                ],
+            }
+        )
+    return {
+        "queue_statuses": sorted(queue_statuses),
+        "queue_count": len(queues),
+        "queues": queues,
+    }
 
 
 def _parse_iso8601(value: Optional[str]) -> Optional[datetime]:
@@ -1248,8 +1392,10 @@ def main() -> None:
     taskmonitor_parser.add_argument("--action", choices=["status", "on", "off", "list"], default="status")
 
     subparsers.add_parser("overview", help="Show task system overview.")
-    subparsers.add_parser("lanes", help="Show current queue/lane summary across agents.")
-    subparsers.add_parser("queues", help="Show current queue topology across agents and sessions.")
+    lanes_parser = subparsers.add_parser("lanes", help="Show current queue/lane summary across agents.")
+    lanes_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
+    queues_parser = subparsers.add_parser("queues", help="Show current queue topology across agents and sessions.")
+    queues_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
     continuity_parser = subparsers.add_parser("continuity", help="Show main-agent continuity/watchdog risk summary.")
     continuity_parser.add_argument(
         "--session-key",
@@ -1413,9 +1559,15 @@ def main() -> None:
         print(render_overview_markdown(config_path=config_path), end="")
         return
     if args.command == "lanes":
+        if args.json:
+            print(json.dumps(get_queue_lanes_summary(config_path=config_path, paths=paths), ensure_ascii=False, indent=2))
+            return
         print(render_queue_lanes(config_path=config_path, paths=paths), end="")
         return
     if args.command == "queues":
+        if args.json:
+            print(json.dumps(get_queue_topology_summary(config_path=config_path, paths=paths), ensure_ascii=False, indent=2))
+            return
         print(render_queue_topology(config_path=config_path, paths=paths), end="")
         return
     if args.command == "continuity":

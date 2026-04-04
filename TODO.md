@@ -147,6 +147,7 @@
   - running_lane_count
 - 也会列出当前 running task 和 queued head，方便判断“前面是什么任务”
 - `queues` 会直接展示当前有几个 agent 队列、每个队列下有哪些 session，便于解释“为什么前面有几个号”
+- `queues` / `lanes` 已支持 `--json`，便于后续直接给外部脚本或 UI 消费
 - 已收紧 due continuation claim 规则：同一 session lane 一次最多 claim 1 条，避免多条到期任务同时变成 `running`
 - 已补回归：前一条 continuation 完成后，下一轮 poll 会自动 claim 同 session 的下一条 continuation
 
@@ -227,8 +228,10 @@
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py purge --session-key '<session_key>'`
 - 查看当前队列拓扑：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json`
 - 查看当前 lane 摘要：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json`
 - 查看或恢复 main 连续执行风险：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '<session_key>'`

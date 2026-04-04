@@ -324,6 +324,31 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("main queued", rendered)
         self.assertIn("code running", rendered)
 
+    def test_get_queue_lanes_summary_reports_agents(self) -> None:
+        main_running = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:run",
+            channel="telegram",
+            chat_id="chat:main:run",
+            task_label="main running",
+        )
+        self.store.start_task(main_running.task_id)
+        code_queued = self.store.register_task(
+            agent_id="code",
+            session_key="session:code:queued",
+            channel="telegram",
+            chat_id="chat:code:queued",
+            task_label="code queued",
+        )
+
+        summary = main_ops.get_queue_lanes_summary(paths=self.paths)
+
+        self.assertEqual(summary["agent_count"], 2)
+        self.assertEqual(summary["agents"][0]["agent_id"], "code")
+        self.assertEqual(summary["agents"][1]["agent_id"], "main")
+        self.assertEqual(summary["agents"][1]["running_task_count"], 1)
+        self.assertEqual(summary["agents"][0]["queued_head"][0]["task_id"], code_queued.task_id)
+
     def test_render_queue_lanes_includes_due_paused_continuations(self) -> None:
         observed = self.store.observe_task(
             agent_id="main",
@@ -383,6 +408,31 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("session:main:two | task_count=1", rendered)
         self.assertIn("## Queue: code", rendered)
         self.assertIn("- queue_kind: single-session", rendered)
+
+    def test_get_queue_topology_summary_reports_queue_structure(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:one",
+            channel="telegram",
+            chat_id="chat:main:one",
+            task_label="main task one",
+        )
+        self.store.start_task(first.task_id)
+        self.store.register_task(
+            agent_id="main",
+            session_key="session:main:two",
+            channel="telegram",
+            chat_id="chat:main:two",
+            task_label="main task two",
+        )
+
+        summary = main_ops.get_queue_topology_summary(paths=self.paths)
+
+        self.assertEqual(summary["queue_count"], 1)
+        self.assertEqual(summary["queues"][0]["agent_id"], "main")
+        self.assertEqual(summary["queues"][0]["queue_kind"], "shared")
+        self.assertEqual(summary["queues"][0]["session_count"], 2)
+        self.assertEqual(len(summary["queues"][0]["sessions"]), 2)
 
     def test_render_main_triage_includes_resume_and_retry_actions(self) -> None:
         task = self.store.register_task(
