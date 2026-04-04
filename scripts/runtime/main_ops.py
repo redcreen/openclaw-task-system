@@ -638,6 +638,7 @@ def resume_watchdog_blocked_main_tasks(
             post_resume_session_summaries.append(
                 {
                     "session_key": resumed_session_key,
+                    "followup_state": "settled",
                     "active_task_count": 0,
                     "status_counts": {},
                     "next_command": f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{resumed_session_key}'",
@@ -650,6 +651,7 @@ def resume_watchdog_blocked_main_tasks(
         post_resume_session_summaries.append(
             {
                 "session_key": resumed_session_key,
+                "followup_state": "needs-followup",
                 "active_task_count": len(session_tasks),
                 "status_counts": status_counts,
                 "task_labels": sorted({str(task.task_label) for task in session_tasks if str(task.task_label).strip()}),
@@ -673,6 +675,12 @@ def resume_watchdog_blocked_main_tasks(
             "execution_recommendation": post_resume_strategy["execution_recommendation"],
             "execution_reason": post_resume_strategy["execution_reason"],
             "sessions": post_resume_session_summaries,
+            "settled_session_count": len(
+                [entry for entry in post_resume_session_summaries if entry.get("followup_state") == "settled"]
+            ),
+            "needs_followup_session_count": len(
+                [entry for entry in post_resume_session_summaries if entry.get("followup_state") == "needs-followup"]
+            ),
         },
         "skipped": skipped,
         "suggested_next_commands": [
