@@ -8,6 +8,8 @@ from typing import Any, Optional
 
 from openclaw_bridge import (
     OpenClawInboundContext,
+    _estimate_wait_seconds,
+    _queue_metrics,
     record_blocked,
     record_completed,
     record_failed,
@@ -16,6 +18,7 @@ from openclaw_bridge import (
 )
 from task_config import load_task_system_config
 from task_state import TaskStore
+from taskmonitor_state import get_taskmonitor_enabled, set_taskmonitor_enabled
 
 
 GENERIC_SUCCESS_SUMMARIES = {
@@ -68,6 +71,7 @@ def register_from_payload(
         "active_count": decision.active_count,
         "running_count": decision.running_count,
         "queued_count": decision.queued_count,
+        "estimated_wait_seconds": decision.estimated_wait_seconds,
         "continuation_due_at": decision.continuation_due_at,
     }
 
@@ -79,20 +83,53 @@ def activate_latest_from_payload(
 ) -> dict[str, Any]:
     runtime_config = load_task_system_config(config_path=config_path)
     store = TaskStore(paths=runtime_config.build_paths())
+    requested_task_id = str(payload.get("task_id") or "").strip()
+    if requested_task_id:
+        try:
+            requested = store.load_task(requested_task_id, allow_archive=False)
+        except FileNotFoundError:
+            requested = None
+        if requested and requested.agent_id == payload["agent_id"] and requested.session_key == payload["session_key"]:
+            if requested.status in {"queued", "running"}:
+                return {"updated": True, "task": requested.to_dict(), "reason": "requested-active-task"}
+            if requested.status == "received":
+                claimed = store.claim_execution_slot(requested.task_id)
+                return {"updated": True, "task": claimed.to_dict(), "reason": "promoted-requested-task"}
     active = store.find_latest_active_task(
         agent_id=payload["agent_id"],
         session_key=payload["session_key"],
     )
-    if active:
-        return {"updated": True, "task": active.to_dict(), "reason": "existing-active-task"}
     observed = store.find_latest_observed_task(
         agent_id=payload["agent_id"],
         session_key=payload["session_key"],
     )
+    if observed and (not active or observed.updated_at >= active.updated_at):
+        claimed = store.claim_execution_slot(observed.task_id)
+        return {"updated": True, "task": claimed.to_dict(), "reason": "promoted-observed-task"}
+    if active:
+        return {"updated": True, "task": active.to_dict(), "reason": "existing-active-task"}
     if not observed:
         return {"updated": False, "reason": "no-observed-task"}
     claimed = store.claim_execution_slot(observed.task_id)
     return {"updated": True, "task": claimed.to_dict(), "reason": "promoted-observed-task"}
+
+
+def _resolve_target_task(
+    store: TaskStore,
+    payload: dict[str, Any],
+) -> Optional[Any]:
+    requested_task_id = str(payload.get("task_id") or "").strip()
+    if requested_task_id:
+        try:
+            requested = store.load_task(requested_task_id, allow_archive=False)
+        except FileNotFoundError:
+            requested = None
+        if requested and requested.agent_id == payload["agent_id"] and requested.session_key == payload["session_key"]:
+            return requested
+    return store.find_latest_active_task(
+        agent_id=payload["agent_id"],
+        session_key=payload["session_key"],
+    )
 
 
 def claim_due_continuations_from_payload(
@@ -103,9 +140,13 @@ def claim_due_continuations_from_payload(
     runtime_config = load_task_system_config(config_path=config_path)
     store = TaskStore(paths=runtime_config.build_paths())
     now_dt = datetime.now(timezone.utc).astimezone()
+    claimable: list[tuple[datetime, str, Any]] = []
     due_tasks: list[dict[str, Any]] = []
+    busy_sessions: set[tuple[str, str]] = set()
     for path in store.list_inflight():
         task = store.load_task(path.stem, allow_archive=False)
+        if task.status == "running":
+            busy_sessions.add((task.agent_id, task.session_key))
         if task.status != "paused":
             continue
         if str(task.meta.get("continuation_kind") or "") != "delayed-reply":
@@ -121,12 +162,22 @@ def claim_due_continuations_from_payload(
             continue
         if str(task.meta.get("continuation_state") or "") == "claimed":
             continue
+        claimable.append((due_dt, str(task.created_at or ""), task))
+
+    claimable.sort(key=lambda item: (item[0], item[1], item[2].task_id))
+
+    claimed_sessions: set[tuple[str, str]] = set()
+    for _, _, task in claimable:
+        session_lane = (task.agent_id, task.session_key)
+        if session_lane in busy_sessions or session_lane in claimed_sessions:
+            continue
         task.status = "running"
         task.meta["continuation_state"] = "claimed"
         task.meta["continuation_claimed_at"] = now_dt.isoformat()
         task.updated_at = now_dt.isoformat()
         task.last_internal_touch_at = now_dt.isoformat()
         store.save_task(task)
+        claimed_sessions.add(session_lane)
         due_tasks.append(
             {
                 "task_id": task.task_id,
@@ -246,10 +297,7 @@ def resolve_active_task_from_payload(
 ) -> dict[str, Any]:
     runtime_config = load_task_system_config(config_path=config_path)
     store = TaskStore(paths=runtime_config.build_paths())
-    task = store.find_latest_active_task(
-        agent_id=payload["agent_id"],
-        session_key=payload["session_key"],
-    )
+    task = _resolve_target_task(store, payload)
     return {
         "task_id": task.task_id if task else None,
         "found": task is not None,
@@ -362,10 +410,7 @@ def finalize_active_from_payload(
 ) -> dict[str, Any]:
     runtime_config = load_task_system_config(config_path=config_path)
     store = TaskStore(paths=runtime_config.build_paths())
-    active = store.find_latest_active_task(
-        agent_id=payload["agent_id"],
-        session_key=payload["session_key"],
-    )
+    active = _resolve_target_task(store, payload)
     if not active:
         return {"updated": False, "reason": "no-active-task"}
 
@@ -374,6 +419,7 @@ def finalize_active_from_payload(
     if success:
         last_progress_note = str(active.meta.get("last_progress_note") or "").strip()
         has_visible_progress = bool(last_progress_note)
+        has_visible_output = bool(payload.get("has_visible_output", False))
         normalized_summary = result_summary.lower()
         word_count = len([part for part in normalized_summary.split() if part])
         generic_summary = (
@@ -381,7 +427,7 @@ def finalize_active_from_payload(
             or result_summary.startswith("{")
             or word_count <= 2
         )
-        if not has_visible_progress and generic_summary:
+        if not has_visible_progress and not has_visible_output and generic_summary:
             touched = store.touch_task(
                 active.task_id,
                 user_visible=False,
@@ -396,6 +442,7 @@ def finalize_active_from_payload(
             {
                 "agent_id": payload["agent_id"],
                 "session_key": payload["session_key"],
+                "task_id": active.task_id,
                 "result_summary": result_summary or "agent run completed",
             },
             config_path=config_path,
@@ -405,10 +452,137 @@ def finalize_active_from_payload(
         {
             "agent_id": payload["agent_id"],
             "session_key": payload["session_key"],
+            "task_id": active.task_id,
             "reason": reason,
         },
         config_path=config_path,
     )
+
+
+def should_send_short_followup_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    task_id = str(payload.get("task_id") or "").strip()
+    if not task_id:
+        return {"should_send": False, "reason": "missing-task-id"}
+    try:
+        task = store.load_task(task_id, allow_archive=False)
+    except FileNotFoundError:
+        return {"should_send": False, "reason": "task-not-found"}
+    if task.status not in {"received", "queued", "running"}:
+        return {"should_send": False, "reason": f"task-not-active:{task.status}", "task": task.to_dict()}
+    queue_position, ahead_count, active_count, running_count, _ = _queue_metrics(
+        store,
+        agent_id=task.agent_id,
+        task_id=task.task_id,
+    )
+    estimated_wait_seconds = _estimate_wait_seconds(
+        store,
+        agent_id=task.agent_id,
+        queue_position=queue_position,
+        task_status=task.status,
+    )
+
+    followup_message = "已收到你的消息，当前仍在处理中；稍后给你正式结果。"
+    if task.status in {"received", "queued"}:
+        position = queue_position or max(ahead_count + 1, 1)
+        if estimated_wait_seconds and ahead_count > 0:
+            followup_message = (
+                f"已收到你的消息，当前仍在排队处理中；前面还有 {ahead_count} 个号，"
+                f"你现在排第 {position} 位，预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到处理。"
+            )
+        elif ahead_count > 0:
+            followup_message = (
+                f"已收到你的消息，当前仍在排队处理中；前面还有 {ahead_count} 个号，"
+                f"你现在排第 {position} 位。"
+            )
+        else:
+            followup_message = "已收到你的消息，当前正在等待真正开始处理；马上继续。"
+    elif task.status == "running":
+        last_progress_note = str(task.meta.get("last_progress_note") or "").strip()
+        if last_progress_note:
+            followup_message = f"已收到你的消息，当前仍在处理中；最近进展：{last_progress_note}"
+        elif estimated_wait_seconds:
+            if estimated_wait_seconds < 60:
+                followup_message = (
+                    f"已收到你的消息，当前仍在处理中；预计约 {estimated_wait_seconds} 秒内给你正式结果。"
+                )
+            else:
+                followup_message = (
+                    f"已收到你的消息，当前仍在处理中；预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟内给你正式结果。"
+                )
+        elif active_count > 1 or running_count > 1:
+            followup_message = "已收到你的消息，当前仍在处理中；系统还有其他活动任务，我会继续同步进展。"
+
+    return {
+        "should_send": True,
+        "reason": f"task-active:{task.status}",
+        "task": task.to_dict(),
+        "followup_message": followup_message,
+        "queue_position": queue_position,
+        "ahead_count": ahead_count,
+        "active_count": active_count,
+        "running_count": running_count,
+        "estimated_wait_seconds": estimated_wait_seconds,
+    }
+
+
+def taskmonitor_status_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    session_key = str(payload.get("session_key") or "").strip()
+    if not session_key:
+        return {"ok": False, "reason": "missing-session-key"}
+    enabled = get_taskmonitor_enabled(session_key, config_path=config_path)
+    return {
+        "ok": True,
+        "session_key": session_key,
+        "enabled": enabled,
+    }
+
+
+def taskmonitor_control_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    session_key = str(payload.get("session_key") or "").strip()
+    action = str(payload.get("action") or "status").strip().lower()
+    if not session_key:
+        return {"ok": False, "reason": "missing-session-key"}
+    if action == "status":
+        enabled = get_taskmonitor_enabled(session_key, config_path=config_path)
+        return {
+            "ok": True,
+            "session_key": session_key,
+            "enabled": enabled,
+            "message": "当前会话的 taskmonitor 已开启。" if enabled else "当前会话的 taskmonitor 已关闭。",
+        }
+    if action in {"on", "enable", "enabled"}:
+        updated = set_taskmonitor_enabled(session_key, True, config_path=config_path)
+        return {
+            "ok": True,
+            **updated,
+            "message": "已开启当前会话的 taskmonitor。",
+        }
+    if action in {"off", "disable", "disabled"}:
+        updated = set_taskmonitor_enabled(session_key, False, config_path=config_path)
+        return {
+            "ok": True,
+            **updated,
+            "message": "已关闭当前会话的 taskmonitor；后续消息将不再进入 task system 监控。",
+        }
+    return {
+        "ok": False,
+        "reason": "unsupported-action",
+        "message": "不支持的 taskmonitor 命令；可用值：on / off / status",
+    }
 
 
 def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Path] = None) -> dict[str, Any]:
@@ -442,6 +616,12 @@ def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Pat
         return failed_active_from_payload(payload, config_path=config_path)
     if command == "finalize-active":
         return finalize_active_from_payload(payload, config_path=config_path)
+    if command == "should-send-short-followup":
+        return should_send_short_followup_from_payload(payload, config_path=config_path)
+    if command == "taskmonitor-status":
+        return taskmonitor_status_from_payload(payload, config_path=config_path)
+    if command == "taskmonitor-control":
+        return taskmonitor_control_from_payload(payload, config_path=config_path)
     raise ValueError(f"unsupported command: {command}")
 
 
@@ -451,7 +631,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     usage = (
         "usage: openclaw_hooks.py "
-        "<register|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active> "
+        "<register|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control> "
         "<payload.json> [config.json]"
     )
     if args and args[0] in {"-h", "--help"}:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import tempfile
 import unittest
@@ -42,6 +43,68 @@ class OpenClawBridgeTests(unittest.TestCase):
         self.assertIsNotNone(decision.task_id)
         self.assertEqual(decision.classification_reason, "observed-task")
         self.assertEqual(decision.task_status, task_state_module.STATUS_RECEIVED)
+        self.assertEqual(decision.queue_position, 1)
+        self.assertEqual(decision.ahead_count, 0)
+
+    def test_register_inbound_task_reports_queue_position_for_observed_tasks(self) -> None:
+        first = openclaw_bridge.register_inbound_task(
+            self.make_context("第一个长任务", estimated_steps=4, needs_verification=True),
+            paths=self.paths,
+        )
+        second = openclaw_bridge.register_inbound_task(
+            self.make_context(
+                "第二个长任务",
+                estimated_steps=4,
+                needs_verification=True,
+                session_key="feishu:main:chat:test-2",
+                chat_id="oc_test_chat_2",
+            ),
+            paths=self.paths,
+        )
+        observed = openclaw_bridge.register_inbound_task(
+            self.make_context(
+                "在么",
+                session_key="feishu:main:chat:test-3",
+                chat_id="oc_test_chat_3",
+            ),
+            paths=self.paths,
+            observe_only=True,
+        )
+        self.assertEqual(first.task_status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(second.task_status, task_state_module.STATUS_QUEUED)
+        self.assertEqual(observed.task_status, task_state_module.STATUS_RECEIVED)
+        self.assertEqual(observed.queue_position, 3)
+        self.assertEqual(observed.ahead_count, 2)
+        self.assertEqual(observed.active_count, 3)
+        self.assertEqual(observed.running_count, 1)
+        self.assertEqual(observed.queued_count, 2)
+
+    def test_observed_tasks_can_queue_with_no_running_tasks(self) -> None:
+        first = openclaw_bridge.register_inbound_task(
+            self.make_context("在么"),
+            paths=self.paths,
+            observe_only=True,
+        )
+        second = openclaw_bridge.register_inbound_task(
+            self.make_context(
+                "在么",
+                session_key="feishu:main:chat:test-2",
+                chat_id="oc_test_chat_2",
+            ),
+            paths=self.paths,
+            observe_only=True,
+        )
+        self.assertEqual(first.task_status, task_state_module.STATUS_RECEIVED)
+        self.assertEqual(first.queue_position, 1)
+        self.assertEqual(first.ahead_count, 0)
+        self.assertEqual(first.running_count, 0)
+        self.assertEqual(first.active_count, 1)
+        self.assertEqual(second.task_status, task_state_module.STATUS_RECEIVED)
+        self.assertEqual(second.queue_position, 2)
+        self.assertEqual(second.ahead_count, 1)
+        self.assertEqual(second.running_count, 0)
+        self.assertEqual(second.active_count, 2)
+        self.assertEqual(second.queued_count, 2)
 
     def test_register_inbound_task_registers_long_request(self) -> None:
         ctx = self.make_context(
@@ -60,6 +123,64 @@ class OpenClawBridgeTests(unittest.TestCase):
         task = store.load_task(decision.task_id)
         self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
         self.assertEqual(task.chat_id, "oc_test_chat")
+
+    def test_register_inbound_task_schedules_delayed_reply_continuation(self) -> None:
+        decision = openclaw_bridge.register_inbound_task(
+            self.make_context("1分钟后回复我ok1"),
+            paths=self.paths,
+            observe_only=True,
+        )
+        self.assertTrue(decision.should_register_task)
+        self.assertIsNotNone(decision.task_id)
+        self.assertEqual(decision.classification_reason, "continuation-task")
+        self.assertEqual(decision.task_status, task_state_module.STATUS_PAUSED)
+        self.assertIsNotNone(decision.continuation_due_at)
+
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.load_task(decision.task_id)
+        self.assertEqual(task.status, task_state_module.STATUS_PAUSED)
+        self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
+        self.assertEqual(task.meta["continuation_payload"]["reply_text"], "ok1")
+
+    def test_register_inbound_task_estimates_wait_from_recent_done_tasks(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        done = store.register_task(
+            agent_id="main",
+            session_key="feishu:main:chat:history",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="oc_history",
+            user_id="ou_history",
+            task_label="历史完成任务",
+        )
+        started = store.start_task(done.task_id)
+        archived = store.complete_task(started.task_id, archive=True)
+        archive_path = self.paths.archive_dir / f"{archived.task_id}.json"
+        payload = json.loads(archive_path.read_text(encoding="utf-8"))
+        payload["created_at"] = "2026-04-04T10:00:00+08:00"
+        payload["started_at"] = "2026-04-04T10:00:10+08:00"
+        payload["updated_at"] = "2026-04-04T10:00:40+08:00"
+        task_state_module.atomic_write_json(archive_path, payload)
+
+        running = openclaw_bridge.register_inbound_task(
+            self.make_context("第一个长任务", estimated_steps=4, needs_verification=True),
+            paths=self.paths,
+        )
+        queued = openclaw_bridge.register_inbound_task(
+            self.make_context(
+                "第二个长任务",
+                estimated_steps=4,
+                needs_verification=True,
+                session_key="feishu:main:chat:test-2",
+                chat_id="oc_test_chat_2",
+            ),
+            paths=self.paths,
+        )
+
+        self.assertEqual(running.task_status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(running.estimated_wait_seconds, 30)
+        self.assertEqual(queued.task_status, task_state_module.STATUS_QUEUED)
+        self.assertEqual(queued.estimated_wait_seconds, 60)
 
     def test_second_long_request_queues_until_first_completes(self) -> None:
         first = openclaw_bridge.register_inbound_task(
@@ -214,3 +335,36 @@ class OpenClawBridgeTests(unittest.TestCase):
         self.assertEqual(second.task_id, first.task_id)
         self.assertEqual(second.classification_reason, "scheduled-continuation")
         self.assertEqual(second.task_status, task_state_module.STATUS_PAUSED)
+
+    def test_register_inbound_task_creates_new_delayed_reply_when_future_continuation_exists(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.observe_task(
+            agent_id="main",
+            session_key="feishu:main:chat:test",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="oc_test_chat",
+            user_id="ou_test_user",
+            task_label="existing delayed reply",
+            meta={"source": "test"},
+        )
+        first = store.schedule_continuation(
+            task.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2099-01-01T00:00:00+08:00",
+            payload={"reply_text": "ok1", "wait_seconds": 60},
+            reason="scheduled continuation wait",
+        )
+
+        second = openclaw_bridge.register_inbound_task(
+            self.make_context("2分钟后回复我222"),
+            paths=self.paths,
+            observe_only=True,
+        )
+        assert second.task_id is not None
+        self.assertNotEqual(second.task_id, first.task_id)
+        self.assertEqual(second.classification_reason, "continuation-task")
+        self.assertEqual(second.task_status, task_state_module.STATUS_PAUSED)
+
+        registered = store.load_task(second.task_id)
+        self.assertEqual(registered.meta["continuation_payload"]["reply_text"], "222")

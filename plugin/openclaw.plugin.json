@@ -5,6 +5,10 @@
       "label": "Enabled",
       "help": "Enable the OpenClaw Task System plugin."
     },
+    "taskMessagePrefix": {
+      "label": "Message Prefix",
+      "help": "Prefix added to task-system visible status messages such as receipts and watchdog updates."
+    },
     "pythonBin": {
       "label": "Python Binary",
       "help": "Python executable used to invoke the task system runtime hooks."
@@ -83,6 +87,7 @@
     "additionalProperties": false,
     "properties": {
       "enabled": { "type": "boolean" },
+      "taskMessagePrefix": { "type": "string" },
       "pythonBin": { "type": "string" },
       "runtimeRoot": { "type": "string" },
       "configPath": { "type": "string" },

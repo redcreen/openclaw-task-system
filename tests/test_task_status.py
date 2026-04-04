@@ -149,6 +149,31 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(second_summary["queue"]["running_count"], 1)
         self.assertEqual(second_summary["queue"]["queued_count"], 1)
 
+    def test_build_queue_snapshot_includes_received_tasks(self) -> None:
+        running = self.store.register_task(
+            agent_id="main",
+            session_key="session:running",
+            channel="feishu",
+            chat_id="chat:running",
+            task_label="running task",
+        )
+        self.store.start_task(running.task_id)
+        observed = self.store.observe_task(
+            agent_id="main",
+            session_key="session:received",
+            channel="feishu",
+            chat_id="chat:received",
+            task_label="received task",
+        )
+
+        snapshot = task_status.build_queue_snapshot(paths=self.paths)
+        self.assertEqual(snapshot["active_count"], 2)
+        self.assertEqual(snapshot["running_count"], 1)
+        self.assertEqual(snapshot["queued_count"], 1)
+        self.assertEqual(snapshot["items"][0]["task_id"], running.task_id)
+        self.assertEqual(snapshot["items"][1]["task_id"], observed.task_id)
+        self.assertEqual(snapshot["items"][1]["status"], task_state_module.STATUS_RECEIVED)
+
     def test_render_overview_markdown_includes_counts(self) -> None:
         task = self.store.register_task(
             agent_id="main",

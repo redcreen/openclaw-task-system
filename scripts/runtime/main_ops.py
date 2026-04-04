@@ -85,6 +85,168 @@ def render_main_health(
     return "\n".join(lines) + "\n"
 
 
+def render_queue_lanes(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> str:
+    statuses = list_inflight_statuses(config_path=config_path, paths=paths)
+    queue_statuses = {"received", "queued", "running", "paused"}
+    relevant = [status for status in statuses if str(status["status"]) in queue_statuses]
+    now_dt = datetime.now(timezone.utc).astimezone()
+    lines = ["# Queue Lanes", ""]
+    if not relevant:
+        lines.append("- none")
+        return "\n".join(lines) + "\n"
+
+    agent_ids = sorted({str(status["agent_id"]) for status in relevant})
+    for agent_id in agent_ids:
+        agent_tasks = [status for status in relevant if str(status["agent_id"]) == agent_id]
+        running_tasks = [status for status in agent_tasks if str(status["status"]) == STATUS_RUNNING]
+        queued_tasks = [status for status in agent_tasks if str(status["status"]) in {STATUS_QUEUED, "received"}]
+        paused_tasks = [status for status in agent_tasks if str(status["status"]) == "paused"]
+        due_paused_tasks = []
+        for task in paused_tasks:
+            continuation_due_at = _parse_iso8601(
+                str(
+                    (
+                        task.get("meta", {})
+                        if isinstance(task.get("meta"), dict)
+                        else {}
+                    ).get("continuation_due_at")
+                    or ""
+                )
+            )
+            if continuation_due_at and continuation_due_at <= now_dt:
+                due_paused_tasks.append(task)
+        session_keys = sorted({str(status["session_key"]) for status in agent_tasks})
+        running_sessions = sorted({str(status["session_key"]) for status in running_tasks})
+        lines.extend(
+            [
+                f"## Agent: {agent_id}",
+                "",
+                f"- active_task_count: {len(agent_tasks)}",
+                f"- running_task_count: {len(running_tasks)}",
+                f"- queued_task_count: {len(queued_tasks)}",
+                f"- paused_task_count: {len(paused_tasks)}",
+                f"- due_paused_task_count: {len(due_paused_tasks)}",
+                f"- session_lane_count: {len(session_keys)}",
+                f"- running_lane_count: {len(running_sessions)}",
+            ]
+        )
+        if running_tasks:
+            lines.append("- running_tasks:")
+            for task in sorted(
+                running_tasks,
+                key=lambda item: (
+                    str(item.get("started_at") or item.get("created_at") or ""),
+                    str(item["task_id"]),
+                ),
+            ):
+                lines.append(
+                    f"  {task['task_id']} | {task['session_key']} | {task['task_label']}"
+                )
+        if queued_tasks:
+            lines.append("- queued_head:")
+            for task in sorted(
+                queued_tasks,
+                key=lambda item: (
+                    int(item["queue"]["position"] or 999999),
+                    str(item.get("created_at") or ""),
+                    str(item["task_id"]),
+                ),
+            )[:5]:
+                lines.append(
+                    f"  pos={task['queue']['position']} | {task['task_id']} | {task['session_key']} | {task['task_label']}"
+                )
+        if paused_tasks:
+            lines.append("- paused_tasks:")
+            for task in sorted(
+                paused_tasks,
+                key=lambda item: (
+                    str(item.get("updated_at") or item.get("created_at") or ""),
+                    str(item["task_id"]),
+                ),
+            )[:5]:
+                lines.append(
+                    f"  {task['task_id']} | {task['session_key']} | {task['task_label']}"
+                )
+        if due_paused_tasks:
+            lines.append("- due_paused_tasks:")
+            for task in sorted(
+                due_paused_tasks,
+                key=lambda item: (
+                    str(
+                        (
+                            item.get("meta", {})
+                            if isinstance(item.get("meta"), dict)
+                            else {}
+                        ).get("continuation_due_at")
+                        or ""
+                    ),
+                    str(item["task_id"]),
+                ),
+            )[:5]:
+                lines.append(
+                    f"  {task['task_id']} | {task['session_key']} | {task['task_label']}"
+                )
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_queue_topology(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> str:
+    statuses = list_inflight_statuses(config_path=config_path, paths=paths)
+    queue_statuses = {"received", "queued", "running", "paused"}
+    relevant = [status for status in statuses if str(status["status"]) in queue_statuses]
+    lines = ["# Queue Topology", ""]
+    if not relevant:
+        lines.append("- none")
+        return "\n".join(lines) + "\n"
+
+    agent_ids = sorted({str(status["agent_id"]) for status in relevant})
+    lines.append(f"- queue_count: {len(agent_ids)}")
+    lines.append("")
+    for agent_id in agent_ids:
+        agent_tasks = [status for status in relevant if str(status["agent_id"]) == agent_id]
+        session_keys = sorted({str(status["session_key"]) for status in agent_tasks})
+        session_counts: list[tuple[str, int]] = []
+        for session_key in session_keys:
+            session_counts.append(
+                (
+                    session_key,
+                    len([status for status in agent_tasks if str(status["session_key"]) == session_key]),
+                )
+            )
+        queue_kind = "shared" if len(session_keys) > 1 else "single-session"
+        running_count = len([status for status in agent_tasks if str(status["status"]) == STATUS_RUNNING])
+        queued_count = len([status for status in agent_tasks if str(status["status"]) in {STATUS_QUEUED, "received"}])
+        paused_count = len([status for status in agent_tasks if str(status["status"]) == "paused"])
+        lines.extend(
+            [
+                f"## Queue: {agent_id}",
+                "",
+                f"- queue_kind: {queue_kind}",
+                f"- session_count: {len(session_keys)}",
+                f"- active_task_count: {len(agent_tasks)}",
+                f"- running_task_count: {running_count}",
+                f"- queued_task_count: {queued_count}",
+                f"- paused_task_count: {paused_count}",
+            ]
+        )
+        if session_counts:
+            lines.append("- sessions:")
+            for session_key, count in session_counts:
+                lines.append(f"  {session_key} | task_count={count}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def _parse_iso8601(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
@@ -514,6 +676,134 @@ def stop_all_main_queue(
     }
 
 
+def cancel_main_queue_task(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    task_id: Optional[str] = None,
+    queue_position: Optional[int] = None,
+    reason: str = "user requested queued task cancel",
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    store = TaskStore(paths=resolved_paths)
+    queued_tasks = store.find_queued_tasks(agent_id="main")
+
+    if task_id:
+        try:
+            selected = store.load_task(task_id, allow_archive=False)
+        except FileNotFoundError:
+            return {
+                "action": "noop",
+                "reason": "task-not-found",
+                "task_id": task_id,
+            }
+        if selected.agent_id != "main":
+            return {
+                "action": "noop",
+                "reason": "not-main-task",
+                "task_id": task_id,
+                "status": selected.status,
+            }
+        if selected.status != STATUS_QUEUED:
+            return {
+                "action": "noop",
+                "reason": "task-not-queued",
+                "task_id": task_id,
+                "status": selected.status,
+            }
+        selected_position = next(
+            (index for index, task in enumerate(queued_tasks, start=1) if task.task_id == selected.task_id),
+            None,
+        )
+    else:
+        if queue_position is None:
+            return {
+                "action": "noop",
+                "reason": "missing-selector",
+            }
+        if queue_position < 1 or queue_position > len(queued_tasks):
+            return {
+                "action": "noop",
+                "reason": "queue-position-out-of-range",
+                "queue_position": queue_position,
+                "queued_count": len(queued_tasks),
+            }
+        selected = queued_tasks[queue_position - 1]
+        selected_position = queue_position
+
+    cancelled = store.cancel_task(selected.task_id, reason, archive=True)
+    remaining_queued = store.find_queued_tasks(agent_id="main")
+    return {
+        "action": "cancelled-queued-task",
+        "task_id": cancelled.task_id,
+        "cancelled_status": STATUS_QUEUED,
+        "queue_position": selected_position,
+        "remaining_queued_count": len(remaining_queued),
+        "remaining_active_count": len(store.find_running_tasks(agent_id="main")) + len(remaining_queued),
+        "suggestion": (
+            f"已取消排队中的第 {selected_position} 个任务；当前剩余 {len(remaining_queued)} 个排队任务。"
+            if selected_position is not None
+            else "已取消指定排队任务。"
+        ),
+    }
+
+
+def purge_task_records(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    agent_id: Optional[str] = None,
+    session_key: Optional[str] = None,
+    chat_id: Optional[str] = None,
+    include_archive: bool = True,
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    roots = [resolved_paths.inflight_dir]
+    if include_archive:
+        roots.append(resolved_paths.archive_dir)
+
+    deleted: list[dict[str, object]] = []
+    scanned_count = 0
+    for root in roots:
+        root.mkdir(parents=True, exist_ok=True)
+        for path in sorted(root.glob("*.json")):
+            scanned_count += 1
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if agent_id and str(payload.get("agent_id") or "") != agent_id:
+                continue
+            if session_key and str(payload.get("session_key") or "") != session_key:
+                continue
+            if chat_id and str(payload.get("chat_id") or "") != chat_id:
+                continue
+            path.unlink(missing_ok=True)
+            deleted.append(
+                {
+                    "task_id": str(payload.get("task_id") or path.stem),
+                    "status": str(payload.get("status") or ""),
+                    "agent_id": str(payload.get("agent_id") or ""),
+                    "session_key": str(payload.get("session_key") or ""),
+                    "chat_id": str(payload.get("chat_id") or ""),
+                    "location": root.name,
+                }
+            )
+
+    return {
+        "action": "purged-task-records",
+        "deleted_count": len(deleted),
+        "scanned_count": scanned_count,
+        "filters": {
+            "agent_id": agent_id,
+            "session_key": session_key,
+            "chat_id": chat_id,
+            "include_archive": include_archive,
+        },
+        "deleted": deleted,
+    }
+
+
 def main() -> None:
     parser = ArgumentParser(description="Operate and inspect main-agent tasks.")
     parser.add_argument("--config", help="Optional task system config path.")
@@ -544,8 +834,19 @@ def main() -> None:
     stop_all_parser = subparsers.add_parser("stop-all", help="Stop the running main task and clear the remaining queue.")
     stop_all_parser.add_argument("--reason", default="user requested stop all")
     stop_all_parser.add_argument("--openclaw-bin", default=None)
+    cancel_parser = subparsers.add_parser("cancel", help="Cancel a queued main task by task id or queue position.")
+    cancel_parser.add_argument("--task-id", default=None)
+    cancel_parser.add_argument("--queue-position", type=int, default=None)
+    cancel_parser.add_argument("--reason", default="user requested queued task cancel")
+    purge_parser = subparsers.add_parser("purge", help="Delete matching task records for test cleanup.")
+    purge_parser.add_argument("--agent-id", default=None)
+    purge_parser.add_argument("--session-key", default=None)
+    purge_parser.add_argument("--chat-id", default=None)
+    purge_parser.add_argument("--inflight-only", action="store_true", help="Only delete inflight records.")
 
     subparsers.add_parser("overview", help="Show task system overview.")
+    subparsers.add_parser("lanes", help="Show current queue/lane summary across agents.")
+    subparsers.add_parser("queues", help="Show current queue topology across agents and sessions.")
     subparsers.add_parser("health", help="Show main-oriented health summary.")
     subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
     subparsers.add_parser("diagnose-delivery", help="Show host-side delivery diagnosis steps for retryable failures.")
@@ -641,8 +942,35 @@ def main() -> None:
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
+    if args.command == "cancel":
+        result = cancel_main_queue_task(
+            config_path=config_path,
+            paths=paths,
+            task_id=args.task_id,
+            queue_position=args.queue_position,
+            reason=args.reason,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    if args.command == "purge":
+        result = purge_task_records(
+            config_path=config_path,
+            paths=paths,
+            agent_id=args.agent_id,
+            session_key=args.session_key,
+            chat_id=args.chat_id,
+            include_archive=not args.inflight_only,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
     if args.command == "overview":
         print(render_overview_markdown(config_path=config_path), end="")
+        return
+    if args.command == "lanes":
+        print(render_queue_lanes(config_path=config_path, paths=paths), end="")
+        return
+    if args.command == "queues":
+        print(render_queue_topology(config_path=config_path, paths=paths), end="")
         return
     if args.command == "health":
         print(render_main_health(config_path=config_path), end="")

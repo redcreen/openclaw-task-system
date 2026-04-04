@@ -49,6 +49,118 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertTrue(result["should_register_task"])
         self.assertIsNotNone(result["task_id"])
 
+    def test_register_from_payload_includes_estimated_wait_seconds(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        done = store.register_task(
+            agent_id="main",
+            session_key="session:history",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:history",
+            task_label="history task",
+        )
+        started = store.start_task(done.task_id)
+        archived = store.complete_task(started.task_id, archive=True)
+        archive_path = self.paths.archive_dir / f"{archived.task_id}.json"
+        payload = json.loads(archive_path.read_text(encoding="utf-8"))
+        payload["created_at"] = "2026-04-04T10:00:00+08:00"
+        payload["started_at"] = "2026-04-04T10:00:10+08:00"
+        payload["updated_at"] = "2026-04-04T10:00:40+08:00"
+        task_state_module.atomic_write_json(archive_path, payload)
+
+        result = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:test-estimate",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:test-estimate",
+                "user_id": "ou_test",
+                "user_request": "帮我排查这个问题并修复，再验证结果",
+                "estimated_steps": 4,
+                "needs_verification": True,
+            }
+        )
+        self.assertEqual(result["estimated_wait_seconds"], 30)
+
+    def test_should_send_short_followup_for_queued_task_includes_queue_reason(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        running = store.register_task(
+            agent_id="main",
+            session_key="session:running",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:running",
+            task_label="running task",
+        )
+        store.start_task(running.task_id)
+        queued = store.register_task(
+            agent_id="main",
+            session_key="session:queued",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:queued",
+            task_label="queued task",
+        )
+
+        result = openclaw_hooks.should_send_short_followup_from_payload({"task_id": queued.task_id})
+
+        self.assertTrue(result["should_send"])
+        self.assertEqual(result["reason"], "task-active:queued")
+        self.assertIn("仍在排队处理中", result["followup_message"])
+        self.assertIn("前面还有 1 个号", result["followup_message"])
+
+    def test_should_send_short_followup_for_running_task_prefers_last_progress(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:running-progress",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:running-progress",
+            task_label="running progress task",
+        )
+        store.start_task(task.task_id)
+        store.touch_task(
+            task.task_id,
+            user_visible=False,
+            meta={"last_progress_note": "正在检查 webhook 配置"},
+        )
+
+        result = openclaw_hooks.should_send_short_followup_from_payload({"task_id": task.task_id})
+
+        self.assertTrue(result["should_send"])
+        self.assertEqual(result["reason"], "task-active:running")
+        self.assertIn("最近进展", result["followup_message"])
+        self.assertIn("正在检查 webhook 配置", result["followup_message"])
+
+    def test_taskmonitor_control_can_toggle_session(self) -> None:
+        off = openclaw_hooks.taskmonitor_control_from_payload(
+            {
+                "session_key": "session:taskmonitor",
+                "action": "off",
+            }
+        )
+        self.assertTrue(off["ok"])
+        self.assertFalse(off["enabled"])
+
+        status = openclaw_hooks.taskmonitor_status_from_payload(
+            {
+                "session_key": "session:taskmonitor",
+            }
+        )
+        self.assertTrue(status["ok"])
+        self.assertFalse(status["enabled"])
+
+        on = openclaw_hooks.taskmonitor_control_from_payload(
+            {
+                "session_key": "session:taskmonitor",
+                "action": "on",
+            }
+        )
+        self.assertTrue(on["ok"])
+        self.assertTrue(on["enabled"])
+
     def test_activate_latest_promotes_observed_task(self) -> None:
         registered = openclaw_hooks.register_from_payload(
             {
@@ -72,6 +184,55 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertTrue(activated["updated"])
         self.assertEqual(activated["reason"], "promoted-observed-task")
         self.assertEqual(activated["task"]["status"], task_state_module.STATUS_RUNNING)
+
+    def test_activate_latest_prefers_requested_observed_task_over_older_active_task(self) -> None:
+        first = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:activate-requested",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:activate-requested",
+                "user_id": "ou_test",
+                "user_request": "第一个任务",
+                "estimated_steps": 3,
+            }
+        )
+        second = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:activate-requested",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:activate-requested",
+                "user_id": "ou_test",
+                "user_request": "在么",
+                "observe_only": True,
+            }
+        )
+        self.assertEqual(second["task_status"], task_state_module.STATUS_RECEIVED)
+
+        activated = openclaw_hooks.activate_latest_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:activate-requested",
+                "task_id": second["task_id"],
+            }
+        )
+        self.assertTrue(activated["updated"])
+        self.assertEqual(activated["reason"], "promoted-requested-task")
+        self.assertEqual(activated["task"]["task_id"], second["task_id"])
+        self.assertEqual(activated["task"]["status"], task_state_module.STATUS_QUEUED)
+
+        resolved = openclaw_hooks.resolve_active_task_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:activate-requested",
+                "task_id": second["task_id"],
+            }
+        )
+        self.assertTrue(resolved["found"])
+        self.assertEqual(resolved["task_id"], second["task_id"])
 
     def test_progress_from_payload_updates_task(self) -> None:
         registration = openclaw_hooks.register_from_payload(
@@ -173,6 +334,111 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertTrue(finalized["updated"])
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
 
+    def test_should_send_short_followup_only_for_active_tasks(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:followup-check",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:followup-check",
+                "user_request": "在么",
+                "observe_only": True,
+            }
+        )
+        task_id = registration["task_id"]
+        assert task_id is not None
+
+        active_check = openclaw_hooks.should_send_short_followup_from_payload(
+            {
+                "task_id": task_id,
+            }
+        )
+        self.assertTrue(active_check["should_send"])
+        self.assertEqual(active_check["reason"], "task-active:received")
+
+        openclaw_hooks.finalize_active_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:followup-check",
+                "task_id": task_id,
+                "success": True,
+                "has_visible_output": True,
+                "result_summary": "在。",
+            }
+        )
+
+        inactive_check = openclaw_hooks.should_send_short_followup_from_payload(
+            {
+                "task_id": task_id,
+            }
+        )
+        self.assertFalse(inactive_check["should_send"])
+        self.assertEqual(inactive_check["reason"], "task-not-found")
+
+    def test_finalize_active_uses_requested_task_binding(self) -> None:
+        first = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:finalize-requested",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:finalize-requested",
+                "user_request": "第一个任务",
+                "estimated_steps": 3,
+            }
+        )
+        second = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:finalize-requested",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:finalize-requested",
+                "user_request": "在么",
+                "observe_only": True,
+            }
+        )
+        openclaw_hooks.activate_latest_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:finalize-requested",
+                "task_id": second["task_id"],
+            }
+        )
+        updated = openclaw_hooks.progress_active_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:finalize-requested",
+                "task_id": second["task_id"],
+                "progress_note": "已开始处理最新消息。",
+            }
+        )
+        self.assertTrue(updated["updated"])
+
+        finalized = openclaw_hooks.finalize_active_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:finalize-requested",
+                "task_id": second["task_id"],
+                "success": True,
+                "result_summary": "最新消息已处理完成",
+            }
+        )
+        self.assertTrue(finalized["updated"])
+        self.assertEqual(finalized["task"]["task_id"], second["task_id"])
+        self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
+
+        original = openclaw_hooks.resolve_active_task_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:finalize-requested",
+                "task_id": first["task_id"],
+            }
+        )
+        self.assertTrue(original["found"])
+        self.assertEqual(original["task_id"], first["task_id"])
+
     def test_finalize_active_marks_failed_on_error(self) -> None:
         registration = openclaw_hooks.register_from_payload(
             {
@@ -252,6 +518,39 @@ class OpenClawHooksTests(unittest.TestCase):
         )
         self.assertFalse(finalized["updated"])
         self.assertEqual(finalized["reason"], "awaiting-visible-output")
+
+    def test_finalize_active_marks_done_for_short_success_when_visible_output_exists(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:short-visible-output",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:short-visible-output",
+                "user_request": "在么",
+                "observe_only": True,
+            }
+        )
+        assert registration["task_id"] is not None
+        openclaw_hooks.activate_latest_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:short-visible-output",
+                "task_id": registration["task_id"],
+            }
+        )
+        finalized = openclaw_hooks.finalize_active_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:short-visible-output",
+                "task_id": registration["task_id"],
+                "success": True,
+                "has_visible_output": True,
+                "result_summary": "在。",
+            }
+        )
+        self.assertTrue(finalized["updated"])
+        self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
 
     def test_finalize_active_marks_done_after_progress_even_with_generic_summary(self) -> None:
         registration = openclaw_hooks.register_from_payload(
@@ -439,6 +738,118 @@ class OpenClawHooksTests(unittest.TestCase):
         refreshed = json.loads(task_path.read_text(encoding="utf-8"))
         self.assertEqual(refreshed["status"], task_state_module.STATUS_RUNNING)
         self.assertEqual(refreshed["meta"]["continuation_state"], "claimed")
+
+    def test_claim_due_continuations_sorts_same_due_tasks_by_creation_order(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        due_at = "2020-01-01T00:00:00+00:00"
+        replies = ["111", "222", "333"]
+        for index, reply in enumerate(replies):
+            observed = store.observe_task(
+                agent_id="main",
+                session_key=f"session:delayed:{index}",
+                channel="telegram",
+                account_id="telegram-main",
+                chat_id=f"chat:delayed:{index}",
+                task_label=f"delayed task {index}",
+            )
+            store.schedule_continuation(
+                observed.task_id,
+                continuation_kind="delayed-reply",
+                due_at=due_at,
+                payload={"reply_text": reply, "wait_seconds": index + 1},
+                reason="scheduled continuation wait",
+            )
+
+        claimed = openclaw_hooks.claim_due_continuations_from_payload({})
+
+        self.assertEqual(claimed["claimed_count"], 3)
+        self.assertEqual([item["reply_text"] for item in claimed["tasks"]], replies)
+
+    def test_claim_due_continuations_limits_to_one_task_per_session_lane(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        due_at = "2020-01-01T00:00:00+00:00"
+        observed_first = store.observe_task(
+            agent_id="main",
+            session_key="session:delayed:same-lane",
+            channel="telegram",
+            account_id="telegram-main",
+            chat_id="chat:delayed:same-lane",
+            task_label="delayed task 1",
+        )
+        store.schedule_continuation(
+            observed_first.task_id,
+            continuation_kind="delayed-reply",
+            due_at=due_at,
+            payload={"reply_text": "111", "wait_seconds": 1},
+            reason="scheduled continuation wait",
+        )
+        observed_second = store.observe_task(
+            agent_id="main",
+            session_key="session:delayed:same-lane",
+            channel="telegram",
+            account_id="telegram-main",
+            chat_id="chat:delayed:same-lane",
+            task_label="delayed task 2",
+        )
+        second = store.schedule_continuation(
+            observed_second.task_id,
+            continuation_kind="delayed-reply",
+            due_at=due_at,
+            payload={"reply_text": "222", "wait_seconds": 2},
+            reason="scheduled continuation wait",
+        )
+
+        claimed = openclaw_hooks.claim_due_continuations_from_payload({})
+
+        self.assertEqual(claimed["claimed_count"], 1)
+        self.assertEqual([item["reply_text"] for item in claimed["tasks"]], ["111"])
+        refreshed_second = store.load_task(second.task_id, allow_archive=False)
+        self.assertEqual(refreshed_second.status, task_state_module.STATUS_PAUSED)
+
+    def test_claim_due_continuations_can_handoff_next_task_after_first_completion(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        due_at = "2020-01-01T00:00:00+00:00"
+        replies = ["111", "222"]
+        scheduled_ids: list[str] = []
+        for reply in replies:
+            observed = store.observe_task(
+                agent_id="main",
+                session_key="session:delayed:handoff",
+                channel="telegram",
+                account_id="telegram-main",
+                chat_id="chat:delayed:handoff",
+                task_label=f"delayed task {reply}",
+            )
+            scheduled = store.schedule_continuation(
+                observed.task_id,
+                continuation_kind="delayed-reply",
+                due_at=due_at,
+                payload={"reply_text": reply, "wait_seconds": 1},
+                reason="scheduled continuation wait",
+            )
+            scheduled_ids.append(scheduled.task_id)
+
+        first_claim = openclaw_hooks.claim_due_continuations_from_payload({})
+
+        self.assertEqual(first_claim["claimed_count"], 1)
+        self.assertEqual([item["reply_text"] for item in first_claim["tasks"]], ["111"])
+
+        completed = openclaw_hooks.completed_from_payload(
+            {
+                "task_id": first_claim["tasks"][0]["task_id"],
+                "result_summary": "continuation reply delivered: 111",
+            }
+        )
+        self.assertEqual(completed["status"], task_state_module.STATUS_DONE)
+
+        second_claim = openclaw_hooks.claim_due_continuations_from_payload({})
+
+        self.assertEqual(second_claim["claimed_count"], 1)
+        self.assertEqual([item["reply_text"] for item in second_claim["tasks"]], ["222"])
+        refreshed_first = store.load_task(scheduled_ids[0])
+        refreshed_second = store.load_task(scheduled_ids[1], allow_archive=False)
+        self.assertEqual(refreshed_first.status, task_state_module.STATUS_DONE)
+        self.assertEqual(refreshed_second.status, task_state_module.STATUS_RUNNING)
 
 
 if __name__ == "__main__":

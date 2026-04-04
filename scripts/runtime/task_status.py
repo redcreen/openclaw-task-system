@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from task_config import TaskSystemConfig, load_task_system_config
-from task_state import ACTIVE_STATUSES, STATUS_RUNNING, TaskPaths, TaskStore, default_paths
+from task_state import ACTIVE_STATUSES, OBSERVED_STATUSES, STATUS_QUEUED, STATUS_RECEIVED, STATUS_RUNNING, TaskPaths, TaskStore, default_paths
 
 FINAL_INSTRUCTION_DIRS = ("processed-instructions", "failed-instructions")
 INTERMEDIATE_DELIVERY_DIRS = ("outbox", "sent", "delivery-ready", "send-instructions")
@@ -149,13 +149,21 @@ def _build_base_status_summary(task_id: str, *, paths: TaskPaths) -> dict[str, o
         "block_reason": task.block_reason,
         "failure_reason": task.failure_reason,
         "monitor_state": task.monitor_state,
+        "meta": task.meta,
         "delivery": build_delivery_summary(task_id, paths=paths),
     }
 
 
 def _queue_sort_key(status: dict[str, object]) -> tuple[int, str, str]:
     state = str(status["status"])
-    priority = 0 if state == STATUS_RUNNING else 1
+    if state == STATUS_RUNNING:
+        priority = 0
+    elif state == STATUS_QUEUED:
+        priority = 1
+    elif state == STATUS_RECEIVED:
+        priority = 2
+    else:
+        priority = 3
     anchor = str(status["started_at"] or status["created_at"] or "")
     return (priority, anchor, str(status["task_id"]))
 
@@ -169,15 +177,16 @@ def build_queue_snapshot(
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(paths, config=config, config_path=config_path)
     store = TaskStore(paths=resolved_paths)
+    queue_statuses = ACTIVE_STATUSES | OBSERVED_STATUSES
     statuses = [
         status
         for status in (_build_base_status_summary(path.stem, paths=resolved_paths) for path in store.list_inflight())
-        if str(status["status"]) in ACTIVE_STATUSES and (agent_id is None or status["agent_id"] == agent_id)
+        if str(status["status"]) in queue_statuses and (agent_id is None or status["agent_id"] == agent_id)
     ]
     ordered = sorted(statuses, key=_queue_sort_key)
     items: list[dict[str, object]] = []
     running_count = sum(1 for status in ordered if status["status"] == STATUS_RUNNING)
-    queued_count = sum(1 for status in ordered if status["status"] != STATUS_RUNNING)
+    queued_count = sum(1 for status in ordered if status["status"] in {STATUS_QUEUED, STATUS_RECEIVED})
     for index, status in enumerate(ordered, start=1):
         items.append(
             {

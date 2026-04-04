@@ -72,6 +72,101 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("# Main Ops Health", rendered)
         self.assertIn("- main_blocked_task_count: 1", rendered)
 
+    def test_render_queue_lanes_groups_tasks_by_agent_and_session(self) -> None:
+        main_running = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:run",
+            channel="telegram",
+            chat_id="chat:main:run",
+            task_label="main running",
+        )
+        self.store.start_task(main_running.task_id)
+        self.store.register_task(
+            agent_id="main",
+            session_key="session:main:queued",
+            channel="telegram",
+            chat_id="chat:main:queued",
+            task_label="main queued",
+        )
+        code_running = self.store.register_task(
+            agent_id="code",
+            session_key="session:code:run",
+            channel="telegram",
+            chat_id="chat:code:run",
+            task_label="code running",
+        )
+        self.store.start_task(code_running.task_id)
+
+        rendered = main_ops.render_queue_lanes(paths=self.paths)
+
+        self.assertIn("# Queue Lanes", rendered)
+        self.assertIn("## Agent: main", rendered)
+        self.assertIn("## Agent: code", rendered)
+        self.assertIn("- running_task_count: 1", rendered)
+        self.assertIn("- session_lane_count: 2", rendered)
+        self.assertIn("main queued", rendered)
+        self.assertIn("code running", rendered)
+
+    def test_render_queue_lanes_includes_due_paused_continuations(self) -> None:
+        observed = self.store.observe_task(
+            agent_id="main",
+            session_key="session:main:delayed",
+            channel="telegram",
+            account_id="default",
+            chat_id="chat:main:delayed",
+            task_label="delayed paused",
+        )
+        self.store.schedule_continuation(
+            observed.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2000-01-01T00:00:00+00:00",
+            payload={"reply_text": "111", "wait_seconds": 60},
+            reason="scheduled continuation wait",
+        )
+
+        rendered = main_ops.render_queue_lanes(paths=self.paths)
+
+        self.assertIn("- paused_task_count: 1", rendered)
+        self.assertIn("- due_paused_task_count: 1", rendered)
+        self.assertIn("- due_paused_tasks:", rendered)
+        self.assertIn("delayed paused", rendered)
+
+    def test_render_queue_topology_groups_sessions_under_agent_queue(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:one",
+            channel="telegram",
+            chat_id="chat:main:one",
+            task_label="main task one",
+        )
+        self.store.start_task(first.task_id)
+        self.store.register_task(
+            agent_id="main",
+            session_key="session:main:two",
+            channel="telegram",
+            chat_id="chat:main:two",
+            task_label="main task two",
+        )
+        self.store.register_task(
+            agent_id="code",
+            session_key="session:code:one",
+            channel="telegram",
+            chat_id="chat:code:one",
+            task_label="code task one",
+        )
+
+        rendered = main_ops.render_queue_topology(paths=self.paths)
+
+        self.assertIn("# Queue Topology", rendered)
+        self.assertIn("- queue_count: 2", rendered)
+        self.assertIn("## Queue: main", rendered)
+        self.assertIn("- queue_kind: shared", rendered)
+        self.assertIn("- session_count: 2", rendered)
+        self.assertIn("session:main:one | task_count=1", rendered)
+        self.assertIn("session:main:two | task_count=1", rendered)
+        self.assertIn("## Queue: code", rendered)
+        self.assertIn("- queue_kind: single-session", rendered)
+
     def test_render_main_triage_includes_resume_and_retry_actions(self) -> None:
         task = self.store.register_task(
             agent_id="main",
@@ -205,6 +300,62 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["actions"][0]["action"], "failed")
         archived_path = self.paths.archive_dir / f"{task.task_id}.json"
         self.assertTrue(archived_path.exists())
+
+    def test_cancel_main_queue_task_by_queue_position_archives_selected_task(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:1",
+            channel="telegram",
+            chat_id="chat:main:1",
+            task_label="queued main task 1",
+        )
+        second = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:2",
+            channel="telegram",
+            chat_id="chat:main:2",
+            task_label="queued main task 2",
+        )
+
+        result = main_ops.cancel_main_queue_task(paths=self.paths, queue_position=2)
+
+        self.assertEqual(result["action"], "cancelled-queued-task")
+        self.assertEqual(result["task_id"], second.task_id)
+        self.assertEqual(result["queue_position"], 2)
+        self.assertTrue((self.paths.archive_dir / f"{second.task_id}.json").exists())
+        self.assertTrue((self.paths.inflight_dir / f"{first.task_id}.json").exists())
+
+    def test_cancel_main_queue_task_by_task_id_rejects_running_task(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:running",
+            channel="telegram",
+            chat_id="chat:main:running",
+            task_label="running main task",
+        )
+        self.store.start_task(task.task_id)
+
+        result = main_ops.cancel_main_queue_task(paths=self.paths, task_id=task.task_id)
+
+        self.assertEqual(result["action"], "noop")
+        self.assertEqual(result["reason"], "task-not-queued")
+        self.assertEqual(result["status"], task_state_module.STATUS_RUNNING)
+        self.assertTrue((self.paths.inflight_dir / f"{task.task_id}.json").exists())
+
+    def test_cancel_main_queue_task_returns_out_of_range_for_unknown_position(self) -> None:
+        self.store.register_task(
+            agent_id="main",
+            session_key="session:main:1",
+            channel="telegram",
+            chat_id="chat:main:1",
+            task_label="queued main task 1",
+        )
+
+        result = main_ops.cancel_main_queue_task(paths=self.paths, queue_position=3)
+
+        self.assertEqual(result["action"], "noop")
+        self.assertEqual(result["reason"], "queue-position-out-of-range")
+        self.assertEqual(result["queued_count"], 1)
 
     def test_resolve_main_failures_can_select_non_retryable_without_apply(self) -> None:
         failed_dir = self.paths.data_dir / "failed-instructions"
@@ -387,6 +538,60 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["remaining_active_count"], 0)
         self.assertTrue((self.paths.archive_dir / f"{running.task_id}.json").exists())
         self.assertTrue((self.paths.archive_dir / f"{queued.task_id}.json").exists())
+
+    def test_purge_task_records_removes_matching_inflight_and_archive(self) -> None:
+        keep = self.store.register_task(
+            agent_id="main",
+            session_key="session:keep",
+            channel="telegram",
+            chat_id="chat:keep",
+            task_label="keep task",
+        )
+        inflight = self.store.register_task(
+            agent_id="main",
+            session_key="session:purge",
+            channel="telegram",
+            chat_id="chat:purge",
+            task_label="purge inflight",
+        )
+        archived_source = self.store.register_task(
+            agent_id="main",
+            session_key="session:purge",
+            channel="telegram",
+            chat_id="chat:purge",
+            task_label="purge archived",
+        )
+        self.store.complete_task(archived_source.task_id, archive=True)
+
+        result = main_ops.purge_task_records(
+            paths=self.paths,
+            session_key="session:purge",
+        )
+
+        self.assertEqual(result["action"], "purged-task-records")
+        self.assertEqual(result["deleted_count"], 2)
+        self.assertFalse((self.paths.inflight_dir / f"{inflight.task_id}.json").exists())
+        self.assertFalse((self.paths.archive_dir / f"{archived_source.task_id}.json").exists())
+        self.assertTrue((self.paths.inflight_dir / f"{keep.task_id}.json").exists())
+
+    def test_purge_task_records_can_limit_to_inflight(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:inflight-only",
+            channel="telegram",
+            chat_id="chat:inflight-only",
+            task_label="purge later",
+        )
+        self.store.complete_task(task.task_id, archive=True)
+
+        result = main_ops.purge_task_records(
+            paths=self.paths,
+            session_key="session:inflight-only",
+            include_archive=False,
+        )
+
+        self.assertEqual(result["deleted_count"], 0)
+        self.assertTrue((self.paths.archive_dir / f"{task.task_id}.json").exists())
 
 
 if __name__ == "__main__":

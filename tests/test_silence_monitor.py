@@ -73,6 +73,52 @@ class SilenceMonitorTests(unittest.TestCase):
         findings = silence_monitor.scan_tasks([blocked], timeout_seconds=30, resend_interval_seconds=30)
         self.assertEqual(findings, [])
 
+    def test_received_task_can_trigger_notification(self) -> None:
+        task = self.store.observe_task(
+            agent_id="main",
+            session_key="session:received",
+            channel="feishu",
+            chat_id="chat:received",
+            task_label="received task",
+        )
+        stored = self.store.load_task(task.task_id)
+        stored.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        stored.updated_at = stored.last_user_visible_update_at
+        self.store.save_task(stored)
+
+        findings = silence_monitor.scan_tasks([self.store.load_task(task.task_id)], timeout_seconds=30, resend_interval_seconds=30)
+        self.assertEqual(len(findings), 1)
+        self.assertTrue(findings[0].should_notify)
+        self.assertEqual(findings[0].status, task_state_module.STATUS_RECEIVED)
+        self.assertIn("等待 agent 真正开始处理", silence_monitor.fallback_message(findings[0]))
+
+    def test_queued_task_can_trigger_notification(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:first",
+            channel="feishu",
+            chat_id="chat:first",
+            task_label="first task",
+        )
+        self.store.start_task(first.task_id)
+        second = self.store.observe_task(
+            agent_id="main",
+            session_key="session:queued",
+            channel="feishu",
+            chat_id="chat:queued",
+            task_label="queued task",
+        )
+        queued = self.store.claim_execution_slot(second.task_id)
+        queued.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        queued.updated_at = queued.last_user_visible_update_at
+        self.store.save_task(queued)
+
+        findings = silence_monitor.scan_tasks([self.store.load_task(second.task_id)], timeout_seconds=30, resend_interval_seconds=30)
+        self.assertEqual(len(findings), 1)
+        self.assertTrue(findings[0].should_notify)
+        self.assertEqual(findings[0].status, task_state_module.STATUS_QUEUED)
+        self.assertIn("排队等待处理", silence_monitor.fallback_message(findings[0]))
+
     def test_process_overdue_tasks_writes_outbox_and_marks_task(self) -> None:
         task = self.make_running_task()
         stored = self.store.load_task(task.task_id)

@@ -3,7 +3,7 @@ import { appendFile, mkdtemp, mkdir, readdir, readFile, rename, rm, writeFile } 
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
-import { definePluginEntry, type OpenClawPluginApi } from "openclaw/plugin-sdk/core";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 const execFileAsync = promisify(execFile);
 
@@ -39,7 +39,7 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
     taskMessagePrefix:
       typeof value.taskMessagePrefix === "string"
         ? value.taskMessagePrefix
-        : "[task] ",
+        : "[wd] ",
     openclawBin:
       typeof value.openclawBin === "string" && value.openclawBin.trim()
         ? value.openclawBin.trim()
@@ -171,6 +171,38 @@ function buildSessionKey(channelId: string, conversationId?: string): string {
   return `${channelId}:${suffix}`;
 }
 
+function normalizeSessionKey(sessionKey: string): string {
+  return normalizeText(sessionKey);
+}
+
+function inferAgentIdFromSessionKey(sessionKey: string): string | null {
+  const normalized = normalizeText(sessionKey);
+  if (!normalized) {
+    return null;
+  }
+  const match = /^agent:([^:]+):/i.exec(normalized);
+  if (!match?.[1]) {
+    return null;
+  }
+  return normalizeText(match[1]) || null;
+}
+
+function resolveAgentId(
+  configuredAgentId: string | undefined,
+  sessionKey: string,
+  defaultAgentId: string,
+): string {
+  const explicitAgentId = normalizeText(configuredAgentId);
+  if (explicitAgentId) {
+    return explicitAgentId;
+  }
+  const inferredAgentId = inferAgentIdFromSessionKey(sessionKey);
+  if (inferredAgentId) {
+    return inferredAgentId;
+  }
+  return defaultAgentId;
+}
+
 function formatContinuationDelayLabel(continuationDueAt: string): string | null {
   if (!continuationDueAt) {
     return null;
@@ -188,6 +220,18 @@ function formatContinuationDelayLabel(continuationDueAt: string): string | null 
   return `预计约 ${diffMinutes} 分钟后`;
 }
 
+function formatEstimatedWaitLabel(estimatedWaitSeconds: number | null): string | null {
+  if (!Number.isFinite(estimatedWaitSeconds ?? NaN) || estimatedWaitSeconds === null) {
+    return null;
+  }
+  const seconds = Math.max(1, Math.trunc(estimatedWaitSeconds));
+  if (seconds < 60) {
+    return `预计约 ${seconds} 秒后`;
+  }
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  return `预计约 ${minutes} 分钟后`;
+}
+
 function normalizeText(value: unknown): string {
   if (typeof value !== "string") {
     if (value === null || value === undefined) {
@@ -196,6 +240,18 @@ function normalizeText(value: unknown): string {
     return String(value).replace(/\s+/g, " ").trim();
   }
   return value.replace(/\s+/g, " ").trim();
+}
+
+function canSendDirectStatusMessage(channel: string, chatId: string): boolean {
+  const normalizedChannel = normalizeText(channel).toLowerCase();
+  const normalizedChatId = normalizeText(chatId);
+  if (!normalizedChannel || !normalizedChatId) {
+    return false;
+  }
+  if (normalizedChannel !== "telegram") {
+    return true;
+  }
+  return /^-?\d+$/.test(normalizedChatId);
 }
 
 function isInternalRetryPrompt(prompt: string): boolean {
@@ -445,18 +501,10 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
       continue;
     }
     try {
-      const wakePrompt = [
-        "这是一个已经到达计划时间的延迟任务，请你现在继续执行。",
-        originalUserRequest ? `原始用户请求：${originalUserRequest}` : "",
-        `你现在必须直接回复以下最终内容：${replyText}`,
-        "不要重复计划，不要解释原因，只输出最终回复内容。",
-      ]
-        .filter(Boolean)
-        .join("\n");
       const wakeStart = await callHook(api, config, "continuation-wake", {
         task_id: taskId,
         state: "attempting",
-        message: "已触发到点唤醒，等待 agent 返回结果",
+        message: "已到达计划时间，准备直接发送延迟回复",
       });
       await appendDebugLog(config, "continuation-wake:start", {
         taskId,
@@ -464,41 +512,56 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         attemptCount: wakeStart?.attempt_count ?? null,
         channel,
         chatId,
+        originalUserRequest: originalUserRequest || null,
       });
-      const args = [
-        "agent",
-        "--agent",
-        normalizeText(String(payload.agent_id || "")) || config.defaultAgentId,
-        "--message",
-        wakePrompt,
-        "--deliver",
-        "--reply-channel",
-        channel,
-        "--reply-to",
-        chatId,
-      ];
-      const accountId = normalizeText(String(payload.account_id || ""));
-      if (accountId) {
-        args.push("--reply-account", accountId);
+      const adapter = await api.runtime.channel.outbound.loadAdapter(channel);
+      if (!adapter?.sendText) {
+        await appendDebugLog(config, "continuation-delivery:adapter-unavailable", {
+          taskId,
+          sessionKey,
+          channel,
+          chatId,
+        });
+        await callHook(api, config, "continuation-wake", {
+          task_id: taskId,
+          state: "failed",
+          message: `延迟回复发送失败：channel ${channel} adapter 不可用`.slice(0, 240),
+        });
+        await callHook(api, config, "blocked", {
+          task_id: taskId,
+          reason: `continuation delivery adapter unavailable: ${channel}`.slice(0, 240),
+        });
+        continue;
       }
-      const result = await execFileAsync(config.openclawBin, args, {
-        cwd: config.runtimeRoot,
-        env: process.env,
+      const accountId = normalizeText(String(payload.account_id || ""));
+      await adapter.sendText({
+        cfg: api.config,
+        to: chatId,
+        text: replyText,
+        accountId,
+      });
+      await appendDebugLog(config, "continuation-delivery:sent", {
+        taskId,
+        sessionKey,
+        channel,
+        chatId,
+        message: replyText,
       });
       await callHook(api, config, "continuation-wake", {
         task_id: taskId,
         state: "dispatched",
-        message: "已唤醒 agent，等待最终回复送达",
+        message: "已直接发送到点回复",
       });
       await callHook(api, config, "completed", {
         task_id: taskId,
-        result_summary: `continuation agent reply sent: ${replyText}`.slice(0, 240),
+        result_summary: `continuation reply delivered: ${replyText}`.slice(0, 240),
       });
       await appendDebugLog(config, "continuation-wake:ok", {
         taskId,
         sessionKey,
-        stdout: normalizeText(result.stdout || "").slice(0, 240),
-        stderr: normalizeText(result.stderr || "").slice(0, 240),
+        channel,
+        chatId,
+        deliveredReplyText: replyText,
       });
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
@@ -544,6 +607,16 @@ async function sendImmediateAck(
   if (!chatId || !message) {
     return;
   }
+  if (!canSendDirectStatusMessage(channel, chatId)) {
+    await appendDebugLog(config, "immediate-ack:skipped", {
+      channel,
+      chatId,
+      taskId: payload.taskId,
+      sessionKey: payload.sessionKey,
+      reason: "unsupported-direct-recipient",
+    });
+    return;
+  }
 
   try {
     const adapter = await api.runtime.channel.outbound.loadAdapter(channel);
@@ -583,12 +656,21 @@ async function sendImmediateAck(
 }
 
 type PendingReceipt = {
+  taskId: string;
   sessionKey: string;
   channel: string;
   accountId?: string;
   chatId: string;
   taskKind: "short" | "long";
   timer: ReturnType<typeof setTimeout> | null;
+};
+
+type ActiveTaskBinding = {
+  taskId: string;
+};
+
+type TaskMonitorCommand = {
+  action: "on" | "off" | "status";
 };
 
 function toInteger(value: unknown): number | null {
@@ -600,6 +682,23 @@ function toInteger(value: unknown): number | null {
     if (Number.isFinite(parsed)) {
       return Math.trunc(parsed);
     }
+  }
+  return null;
+}
+
+function parseTaskMonitorCommand(content: string): TaskMonitorCommand | null {
+  const normalized = normalizeText(content).toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "/taskmonitor" || normalized === "taskmonitor" || normalized === "/taskmonitor status") {
+    return { action: "status" };
+  }
+  if (normalized === "/taskmonitor on" || normalized === "taskmonitor on") {
+    return { action: "on" };
+  }
+  if (normalized === "/taskmonitor off" || normalized === "taskmonitor off") {
+    return { action: "off" };
   }
   return null;
 }
@@ -617,7 +716,9 @@ function buildImmediateReceiptMessage(
   const aheadCount = Math.max(toInteger(registerResult.ahead_count) ?? 0, 0);
   const runningCount = Math.max(toInteger(registerResult.running_count) ?? 0, 0);
   const activeCount = Math.max(toInteger(registerResult.active_count) ?? 0, 0);
+  const estimatedWaitSeconds = toInteger(registerResult.estimated_wait_seconds);
   const continuationDueAt = normalizeText(String(registerResult.continuation_due_at || ""));
+  const estimatedWaitLabel = formatEstimatedWaitLabel(estimatedWaitSeconds);
 
   if (taskStatus === "paused" && continuationDueAt) {
     const delayLabel = formatContinuationDelayLabel(continuationDueAt);
@@ -627,11 +728,29 @@ function buildImmediateReceiptMessage(
     return "已收到，已安排后续继续执行；到点后我会主动回复。";
   }
 
-  if (taskStatus === "queued") {
+  if (taskStatus === "queued" || taskStatus === "received") {
     const position = queuePosition ?? aheadCount + 1;
+    if (runningCount <= 0 && aheadCount > 0) {
+      if (estimatedWaitLabel) {
+        return `已收到，你的请求已进入队列；前面还有 ${aheadCount} 个号，你现在排第 ${position} 位，${estimatedWaitLabel}轮到处理。`;
+      }
+      return `已收到，你的请求已进入队列；前面还有 ${aheadCount} 个号，你现在排第 ${position} 位。`;
+    }
+    if (runningCount <= 0) {
+      if (estimatedWaitLabel) {
+        return `已收到，你的请求已进入队列；你现在排第 ${position} 位，${estimatedWaitLabel}轮到处理。`;
+      }
+      return `已收到，你的请求已进入队列；你现在排第 ${position} 位。`;
+    }
+    if (estimatedWaitLabel) {
+      return `已收到，当前有 ${runningCount} 条任务正在处理；你的请求已进入队列，前面还有 ${aheadCount} 个号，你现在排第 ${position} 位，${estimatedWaitLabel}轮到处理。`;
+    }
     return `已收到，当前有 ${runningCount} 条任务正在处理；你的请求已进入队列，前面还有 ${aheadCount} 个号，你现在排第 ${position} 位。`;
   }
   if (taskStatus === "running" && activeCount > 1) {
+    if (estimatedWaitLabel) {
+      return `已收到，现在轮到你的请求开始处理了；当前队列里共有 ${activeCount} 条活动任务，${estimatedWaitLabel}内预计会有初步结果，我会继续同步真实进展。`;
+    }
     return `已收到，现在轮到你的请求开始处理了；当前队列里共有 ${activeCount} 条活动任务，我会继续同步真实进展。`;
   }
   if (taskStatus === "running") {
@@ -659,6 +778,15 @@ async function sendStatusMessage(
   const chatId = String(payload.chatId || "").trim();
   const message = withTaskPrefix(config, payload.message);
   if (!chatId || !message) {
+    return;
+  }
+  if (!canSendDirectStatusMessage(channel, chatId)) {
+    await appendDebugLog(config, `${payload.eventName}:skipped`, {
+      channel,
+      chatId,
+      sessionKey: payload.sessionKey,
+      reason: "unsupported-direct-recipient",
+    });
     return;
   }
   try {
@@ -738,7 +866,23 @@ function summarizeAgentEnd(event: { messages: unknown[]; success: boolean; durat
     : `agent run failed after ${event.durationMs ?? 0}ms`;
 }
 
-const taskSystemPlugin = definePluginEntry({
+function hasVisibleAssistantOutput(event: { messages: unknown[] }): boolean {
+  const assistantMessages = event.messages.filter((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return false;
+    }
+    const role = (entry as Record<string, unknown>).role;
+    return typeof role === "string" && role.toLowerCase() === "assistant";
+  });
+  for (const message of assistantMessages) {
+    if (extractTextFromUnknown(message).some((entry) => entry.length > 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const taskSystemPlugin = {
   id: "openclaw-task-system",
   name: "OpenClaw Task System",
   description: "Plugin-first task lifecycle management for long-running OpenClaw work",
@@ -752,23 +896,80 @@ const taskSystemPlugin = definePluginEntry({
     let hostDeliveryTimer: ReturnType<typeof setInterval> | null = null;
     let continuationTimer: ReturnType<typeof setInterval> | null = null;
     const pendingReceipts = new Map<string, PendingReceipt>();
+    const activeTaskBindings = new Map<string, ActiveTaskBinding>();
+    const taskMonitorEnabledBySession = new Map<string, boolean>();
     if (!config.enabled) {
       api.logger.info("[task-system] plugin loaded in disabled mode");
       return;
+    }
+
+    async function isTaskMonitorEnabled(sessionKey: string): Promise<boolean> {
+      const normalizedSessionKey = normalizeSessionKey(sessionKey);
+      const cached = taskMonitorEnabledBySession.get(normalizedSessionKey);
+      if (typeof cached === "boolean") {
+        return cached;
+      }
+      const result = await callHook(api, config, "taskmonitor-status", {
+        session_key: normalizedSessionKey,
+      });
+      const enabled = result?.enabled !== false;
+      taskMonitorEnabledBySession.set(normalizedSessionKey, enabled);
+      return enabled;
+    }
+
+    function clearSessionTaskArtifacts(sessionKey: string): void {
+      const normalizedSessionKey = normalizeSessionKey(sessionKey);
+      activeTaskBindings.delete(normalizedSessionKey);
+      for (const [taskId, receipt] of pendingReceipts.entries()) {
+        if (receipt.sessionKey !== normalizedSessionKey) {
+          continue;
+        }
+        if (receipt.timer) {
+          clearTimeout(receipt.timer);
+        }
+        pendingReceipts.delete(taskId);
+      }
     }
 
     api.on("before_dispatch", async (event, ctx) => {
       if (!config.registerOnBeforeDispatch || !event.content?.trim()) {
         return;
       }
-      const sessionKey = event.sessionKey || ctx.sessionKey || buildSessionKey(ctx.channelId ?? event.channel ?? "unknown", ctx.conversationId);
-      const agentId = ctx.agentId || config.defaultAgentId;
+      const sessionKey = normalizeSessionKey(
+        event.sessionKey || ctx.sessionKey || buildSessionKey(ctx.channelId ?? event.channel ?? "unknown", ctx.conversationId),
+      );
+      const agentId = resolveAgentId(ctx.agentId, sessionKey, config.defaultAgentId);
       await appendDebugLog(config, "before_dispatch", {
         agentId,
         sessionKey,
         channel: event.channel ?? ctx.channelId ?? "unknown",
         content: normalizeText(event.content).slice(0, 240),
       });
+      const taskMonitorCommand = parseTaskMonitorCommand(event.content);
+      if (taskMonitorCommand) {
+        const taskMonitorResult = await callHook(api, config, "taskmonitor-control", {
+          session_key: sessionKey,
+          action: taskMonitorCommand.action,
+        });
+        const enabled = taskMonitorResult?.enabled !== false;
+        taskMonitorEnabledBySession.set(sessionKey, enabled);
+        if (!enabled) {
+          clearSessionTaskArtifacts(sessionKey);
+        }
+        return {
+          handled: true,
+          text:
+            normalizeText(String(taskMonitorResult?.message || "")) ||
+            "taskmonitor 状态已更新。",
+        };
+      }
+      if (!(await isTaskMonitorEnabled(sessionKey))) {
+        await appendDebugLog(config, "before_dispatch:taskmonitor-disabled", {
+          agentId,
+          sessionKey,
+        });
+        return;
+      }
       const registerResult = await callHook(api, config, "register", {
         agent_id: agentId,
         session_key: sessionKey,
@@ -786,19 +987,25 @@ const taskSystemPlugin = definePluginEntry({
         classificationReason: registerResult?.classification_reason ?? null,
         taskId: registerResult?.task_id ?? null,
       });
+      if (typeof registerResult?.task_id === "string" && registerResult.task_id.trim()) {
+        activeTaskBindings.set(sessionKey, {
+          taskId: registerResult.task_id.trim(),
+        });
+      }
       const classificationReason = String(registerResult?.classification_reason || "").trim();
       const isExistingActive = classificationReason === "existing-active-task";
+      const isLongTask = classificationReason === "long-task" || classificationReason === "scheduled-continuation";
+      const shouldSendShortTaskAck = isLongTask || config.sendImmediateAckForShortTasks;
       const shouldSendImmediateAck =
         config.sendImmediateAckOnRegister &&
         Boolean(registerResult?.should_register_task) &&
+        shouldSendShortTaskAck &&
         !isExistingActive;
       const immediateAckMessage = buildImmediateReceiptMessage(config, registerResult);
-
-      const existingReceipt = pendingReceipts.get(sessionKey);
-      if (existingReceipt?.timer) {
-        clearTimeout(existingReceipt.timer);
-      }
-      pendingReceipts.delete(sessionKey);
+      const receiptTaskId =
+        typeof registerResult?.task_id === "string" && registerResult.task_id.trim()
+          ? registerResult.task_id.trim()
+          : "";
 
       if (shouldSendImmediateAck) {
         if (isLongTask && typeof registerResult?.task_id === "string" && registerResult.task_id.trim()) {
@@ -819,7 +1026,64 @@ const taskSystemPlugin = definePluginEntry({
             message: immediateAckMessage,
             eventName: "immediate-ack",
           });
+          if (!receiptTaskId) {
+            return;
+          }
+          const existingReceipt = pendingReceipts.get(receiptTaskId);
+          if (existingReceipt?.timer) {
+            clearTimeout(existingReceipt.timer);
+          }
+          const timer = setTimeout(() => {
+            const current = pendingReceipts.get(receiptTaskId);
+            if (!current) {
+              return;
+            }
+            pendingReceipts.delete(receiptTaskId);
+            void (async () => {
+              const followupCheck = await callHook(api, config, "should-send-short-followup", {
+                task_id: current.taskId,
+              });
+              if (!followupCheck?.should_send) {
+                await appendDebugLog(config, "short-task-followup:skipped", {
+                  taskId: current.taskId,
+                  sessionKey: current.sessionKey,
+                  reason: followupCheck?.reason ?? "unknown",
+                });
+                return;
+              }
+              await sendStatusMessage(api, config, {
+                channel: current.channel,
+                accountId: current.accountId ?? "",
+                chatId: current.chatId,
+                sessionKey: current.sessionKey,
+                message:
+                  normalizeText(String(followupCheck?.followup_message || "")) ||
+                  config.shortTaskFollowupTemplate,
+                eventName: "short-task-followup",
+              });
+            })();
+          }, config.shortTaskFollowupTimeoutMs);
+          pendingReceipts.set(receiptTaskId, {
+            taskId: receiptTaskId,
+            sessionKey,
+            channel: event.channel ?? ctx.channelId ?? "unknown",
+            accountId: ctx.accountId ?? "",
+            chatId: ctx.conversationId ?? sessionKey,
+            taskKind: "short",
+            timer,
+          });
         }
+      }
+
+      if (classificationReason === "continuation-task") {
+        await appendDebugLog(config, "before_dispatch:continuation-handled", {
+          agentId,
+          sessionKey,
+          taskId: registerResult?.task_id ?? null,
+        });
+        return {
+          handled: true,
+        };
       }
 
     });
@@ -858,16 +1122,26 @@ const taskSystemPlugin = definePluginEntry({
         });
         return;
       }
-      const agentId = ctx.agentId || config.defaultAgentId;
+      const agentId = resolveAgentId(ctx.agentId, sessionKey, config.defaultAgentId);
+      const normalizedSessionKey = normalizeSessionKey(sessionKey);
+      if (!(await isTaskMonitorEnabled(normalizedSessionKey))) {
+        await appendDebugLog(config, "before_agent_start:taskmonitor-disabled", {
+          agentId,
+          sessionKey: normalizedSessionKey,
+        });
+        return;
+      }
       await appendDebugLog(config, "before_agent_start", {
         agentId,
-        sessionKey,
+        sessionKey: normalizedSessionKey,
         trigger: ctx.trigger || "unknown",
         prompt: normalizeText(event.prompt).slice(0, 240),
       });
+      const activeTaskBinding = activeTaskBindings.get(normalizedSessionKey);
       await callHook(api, config, "activate-latest", {
         agent_id: agentId,
-        session_key: sessionKey,
+        session_key: normalizedSessionKey,
+        task_id: activeTaskBinding?.taskId,
       });
     });
 
@@ -916,15 +1190,24 @@ const taskSystemPlugin = definePluginEntry({
         return;
       }
       if (ctx.sessionKey?.trim()) {
+        if (!(await isTaskMonitorEnabled(ctx.sessionKey))) {
+          await appendDebugLog(config, "message_sending:taskmonitor-disabled", {
+            agentId: ctx.agentId || config.defaultAgentId,
+            sessionKey: ctx.sessionKey || "",
+          });
+          return;
+        }
+        const resolvedAgentId = resolveAgentId(ctx.agentId, ctx.sessionKey, config.defaultAgentId);
+        const normalizedSessionKey = normalizeSessionKey(ctx.sessionKey);
         const continuationFulfilled = await callHook(api, config, "fulfill-due-continuation", {
-          agent_id: ctx.agentId || config.defaultAgentId,
-          session_key: ctx.sessionKey,
+          agent_id: resolvedAgentId,
+          session_key: normalizedSessionKey,
           content: event.content,
         });
         if (continuationFulfilled?.updated) {
           await appendDebugLog(config, "message_sending:continuation-fulfilled", {
-            agentId: ctx.agentId || config.defaultAgentId,
-            sessionKey: ctx.sessionKey,
+            agentId: resolvedAgentId,
+            sessionKey: normalizedSessionKey,
             matchedReplyText: continuationFulfilled.matched_reply_text ?? null,
           });
           return;
@@ -937,16 +1220,18 @@ const taskSystemPlugin = definePluginEntry({
         });
         return;
       }
-      const sessionKey = buildSessionKey(ctx.channelId, ctx.conversationId);
-      const agentId = ctx.agentId || config.defaultAgentId;
+      const sessionKey = normalizeSessionKey(buildSessionKey(ctx.channelId, ctx.conversationId));
+      const agentId = resolveAgentId(ctx.agentId, sessionKey, config.defaultAgentId);
       await appendDebugLog(config, "message_sending", {
         agentId,
         sessionKey,
         content: normalizeText(event.content).slice(0, 240),
       });
+      const activeTaskBinding = activeTaskBindings.get(sessionKey);
       await callHook(api, config, "progress-active", {
         agent_id: agentId,
         session_key: sessionKey,
+        task_id: activeTaskBinding?.taskId,
         progress_note: normalizeText(event.content).slice(0, 240),
       });
     });
@@ -955,22 +1240,30 @@ const taskSystemPlugin = definePluginEntry({
       if (!config.syncProgressOnMessageSending) {
         return;
       }
-      const sessionKey = ctx.sessionKey?.trim();
+      const sessionKey = normalizeSessionKey(ctx.sessionKey?.trim() || "");
       if (!sessionKey) {
+        return;
+      }
+      if (!(await isTaskMonitorEnabled(sessionKey))) {
+        await appendDebugLog(config, "llm_output:taskmonitor-disabled", {
+          agentId: ctx.agentId || config.defaultAgentId,
+          sessionKey,
+        });
         return;
       }
       const text = normalizeText((event.assistantTexts || []).join("\n"));
       if (!text) {
         return;
       }
+      const agentId = resolveAgentId(ctx.agentId, sessionKey, config.defaultAgentId);
       const continuationFulfilled = await callHook(api, config, "fulfill-due-continuation", {
-        agent_id: ctx.agentId || config.defaultAgentId,
+        agent_id: agentId,
         session_key: sessionKey,
         content: text,
       });
       if (continuationFulfilled?.updated) {
         await appendDebugLog(config, "llm_output:continuation-fulfilled", {
-          agentId: ctx.agentId || config.defaultAgentId,
+          agentId,
           sessionKey,
           matchedReplyText: continuationFulfilled.matched_reply_text ?? null,
           content: text.slice(0, 240),
@@ -979,47 +1272,75 @@ const taskSystemPlugin = definePluginEntry({
       }
       if (!shouldSyncProgress(text, config)) {
         await appendDebugLog(config, "llm_output:ignored", {
-          agentId: ctx.agentId || config.defaultAgentId,
+          agentId,
           sessionKey,
           content: text.slice(0, 240),
         });
         return;
       }
-      const agentId = ctx.agentId || config.defaultAgentId;
       await appendDebugLog(config, "llm_output", {
         agentId,
         sessionKey,
         content: text.slice(0, 240),
       });
+      const activeTaskBinding = activeTaskBindings.get(sessionKey);
       await callHook(api, config, "progress-active", {
         agent_id: agentId,
         session_key: sessionKey,
+        task_id: activeTaskBinding?.taskId,
         progress_note: text.slice(0, 240),
       });
     });
 
     api.on("agent_end", async (event, ctx) => {
-      if (!config.finalizeOnAgentEnd || !ctx.sessionKey?.trim()) {
+      const normalizedSessionKey = normalizeSessionKey(ctx.sessionKey?.trim() || "");
+      if (!config.finalizeOnAgentEnd || !normalizedSessionKey) {
         return;
       }
-      const pendingReceipt = pendingReceipts.get(ctx.sessionKey);
+      if (!(await isTaskMonitorEnabled(normalizedSessionKey))) {
+        await appendDebugLog(config, "agent_end:taskmonitor-disabled", {
+          agentId: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
+          sessionKey: normalizedSessionKey,
+          success: event.success,
+        });
+        clearSessionTaskArtifacts(normalizedSessionKey);
+        return;
+      }
+      const activeTaskBinding = activeTaskBindings.get(normalizedSessionKey);
+      const pendingReceipt = activeTaskBinding ? pendingReceipts.get(activeTaskBinding.taskId) : undefined;
       if (pendingReceipt?.timer) {
         clearTimeout(pendingReceipt.timer);
       }
-      pendingReceipts.delete(ctx.sessionKey);
+      if (activeTaskBinding) {
+        pendingReceipts.delete(activeTaskBinding.taskId);
+      }
+      for (const [taskId, receipt] of pendingReceipts.entries()) {
+        if (receipt.sessionKey !== normalizedSessionKey) {
+          continue;
+        }
+        if (receipt.timer) {
+          clearTimeout(receipt.timer);
+        }
+        pendingReceipts.delete(taskId);
+      }
       await appendDebugLog(config, "agent_end", {
-        agentId: ctx.agentId || config.defaultAgentId,
-        sessionKey: ctx.sessionKey,
+        agentId: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
+        sessionKey: normalizedSessionKey,
         success: event.success,
         error: event.error ?? null,
       });
       await callHook(api, config, "finalize-active", {
-        agent_id: ctx.agentId || config.defaultAgentId,
-        session_key: ctx.sessionKey,
+        agent_id: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
+        session_key: normalizedSessionKey,
+        task_id: activeTaskBinding?.taskId,
         success: event.success,
+        has_visible_output: event.success ? hasVisibleAssistantOutput(event) : false,
         result_summary: event.success ? summarizeAgentEnd(event) : undefined,
         error: event.error,
       });
+      if (activeTaskBinding) {
+        activeTaskBindings.delete(normalizedSessionKey);
+      }
     });
 
     api.registerService({
@@ -1060,11 +1381,13 @@ const taskSystemPlugin = definePluginEntry({
           }
         }
         pendingReceipts.clear();
+        activeTaskBindings.clear();
+        taskMonitorEnabledBySession.clear();
       },
     });
 
     api.logger.info(`[task-system] plugin loaded (root=${config.runtimeRoot})`);
   },
-});
+};
 
 export default taskSystemPlugin;

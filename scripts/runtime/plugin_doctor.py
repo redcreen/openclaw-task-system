@@ -26,13 +26,36 @@ def choose_config_path() -> Path:
     return EXAMPLE_CONFIG
 
 
+def resolve_plugin_entry_target() -> Path | None:
+    entry_path = PLUGIN_ROOT / "index.ts"
+    if not entry_path.exists():
+        return None
+    content = entry_path.read_text(encoding="utf-8")
+    marker = 'export { default } from "'
+    start = content.find(marker)
+    if start < 0:
+        return None
+    start += len(marker)
+    end = content.find('"', start)
+    if end < 0:
+        return None
+    relative_target = content[start:end]
+    return (PLUGIN_ROOT / relative_target).resolve()
+
+
 def run_checks() -> list[CheckResult]:
     config_path = choose_config_path()
+    plugin_entry_target = resolve_plugin_entry_target()
     checks = [
         CheckResult("project_root", PROJECT_ROOT.exists(), str(PROJECT_ROOT)),
         CheckResult("plugin_root", PLUGIN_ROOT.exists(), str(PLUGIN_ROOT)),
         CheckResult("plugin_manifest", (PLUGIN_ROOT / "openclaw.plugin.json").exists(), str(PLUGIN_ROOT / "openclaw.plugin.json")),
         CheckResult("plugin_entry", (PLUGIN_ROOT / "index.ts").exists(), str(PLUGIN_ROOT / "index.ts")),
+        CheckResult(
+            "plugin_entry_target",
+            plugin_entry_target.exists() if plugin_entry_target is not None else False,
+            str(plugin_entry_target or (PLUGIN_ROOT / "<unresolved-entry-target>")),
+        ),
         CheckResult("plugin_runtime_entry", (PLUGIN_ROOT / "src" / "plugin" / "index.ts").exists(), str(PLUGIN_ROOT / "src" / "plugin" / "index.ts")),
         CheckResult("hooks_script", HOOKS_SCRIPT.exists(), str(HOOKS_SCRIPT)),
         CheckResult("config_path", config_path.exists(), str(config_path)),

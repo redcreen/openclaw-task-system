@@ -9,7 +9,7 @@ from typing import Iterable, Optional
 
 from emit_task_event import write_outbox
 from task_config import TaskSystemConfig, load_task_system_config
-from task_state import STATUS_BLOCKED, STATUS_RUNNING, TaskPaths, TaskState, TaskStore, now_iso
+from task_state import STATUS_BLOCKED, STATUS_QUEUED, STATUS_RECEIVED, STATUS_RUNNING, TaskPaths, TaskState, TaskStore, now_iso
 
 DEFAULT_TIMEOUT_SECONDS = 30
 RESEND_INTERVAL_SECONDS = 30
@@ -42,8 +42,8 @@ class SilenceFinding:
     continuation_wake_message: str | None = None
 
 
-def is_active_task(task: TaskState) -> bool:
-    return task.status == STATUS_RUNNING
+def is_monitored_task(task: TaskState) -> bool:
+    return task.status in {STATUS_RECEIVED, STATUS_QUEUED, STATUS_RUNNING}
 
 
 def should_notify_task(
@@ -77,7 +77,7 @@ def scan_tasks(
     findings: list[SilenceFinding] = []
     now_dt = now()
     for task in tasks:
-        if not is_active_task(task):
+        if not is_monitored_task(task):
             continue
         if not task.last_user_visible_update_at:
             continue
@@ -130,6 +130,16 @@ def scan_inflight(
 
 
 def fallback_message(_finding: SilenceFinding) -> str:
+    if _finding.status == STATUS_RECEIVED:
+        return (
+            "[task] 已收到你的消息，当前正在等待 agent 真正开始处理；"
+            "如果还没有开始执行或继续排队，我会继续同步当前状态。"
+        )
+    if _finding.status == STATUS_QUEUED:
+        return (
+            "[task] 已收到你的任务，当前仍在排队等待处理；"
+            "开始执行后，我会继续同步真实进展。"
+        )
     if _finding.escalation == "blocked-no-visible-progress":
         return (
             "[task] 当前长任务没有形成可靠的可见进展，且执行过程中出现了内部重试或模型失败；"

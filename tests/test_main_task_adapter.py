@@ -46,11 +46,12 @@ class MainTaskAdapterTests(unittest.TestCase):
         self.assertTrue(decision.should_register)
         self.assertEqual(decision.reason, "observed-task")
 
-    def test_decide_main_task_observes_delayed_reply_text_without_auto_scheduling(self) -> None:
+    def test_decide_main_task_marks_delayed_reply_as_continuation_task(self) -> None:
         context = self.build_context("1分钟后回复我ok1")
         decision = main_task_adapter.decide_main_task(context)
         self.assertTrue(decision.should_register)
-        self.assertEqual(decision.reason, "observed-task")
+        self.assertEqual(decision.reason, "continuation-task")
+        self.assertIsNotNone(decision.continuation_plan)
 
     def test_register_main_task_creates_running_task(self) -> None:
         context = self.build_context(
@@ -132,10 +133,11 @@ class MainTaskAdapterTests(unittest.TestCase):
         self.assertEqual(resumed.status, task_state_module.STATUS_QUEUED)
         self.assertEqual(resumed.meta["resume_target_status"], task_state_module.STATUS_QUEUED)
 
-    def test_delayed_reply_text_does_not_auto_schedule_continuation(self) -> None:
+    def test_delayed_reply_text_auto_schedules_continuation(self) -> None:
         task = main_task_adapter.register_main_task(
             self.build_context("5分钟后回复我ok", requires_external_wait=True),
             paths=self.paths,
         )
-        self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
-        self.assertNotIn("continuation_kind", task.meta)
+        self.assertEqual(task.status, task_state_module.STATUS_PAUSED)
+        self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
+        self.assertEqual(task.meta["continuation_payload"]["reply_text"], "ok")
