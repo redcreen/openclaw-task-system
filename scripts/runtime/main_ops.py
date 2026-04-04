@@ -676,6 +676,16 @@ def resume_watchdog_blocked_main_tasks(
     )
     for index, entry in enumerate(prioritized_followups, start=1):
         entry["followup_priority"] = index
+    top_followup_session = None
+    if prioritized_followups:
+        top_entry = prioritized_followups[0]
+        top_followup_session = {
+            "session_key": top_entry["session_key"],
+            "followup_priority": top_entry["followup_priority"],
+            "active_task_count": top_entry["active_task_count"],
+            "status_counts": top_entry["status_counts"],
+            "next_command": top_entry["next_command"],
+        }
     return {
         "action": "resume-watchdog-blocked-main-tasks",
         "session_filter": normalized_session_key or "all",
@@ -709,6 +719,7 @@ def resume_watchdog_blocked_main_tasks(
                 }
                 for entry in prioritized_followups
             ],
+            "top_followup_session": top_followup_session,
         },
         "skipped": skipped,
         "suggested_next_commands": [

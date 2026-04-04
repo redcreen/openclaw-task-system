@@ -441,6 +441,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "needs-followup")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_priority"], 1)
         self.assertEqual(result["post_resume_summary"]["followup_priorities"][0]["session_key"], "session:main:blocked:one")
+        self.assertEqual(result["post_resume_summary"]["top_followup_session"]["session_key"], "session:main:blocked:one")
+        self.assertEqual(result["post_resume_summary"]["top_followup_session"]["followup_priority"], 1)
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["running"], 1)
         self.assertIn(
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
@@ -496,6 +498,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["session_key"], "session:main:focus")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "needs-followup")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_priority"], 1)
+        self.assertEqual(result["post_resume_summary"]["top_followup_session"]["session_key"], "session:main:focus")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["running"], 1)
         self.assertIn(
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus'",
@@ -560,6 +563,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["session_key"], "session:main:running")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "needs-followup")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_priority"], 1)
+        self.assertEqual(result["post_resume_summary"]["top_followup_session"]["session_key"], "session:main:running")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["running"], 1)
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["queued"], 1)
         self.assertEqual(len(result["skipped"]), 1)
@@ -598,6 +602,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["needs_followup_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["followup_state"], "settled")
         self.assertEqual(result["post_resume_summary"]["followup_priorities"], [])
+        self.assertIsNone(result["post_resume_summary"]["top_followup_session"])
         refreshed = self.store.load_task(first.task_id)
         self.assertEqual(refreshed.status, "blocked")
 
@@ -614,6 +619,13 @@ class MainOpsTests(unittest.TestCase):
                     "settled_session_count": 1,
                     "needs_followup_session_count": 1,
                     "execution_recommendation": "parallel-safe",
+                    "top_followup_session": {
+                        "session_key": "session:main:followup",
+                        "followup_priority": 1,
+                        "active_task_count": 1,
+                        "status_counts": {"running": 1},
+                        "next_command": "python3 ... continuity --session-key 'session:main:followup'",
+                    },
                     "sessions": [
                         {
                             "session_key": "session:main:followup",
