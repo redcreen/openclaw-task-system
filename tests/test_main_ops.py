@@ -175,6 +175,19 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("main_ops.py continuity --session-key 'session:main:dashboard-focus'", rendered)
         self.assertIn("taskmonitor --session-key 'session:main:dashboard-focus' --action status --json", rendered)
 
+    def test_render_main_dashboard_compact_uses_short_summary(self) -> None:
+        rendered = main_ops.render_main_dashboard(
+            config_path=self._config_path(),
+            paths=self.paths,
+            compact=True,
+        )
+
+        self.assertIn("# Main Ops Dashboard", rendered)
+        self.assertIn("- scope: all", rendered)
+        self.assertIn("- status: ok", rendered)
+        self.assertIn("- continuity_risk: auto=0 manual=0", rendered)
+        self.assertNotIn("## Commands", rendered)
+
     def test_get_main_dashboard_summary_filters_to_one_session(self) -> None:
         focus = self.store.register_task(
             agent_id="main",
@@ -211,6 +224,18 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["taskmonitor"]["session_key"], "session:main:dashboard-focus-json")
         self.assertFalse(summary["taskmonitor"]["enabled"])
         self.assertEqual(summary["continuity"]["session_filter"], "session:main:dashboard-focus-json")
+
+    def test_get_main_dashboard_summary_includes_compact_summary(self) -> None:
+        summary = main_ops.get_main_dashboard_summary(
+            config_path=self._config_path(),
+            paths=self.paths,
+            compact=True,
+        )
+
+        self.assertTrue(summary["compact"])
+        self.assertEqual(summary["compact_summary"]["scope"], "all")
+        self.assertEqual(summary["compact_summary"]["status"], "ok")
+        self.assertEqual(summary["compact_summary"]["taskmonitor_summary"], "override_count=0")
 
     def test_render_main_continuity_reports_no_risk_when_idle(self) -> None:
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)

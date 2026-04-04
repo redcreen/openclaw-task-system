@@ -793,8 +793,29 @@ def render_main_dashboard(
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
     session_key: Optional[str] = None,
+    compact: bool = False,
 ) -> str:
-    summary = get_main_dashboard_summary(config_path=config_path, paths=paths, session_key=session_key)
+    summary = get_main_dashboard_summary(
+        config_path=config_path,
+        paths=paths,
+        session_key=session_key,
+        compact=compact,
+    )
+    if compact:
+        compact_summary = summary["compact_summary"]
+        lines = [
+            "# Main Ops Dashboard",
+            "",
+            f"- scope: {compact_summary['scope']}",
+            f"- status: {compact_summary['status']}",
+            f"- main_active: {compact_summary['main_active_task_count']}",
+            f"- blocked: {compact_summary['main_blocked_task_count']}",
+            f"- queues: {compact_summary['queue_count']}",
+            f"- lanes: {compact_summary['lane_agent_count']}",
+            f"- continuity_risk: auto={compact_summary['continuity_auto_resumable_task_count']} manual={compact_summary['continuity_manual_review_task_count']}",
+            f"- taskmonitor: {compact_summary['taskmonitor_summary']}",
+        ]
+        return "\n".join(lines) + "\n"
     lines = [
         "# Main Ops Dashboard",
         "",
@@ -822,6 +843,7 @@ def get_main_dashboard_summary(
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
     session_key: Optional[str] = None,
+    compact: bool = False,
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(config_path, paths=paths)
     normalized_session_key = str(session_key or "").strip() or None
@@ -853,10 +875,27 @@ def get_main_dashboard_summary(
         or continuity["manual_review_task_count"] > 0
     ):
         status = "warn"
+    compact_summary = {
+        "scope": normalized_session_key or "all",
+        "status": status,
+        "main_active_task_count": health["main_active_task_count"],
+        "main_blocked_task_count": health["main_blocked_task_count"],
+        "queue_count": queues["queue_count"],
+        "lane_agent_count": lanes["agent_count"],
+        "continuity_auto_resumable_task_count": continuity["auto_resumable_task_count"],
+        "continuity_manual_review_task_count": continuity["manual_review_task_count"],
+        "taskmonitor_summary": (
+            f"session-enabled={taskmonitor['enabled']}"
+            if normalized_session_key
+            else f"override_count={taskmonitor['override_count']}"
+        ),
+    }
     return {
         "generated_at": datetime.now(timezone.utc).astimezone().isoformat(),
         "session_filter": normalized_session_key or "all",
         "status": status,
+        "compact": compact,
+        "compact_summary": compact_summary,
         "health": health,
         "queues": queues,
         "lanes": lanes,
@@ -1868,6 +1907,7 @@ def main() -> None:
     taskmonitor_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
     dashboard_parser = subparsers.add_parser("dashboard", help="Show a unified main-ops dashboard summary.")
     dashboard_parser.add_argument("--session-key", default=None, help="Focus the dashboard on one session.")
+    dashboard_parser.add_argument("--compact", action="store_true", help="Emit a shorter day-to-day dashboard view.")
     dashboard_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
 
     subparsers.add_parser("overview", help="Show task system overview.")
@@ -2058,13 +2098,22 @@ def main() -> None:
                         config_path=config_path,
                         paths=paths,
                         session_key=args.session_key,
+                        compact=args.compact,
                     ),
                     ensure_ascii=False,
                     indent=2,
                 )
             )
             return
-        print(render_main_dashboard(config_path=config_path, paths=paths, session_key=args.session_key), end="")
+        print(
+            render_main_dashboard(
+                config_path=config_path,
+                paths=paths,
+                session_key=args.session_key,
+                compact=args.compact,
+            ),
+            end="",
+        )
         return
     if args.command == "overview":
         print(render_overview_markdown(config_path=config_path), end="")
