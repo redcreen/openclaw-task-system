@@ -193,6 +193,7 @@
 - 已新增统一状态入口：
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard`
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --compact`
+  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --only-issues`
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --json`
   - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --session-key '<session_key>'`
 - 当前 dashboard 已能汇总：
@@ -203,6 +204,7 @@
   - `taskmonitor`
 - `dashboard --json` 已直接提供 `top_followup_session`
 - `dashboard` / `dashboard --compact` / `dashboard --json` 已直接提供 `action_hint`
+- `dashboard --only-issues` 已支持只看非 OK 项
 - 当前 dashboard 已支持按 `session` 聚焦，适合排某个具体会话
 - 当前 dashboard 已支持 `--compact`，适合日常快速扫一眼
 - 但更产品化的控制面板仍未完成，例如：

@@ -201,6 +201,51 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- action_hint: No immediate action needed.", rendered)
         self.assertNotIn("## Commands", rendered)
 
+    def test_render_main_dashboard_only_issues_reports_clean_state_briefly(self) -> None:
+        rendered = main_ops.render_main_dashboard(
+            config_path=self._config_path(),
+            paths=self.paths,
+            only_issues=True,
+        )
+
+        self.assertIn("# Main Ops Dashboard", rendered)
+        self.assertIn("- scope: all", rendered)
+        self.assertIn("- status: ok", rendered)
+        self.assertIn("- No issues detected.", rendered)
+        self.assertNotIn("## Commands", rendered)
+
+    def test_render_main_dashboard_only_issues_focuses_on_problem_fields(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:issues-only",
+            channel="telegram",
+            chat_id="chat:main:issues-only",
+            task_label="issues only blocked task",
+        )
+        running = self.store.start_task(task.task_id)
+        running.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        running.meta["finalize_skipped_reason"] = "success-without-visible-progress"
+        self.store.save_task(running)
+
+        silence_monitor = load_runtime_module("silence_monitor")
+        silence_monitor.process_overdue_tasks(paths=self.paths)
+
+        rendered = main_ops.render_main_dashboard(
+            config_path=self._config_path(),
+            paths=self.paths,
+            only_issues=True,
+        )
+
+        self.assertIn("- status: warn", rendered)
+        self.assertIn("- main_blocked_task_count: 1", rendered)
+        self.assertIn("- continuity_risk: auto=1 manual=0", rendered)
+        self.assertIn("- top_followup_session: session:main:issues-only", rendered)
+        self.assertIn("- action_hint: Follow up session session:main:issues-only first.", rendered)
+        self.assertIn(
+            "- action_hint_command: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:issues-only'",
+            rendered,
+        )
+
     def test_get_main_dashboard_summary_filters_to_one_session(self) -> None:
         focus = self.store.register_task(
             agent_id="main",
@@ -253,6 +298,18 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["compact_summary"]["top_followup_session_summary"], "none")
         self.assertEqual(summary["compact_summary"]["action_hint"], "No immediate action needed.")
         self.assertEqual(summary["compact_summary"]["taskmonitor_summary"], "override_count=0")
+
+    def test_get_main_dashboard_summary_includes_issue_summary(self) -> None:
+        summary = main_ops.get_main_dashboard_summary(
+            config_path=self._config_path(),
+            paths=self.paths,
+            only_issues=True,
+        )
+
+        self.assertTrue(summary["only_issues"])
+        self.assertFalse(summary["issue_summary"]["has_issues"])
+        self.assertIsNone(summary["issue_summary"]["action_hint"])
+        self.assertIsNone(summary["issue_summary"]["action_hint_command"])
 
     def test_get_main_dashboard_summary_can_hint_taskmonitor_enable_for_session(self) -> None:
         main_ops.set_taskmonitor_state(

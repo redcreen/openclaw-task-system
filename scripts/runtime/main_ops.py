@@ -942,13 +942,38 @@ def render_main_dashboard(
     paths: Optional[TaskPaths] = None,
     session_key: Optional[str] = None,
     compact: bool = False,
+    only_issues: bool = False,
 ) -> str:
     summary = get_main_dashboard_summary(
         config_path=config_path,
         paths=paths,
         session_key=session_key,
         compact=compact,
+        only_issues=only_issues,
     )
+    if only_issues:
+        issue_summary = summary["issue_summary"]
+        lines = [
+            "# Main Ops Dashboard",
+            "",
+            f"- scope: {summary['session_filter']}",
+            f"- status: {summary['status']}",
+        ]
+        if not issue_summary["has_issues"]:
+            lines.append("- No issues detected.")
+            return "\n".join(lines) + "\n"
+        lines.extend(
+            [
+                f"- main_active_task_count: {summary['health']['main_active_task_count']}",
+                f"- main_blocked_task_count: {summary['health']['main_blocked_task_count']}",
+                f"- continuity_risk: auto={summary['continuity']['auto_resumable_task_count']} manual={summary['continuity']['manual_review_task_count']}",
+                f"- top_followup_session: {summary['top_followup_session']['session_key'] if summary['top_followup_session'] else 'none'}",
+                f"- action_hint: {summary['action_hint']}",
+            ]
+        )
+        if summary["action_hint_command"]:
+            lines.append(f"- action_hint_command: {summary['action_hint_command']}")
+        return "\n".join(lines) + "\n"
     if compact:
         compact_summary = summary["compact_summary"]
         lines = [
@@ -996,6 +1021,7 @@ def get_main_dashboard_summary(
     paths: Optional[TaskPaths] = None,
     session_key: Optional[str] = None,
     compact: bool = False,
+    only_issues: bool = False,
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(config_path, paths=paths)
     normalized_session_key = str(session_key or "").strip() or None
@@ -1081,12 +1107,24 @@ def get_main_dashboard_summary(
             else f"override_count={taskmonitor['override_count']}"
         ),
     }
+    issue_summary = {
+        "has_issues": status != "ok",
+        "main_active_task_count": health["main_active_task_count"],
+        "main_blocked_task_count": health["main_blocked_task_count"],
+        "continuity_auto_resumable_task_count": continuity["auto_resumable_task_count"],
+        "continuity_manual_review_task_count": continuity["manual_review_task_count"],
+        "top_followup_session": top_followup_session["session_key"] if top_followup_session else None,
+        "action_hint": action_hint if status != "ok" else None,
+        "action_hint_command": action_hint_command if status != "ok" else None,
+    }
     return {
         "generated_at": datetime.now(timezone.utc).astimezone().isoformat(),
         "session_filter": normalized_session_key or "all",
         "status": status,
         "compact": compact,
+        "only_issues": only_issues,
         "compact_summary": compact_summary,
+        "issue_summary": issue_summary,
         "health": health,
         "queues": queues,
         "lanes": lanes,
@@ -2102,6 +2140,7 @@ def main() -> None:
     dashboard_parser = subparsers.add_parser("dashboard", help="Show a unified main-ops dashboard summary.")
     dashboard_parser.add_argument("--session-key", default=None, help="Focus the dashboard on one session.")
     dashboard_parser.add_argument("--compact", action="store_true", help="Emit a shorter day-to-day dashboard view.")
+    dashboard_parser.add_argument("--only-issues", action="store_true", help="Only show non-OK findings in the dashboard view.")
     dashboard_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
 
     subparsers.add_parser("overview", help="Show task system overview.")
@@ -2293,6 +2332,7 @@ def main() -> None:
                         paths=paths,
                         session_key=args.session_key,
                         compact=args.compact,
+                        only_issues=args.only_issues,
                     ),
                     ensure_ascii=False,
                     indent=2,
@@ -2305,6 +2345,7 @@ def main() -> None:
                 paths=paths,
                 session_key=args.session_key,
                 compact=args.compact,
+                only_issues=args.only_issues,
             ),
             end="",
         )
