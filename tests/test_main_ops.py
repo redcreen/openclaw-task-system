@@ -167,6 +167,7 @@ class MainOpsTests(unittest.TestCase):
             summary["primary_action_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:dashboard-risk'",
         )
+        self.assertEqual(summary["runbook_status"], "warn")
         self.assertEqual(
             summary["suggested_next_commands"][0],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:dashboard-risk'",
@@ -332,6 +333,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["compact_summary"]["action_hint_command_summary"], "none")
         self.assertEqual(summary["primary_action_kind"], "none")
         self.assertIsNone(summary["primary_action_command"])
+        self.assertEqual(summary["runbook_status"], "ok")
         self.assertEqual(summary["primary_action"]["kind"], "none")
         self.assertEqual(summary["runbook"]["primary_action"]["kind"], "none")
         self.assertEqual(summary["compact_summary"]["taskmonitor_summary"], "override_count=0")
@@ -533,6 +535,7 @@ class MainOpsTests(unittest.TestCase):
             summary["primary_action_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus-json'",
         )
+        self.assertEqual(summary["runbook_status"], "warn")
         self.assertEqual(summary["primary_action"]["kind"], "followup-session")
         self.assertEqual(summary["runbook"]["status"], "warn")
         self.assertEqual(summary["runbook"]["primary_action"]["kind"], "followup-session")
@@ -610,6 +613,7 @@ class MainOpsTests(unittest.TestCase):
             result["primary_action_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
         )
+        self.assertEqual(result["runbook_status"], "needs-followup")
         self.assertEqual(result["primary_action"]["kind"], "followup-session")
         self.assertEqual(result["runbook"]["status"], "needs-followup")
         self.assertEqual(result["runbook"]["primary_action"]["kind"], "followup-session")
@@ -684,6 +688,7 @@ class MainOpsTests(unittest.TestCase):
             result["primary_action_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus'",
         )
+        self.assertEqual(result["runbook_status"], "needs-followup")
         self.assertEqual(result["post_resume_summary"]["resumed_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
         self.assertEqual(
@@ -770,6 +775,7 @@ class MainOpsTests(unittest.TestCase):
             result["primary_action_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:running'",
         )
+        self.assertEqual(result["runbook_status"], "needs-followup")
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 0)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "needs-followup")
         self.assertEqual(
@@ -829,6 +835,7 @@ class MainOpsTests(unittest.TestCase):
             result["primary_action_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
         )
+        self.assertEqual(result["runbook_status"], "settled")
         self.assertEqual(result["post_resume_summary"]["settled_session_count"], 1)
         self.assertEqual(result["post_resume_summary"]["closure_state"], "settled")
         self.assertEqual(
@@ -958,6 +965,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIsNone(result["post_resume_summary"]["closure_hint_command"])
         self.assertEqual(result["primary_action_kind"], "none")
         self.assertIsNone(result["primary_action_command"])
+        self.assertEqual(result["runbook_status"], "no-resume-targets")
         self.assertEqual(result["primary_action"]["kind"], "none")
         self.assertEqual(result["runbook"]["status"], "no-resume-targets")
         self.assertEqual(result["post_resume_summary"]["primary_action"]["kind"], "none")

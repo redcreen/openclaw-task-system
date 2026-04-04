@@ -596,6 +596,7 @@ def get_main_continuity_summary(
         "top_risk_session": top_risk_session,
         "primary_action_kind": primary_action["kind"],
         "primary_action_command": primary_action["command"],
+        "runbook_status": runbook["status"],
         "primary_action": primary_action,
         "runbook": runbook,
         "suggested_next_commands": suggested_next_commands,
@@ -833,6 +834,7 @@ def resume_watchdog_blocked_main_tasks(
         "closure_hint_command": closure_hint_command,
         "primary_action_kind": post_resume_runbook["primary_action"]["kind"],
         "primary_action_command": post_resume_runbook["primary_action"]["command"],
+        "runbook_status": post_resume_runbook["status"],
         "primary_action": post_resume_runbook["primary_action"],
         "runbook": post_resume_runbook,
         "post_resume_summary": {
@@ -1405,6 +1407,7 @@ def get_main_dashboard_summary(
         "action_hint_command": action_hint_command,
         "primary_action_kind": primary_action["kind"],
         "primary_action_command": primary_action["command"],
+        "runbook_status": runbook["status"],
         "primary_action": primary_action,
         "runbook": runbook,
         "taskmonitor": taskmonitor,
