@@ -187,6 +187,7 @@
 - `triage` 也已接入这条主线，在 watchdog-blocked 场景下优先提示 guarded auto-resume
 - `triage --json` 也已提供 `primary_action / runbook / focus_session_key`
 - `triage --json` 也已提供 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_blockers / auto_resume_command`
+- 插件已新增 `watchdog-auto-recover` 启动/轮询链路，用于把重启后卡住的长任务推进到 guarded auto-resume
 - 现在剩余的真正残留主要是：
   - 恢复后的最终自动收口判定
   - watchdog 与长任务续跑的更完整自动策略

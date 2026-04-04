@@ -103,6 +103,115 @@ class OpenClawHooksTests(unittest.TestCase):
         finally:
             openclaw_hooks.load_payload_from_stdin = original
 
+    def test_watchdog_auto_recover_orchestrates_scan_and_auto_resume(self) -> None:
+        original_scan = openclaw_hooks.process_overdue_tasks
+        original_auto_resume = openclaw_hooks.auto_resume_watchdog_blocked_main_tasks_if_safe
+
+        def fake_scan(*, paths=None, config=None, config_path=None):
+            return [
+                {
+                    "task_id": "task_watchdog",
+                    "session_key": "session:main:recover",
+                    "should_notify": True,
+                    "escalation": "blocked-no-visible-progress",
+                }
+            ]
+
+        def fake_auto_resume(*, config_path=None, paths=None, session_key=None, limit=None, note=None, dry_run=False):
+            return {
+                "status": "applied",
+                "session_filter": session_key or "all",
+                "closure_complete": False,
+                "closure_state": "needs-followup",
+                "closure_state_reason": "resumed-sessions-still-have-active-tasks",
+                "closure_hint": "Follow up session session:main:recover next.",
+                "closure_hint_command": "python3 ... continuity --session-key 'session:main:recover'",
+                "focus_session_key": "session:main:recover",
+                "primary_action_kind": "followup-session",
+                "primary_action_command": "python3 ... continuity --session-key 'session:main:recover'",
+                "runbook_status": "needs-followup",
+                "requires_action": True,
+                "primary_action": {"kind": "followup-session", "command": "python3 ... continuity --session-key 'session:main:recover'"},
+                "runbook": {"status": "needs-followup", "primary_action": {"kind": "followup-session"}, "steps": [], "commands": []},
+                "suggested_next_commands": ["python3 ... continuity --session-key 'session:main:recover'"],
+                "next_followup_summary": {"session_filter": "session:main:recover"},
+            }
+
+        openclaw_hooks.process_overdue_tasks = fake_scan
+        openclaw_hooks.auto_resume_watchdog_blocked_main_tasks_if_safe = fake_auto_resume
+        try:
+            result = openclaw_hooks.watchdog_auto_recover_from_payload(
+                {"session_key": "session:main:recover", "limit": 1, "note": "继续推进"},
+                config_path=self.config_path,
+            )
+        finally:
+            openclaw_hooks.process_overdue_tasks = original_scan
+            openclaw_hooks.auto_resume_watchdog_blocked_main_tasks_if_safe = original_auto_resume
+
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(result["watchdog_findings_count"], 1)
+        self.assertEqual(result["watchdog_notified_count"], 1)
+        self.assertEqual(result["watchdog_blocked_count"], 1)
+        self.assertEqual(result["focus_session_key"], "session:main:recover")
+
+    def test_watchdog_auto_recover_startup_recovery_promotes_stale_running_main_task(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:main:startup-recover",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:startup-recover",
+            user_id="ou_test",
+            task_label="startup stale running task",
+        )
+        running = store.start_task(task.task_id)
+        running.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        running.last_monitor_notify_at = "2026-04-04T10:00:00+08:00"
+        store.save_task(running)
+
+        result = openclaw_hooks.watchdog_auto_recover_from_payload(
+            {"startup_recovery": True},
+            config_path=self.config_path,
+        )
+
+        refreshed = store.load_task(task.task_id, allow_archive=False)
+        self.assertEqual(result["startup_recovery"], True)
+        self.assertEqual(result["startup_promoted_count"], 1)
+        self.assertEqual(result["startup_promoted"][0]["task_id"], task.task_id)
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(refreshed.status, task_state_module.STATUS_RUNNING)
+
+    def test_watchdog_auto_recover_startup_recovery_repromotes_running_task_with_existing_escalation(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:main:startup-rerun",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:startup-rerun",
+            user_id="ou_test",
+            task_label="startup rerun task",
+        )
+        running = store.start_task(task.task_id)
+        running.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        running.last_monitor_notify_at = "2026-04-04T10:00:00+08:00"
+        running.meta["watchdog_escalation"] = "startup-recovery-stalled-running"
+        running.meta["watchdog_escalation_at"] = "2026-04-04T10:00:05+08:00"
+        store.save_task(running)
+
+        result = openclaw_hooks.watchdog_auto_recover_from_payload(
+            {"startup_recovery": True},
+            config_path=self.config_path,
+        )
+
+        refreshed = store.load_task(task.task_id, allow_archive=False)
+        self.assertEqual(result["startup_recovery"], True)
+        self.assertEqual(result["startup_promoted_count"], 1)
+        self.assertEqual(result["startup_promoted"][0]["task_id"], task.task_id)
+        self.assertEqual(result["status"], "applied")
+        self.assertEqual(refreshed.status, task_state_module.STATUS_RUNNING)
+
     def test_register_from_payload_includes_estimated_wait_seconds(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         done = store.register_task(

@@ -3,6 +3,8 @@ import { appendFile, mkdir, readdir, readFile, rename } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
+const INTERNAL_STARTUP_RESUME_MARKER = "[[TASK-SYSTEM-STARTUP-RESUME]]";
+
 type TaskSystemPluginConfig = {
   enabled?: boolean;
   taskMessagePrefix?: string;
@@ -26,6 +28,8 @@ type TaskSystemPluginConfig = {
   hostDeliveryPollMs?: number;
   enableContinuationRunner?: boolean;
   continuationPollMs?: number;
+  enableWatchdogRecoveryRunner?: boolean;
+  watchdogRecoveryPollMs?: number;
 };
 
 function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
@@ -88,6 +92,11 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
       typeof value.continuationPollMs === "number" && Number.isFinite(value.continuationPollMs)
         ? Math.max(1000, Math.trunc(value.continuationPollMs))
         : 3000,
+    enableWatchdogRecoveryRunner: value.enableWatchdogRecoveryRunner !== false,
+    watchdogRecoveryPollMs:
+      typeof value.watchdogRecoveryPollMs === "number" && Number.isFinite(value.watchdogRecoveryPollMs)
+        ? Math.max(1000, Math.trunc(value.watchdogRecoveryPollMs))
+        : 30000,
   };
 }
 
@@ -239,6 +248,59 @@ async function callHook(
   }
 }
 
+async function callGatewayCli(
+  api: OpenClawPluginApi,
+  config: Required<TaskSystemPluginConfig>,
+  method: string,
+  params: Record<string, unknown>,
+  timeoutMs = 10000,
+): Promise<Record<string, unknown> | null> {
+  try {
+    enqueueDebugLog(config, `gateway:${method}:start`, params);
+    const args = [
+      "gateway",
+      "call",
+      method,
+      "--json",
+      "--params",
+      JSON.stringify(params),
+      "--timeout",
+      String(timeoutMs),
+    ];
+    const result = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      const child = spawn(config.openclawBin, args, {
+        cwd: config.runtimeRoot,
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk) => {
+        stdout += String(chunk);
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += String(chunk);
+      });
+      child.on("error", reject);
+      child.on("close", (code) => {
+        if (code === 0) {
+          resolve({ stdout, stderr });
+          return;
+        }
+        reject(new Error(stderr.trim() || `gateway call exited with code ${code}`));
+      });
+    });
+    const parsed = JSON.parse(result.stdout || "{}") as Record<string, unknown>;
+    enqueueDebugLog(config, `gateway:${method}:ok`, parsed);
+    return parsed;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    enqueueDebugLog(config, `gateway:${method}:error`, { message });
+    api.logger.warn(`[task-system] gateway ${method} failed: ${message}`);
+    return null;
+  }
+}
+
 function buildSessionKey(channelId: string, conversationId?: string): string {
   const suffix = conversationId?.trim() ? conversationId.trim() : "unknown";
   return `${channelId}:${suffix}`;
@@ -330,6 +392,10 @@ function canSendDirectStatusMessage(channel: string, chatId: string): boolean {
 function isInternalRetryPrompt(prompt: string): boolean {
   const normalized = normalizeText(prompt).toLowerCase();
   return normalized === "continue where you left off. the previous model attempt failed or timed out.";
+}
+
+function isInternalStartupResumePrompt(prompt: string): boolean {
+  return normalizeText(prompt).startsWith(INTERNAL_STARTUP_RESUME_MARKER);
 }
 
 function isContinuationWakePrompt(prompt: string): boolean {
@@ -653,6 +719,42 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         error: messageText,
       });
     }
+  }
+}
+
+async function processWatchdogRecovery(
+  api: OpenClawPluginApi,
+  config: Required<TaskSystemPluginConfig>,
+  options: { startupRecovery?: boolean } = {},
+): Promise<void> {
+  const { startupRecovery = false } = options;
+  if (!config.enableWatchdogRecoveryRunner) {
+    return;
+  }
+  const result = await callHook(api, config, "watchdog-auto-recover", { startup_recovery: startupRecovery });
+  if (!startupRecovery || !result) {
+    return;
+  }
+  const promoted = Array.isArray(result.startup_promoted) ? result.startup_promoted : [];
+  for (const item of promoted) {
+    const sessionKey = normalizeText((item as Record<string, unknown>).session_key);
+    if (!sessionKey) {
+      continue;
+    }
+    const taskLabel = normalizeText((item as Record<string, unknown>).task_label);
+    const resumeMessage = [
+      INTERNAL_STARTUP_RESUME_MARKER,
+      "系统恢复：OpenClaw 重启后检测到当前会话里有未完成的主任务需要继续推进。",
+      taskLabel ? `任务目标：${taskLabel}` : "",
+      "请基于当前会话上下文和现有 workspace 继续执行，并在完成后把最终结果回复到当前频道。",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    await callGatewayCli(api, config, "sessions.steer", {
+      key: sessionKey,
+      message: resumeMessage,
+      timeoutMs: 10000,
+    });
   }
 }
 
@@ -982,6 +1084,7 @@ const taskSystemPlugin = {
     const config = normalizeConfig(api.pluginConfig);
     let hostDeliveryTimer: ReturnType<typeof setInterval> | null = null;
     let continuationTimer: ReturnType<typeof setInterval> | null = null;
+    let watchdogRecoveryTimer: ReturnType<typeof setInterval> | null = null;
     const pendingReceipts = new Map<string, PendingReceipt>();
     const activeTaskBindings = new Map<string, ActiveTaskBinding>();
     const taskMonitorEnabledBySession = new Map<string, boolean>();
@@ -1043,6 +1146,15 @@ const taskSystemPlugin = {
 
     api.on("before_dispatch", async (event, ctx) => {
       if (!config.registerOnBeforeDispatch || !event.content?.trim()) {
+        return;
+      }
+      if (isInternalStartupResumePrompt(event.content)) {
+        enqueueDebugLog(config, "before_dispatch:startup-resume", {
+          sessionKey: normalizeSessionKey(
+            event.sessionKey || ctx.sessionKey || buildSessionKey(ctx.channelId ?? event.channel ?? "unknown", ctx.conversationId),
+          ),
+          channel: event.channel ?? ctx.channelId ?? "unknown",
+        });
         return;
       }
       const sessionKey = normalizeSessionKey(
@@ -1480,6 +1592,12 @@ const taskSystemPlugin = {
       id: "openclaw-task-system-host-delivery",
       async start() {
         await warmOutboundAdapters(api, ["telegram", "feishu"]);
+        if (config.enableWatchdogRecoveryRunner) {
+          watchdogRecoveryTimer = setInterval(() => {
+            void processWatchdogRecovery(api, config);
+          }, config.watchdogRecoveryPollMs);
+          await processWatchdogRecovery(api, config, { startupRecovery: true });
+        }
         if (!config.enableHostFeishuDelivery) {
           if (config.enableContinuationRunner) {
             continuationTimer = setInterval(() => {
@@ -1504,6 +1622,10 @@ const taskSystemPlugin = {
         if (hostDeliveryTimer) {
           clearInterval(hostDeliveryTimer);
           hostDeliveryTimer = null;
+        }
+        if (watchdogRecoveryTimer) {
+          clearInterval(watchdogRecoveryTimer);
+          watchdogRecoveryTimer = null;
         }
         if (continuationTimer) {
           clearInterval(continuationTimer);

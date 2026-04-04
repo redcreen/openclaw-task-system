@@ -80,6 +80,14 @@
     "continuationPollMs": {
       "label": "Continuation Poll MS",
       "help": "Polling interval for scheduled continuation tasks such as delayed replies."
+    },
+    "enableWatchdogRecoveryRunner": {
+      "label": "Enable Watchdog Recovery",
+      "help": "Run overdue-task scan plus guarded auto-resume on plugin startup and on a recurring interval."
+    },
+    "watchdogRecoveryPollMs": {
+      "label": "Watchdog Recovery Poll MS",
+      "help": "Polling interval for startup-style watchdog recovery scans that unblock interrupted long-running tasks."
     }
   },
   "configSchema": {
@@ -106,6 +114,8 @@
       "hostDeliveryPollMs": { "type": "integer", "minimum": 1000 },
       "enableContinuationRunner": { "type": "boolean" },
       "continuationPollMs": { "type": "integer", "minimum": 1000 },
+      "enableWatchdogRecoveryRunner": { "type": "boolean" },
+      "watchdogRecoveryPollMs": { "type": "integer", "minimum": 1000 },
       "ignoreProgressPatterns": {
         "type": "array",
         "items": { "type": "string" }

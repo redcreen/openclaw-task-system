@@ -17,8 +17,10 @@ from openclaw_bridge import (
     record_progress,
     register_inbound_task,
 )
+from main_ops import auto_resume_watchdog_blocked_main_tasks_if_safe
+from silence_monitor import process_overdue_tasks
 from task_config import load_task_system_config
-from task_state import TaskStore
+from task_state import TaskStore, now_iso
 from taskmonitor_state import get_taskmonitor_enabled, set_taskmonitor_enabled
 
 
@@ -129,6 +131,73 @@ def activate_latest_from_payload(
         return {"updated": True, "task": active.to_dict(), "reason": "existing-active-task"}
     if not observed:
         return {"updated": False, "reason": "no-observed-task"}
+
+
+def watchdog_auto_recover_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    resolved_paths = runtime_config.build_paths()
+    findings = process_overdue_tasks(
+        paths=resolved_paths,
+        config=runtime_config,
+        config_path=config_path,
+    )
+    startup_recovery = bool(payload.get("startup_recovery", False))
+    startup_promoted: list[dict[str, Any]] = []
+    if startup_recovery:
+        store = TaskStore(paths=resolved_paths)
+        for finding in findings:
+            if str(finding.get("agent_id") or "") != "main":
+                continue
+            if str(finding.get("status") or "") != "running":
+                continue
+            task_id = str(finding.get("task_id") or "").strip()
+            if not task_id:
+                continue
+            try:
+                task = store.load_task(task_id, allow_archive=False)
+            except FileNotFoundError:
+                continue
+            if task.status != "running":
+                continue
+            blocked = store.block_task(
+                task.task_id,
+                "startup recovery promoted stale running task after restart",
+            )
+            blocked.monitor_state = "blocked"
+            blocked.meta["watchdog_escalation"] = "startup-recovery-stalled-running"
+            blocked.meta["watchdog_escalation_at"] = now_iso()
+            store.save_task(blocked)
+            startup_promoted.append(
+                {
+                    "task_id": blocked.task_id,
+                    "session_key": blocked.session_key,
+                    "task_label": blocked.task_label,
+                    "previous_status": "running",
+                    "watchdog_escalation": "startup-recovery-stalled-running",
+                }
+            )
+    result = auto_resume_watchdog_blocked_main_tasks_if_safe(
+        config_path=config_path,
+        paths=resolved_paths,
+        session_key=str(payload.get("session_key") or "").strip() or None,
+        limit=int(payload["limit"]) if payload.get("limit") is not None else None,
+        note=str(payload.get("note") or "").strip() or None,
+        dry_run=bool(payload.get("dry_run", False)),
+    )
+    result["startup_recovery"] = startup_recovery
+    result["startup_promoted"] = startup_promoted
+    result["startup_promoted_count"] = len(startup_promoted)
+    result["watchdog_findings"] = findings
+    result["watchdog_findings_count"] = len(findings)
+    result["watchdog_notified_count"] = sum(1 for finding in findings if bool(finding.get("should_notify")))
+    result["watchdog_blocked_count"] = sum(
+        1 for finding in findings if str(finding.get("escalation") or "").strip() == "blocked-no-visible-progress"
+    )
+    return result
     claimed = store.claim_execution_slot(observed.task_id)
     return {"updated": True, "task": claimed.to_dict(), "reason": "promoted-observed-task"}
 
@@ -609,6 +678,8 @@ def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Pat
         return register_from_payload(payload, config_path=config_path)
     if command == "activate-latest":
         return activate_latest_from_payload(payload, config_path=config_path)
+    if command == "watchdog-auto-recover":
+        return watchdog_auto_recover_from_payload(payload, config_path=config_path)
     if command == "claim-due-continuations":
         return claim_due_continuations_from_payload(payload, config_path=config_path)
     if command == "fulfill-due-continuation":
@@ -648,7 +719,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     usage = (
         "usage: openclaw_hooks.py "
-        "<register|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control> "
+        "<register|watchdog-auto-recover|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control> "
         "<payload.json|-> [config.json]"
     )
     if args and args[0] in {"-h", "--help"}:

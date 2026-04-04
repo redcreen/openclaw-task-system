@@ -271,6 +271,7 @@
   `continuity --auto-resume-if-safe --json` 也已直接提供顶层 `closure_complete / primary_action / runbook`
   `continuity --auto-resume-if-safe --json` 现在还会统一给出顶层 `closure_state / closure_hint / next_followup_summary`
   文本版 `continuity --auto-resume-if-safe` 现在也会渲染 `Next Follow-up / Suggested Commands / Runbook`
+  插件现在也支持启动时与轮询式 `watchdog-auto-recover`，用于把重启后卡住的长任务推进到 guarded auto-resume 链路
   `dashboard --json` / `dashboard --json --only-issues` 现在也会直接给出 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_blockers / auto_resume_command`
   `dashboard --only-issues` 文本视图现在也会直接显示 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_command`
   `triage` 在识别到 watchdog-blocked 主任务且满足条件时，也会优先提示 guarded auto-resume，而不是裸 `resume task_id`
