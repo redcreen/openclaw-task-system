@@ -206,10 +206,12 @@
 - 当前队列拓扑：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json`
+  输出会显式标出当前哪些 session 正在共享同一个 agent queue
 
 - 当前 lane 摘要：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes`
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json`
+  输出会显式标出当前 lane 是 `shared` 还是 `single-session`
 
 - 当前持续执行 / watchdog 风险摘要：
   `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`

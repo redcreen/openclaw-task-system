@@ -155,6 +155,7 @@
   - 当前有几个 queue
   - 当前有几个 lane
   - 哪些 task 在 running / queued / paused
+  - 哪些 session 正在共享同一个 agent queue / lane
 - 但还没最终回答：
   - 是否要开放真正并发执行
   - OpenClaw 当前天然并发能力边界

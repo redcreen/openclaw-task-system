@@ -396,8 +396,12 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("# Queue Lanes", rendered)
         self.assertIn("## Agent: main", rendered)
         self.assertIn("## Agent: code", rendered)
+        self.assertIn("- lane_kind: shared", rendered)
         self.assertIn("- running_task_count: 1", rendered)
         self.assertIn("- session_lane_count: 2", rendered)
+        self.assertIn("- shared_sessions:", rendered)
+        self.assertIn("session:main:run", rendered)
+        self.assertIn("session:main:queued", rendered)
         self.assertIn("main queued", rendered)
         self.assertIn("code running", rendered)
 
@@ -423,7 +427,9 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["agent_count"], 2)
         self.assertEqual(summary["agents"][0]["agent_id"], "code")
         self.assertEqual(summary["agents"][1]["agent_id"], "main")
+        self.assertEqual(summary["agents"][1]["lane_kind"], "single-session")
         self.assertEqual(summary["agents"][1]["running_task_count"], 1)
+        self.assertEqual(summary["agents"][1]["shared_sessions"], [])
         self.assertEqual(summary["agents"][0]["queued_head"][0]["task_id"], code_queued.task_id)
 
     def test_render_queue_lanes_includes_due_paused_continuations(self) -> None:
@@ -480,6 +486,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- queue_count: 2", rendered)
         self.assertIn("## Queue: main", rendered)
         self.assertIn("- queue_kind: shared", rendered)
+        self.assertIn("- shared_sessions:", rendered)
         self.assertIn("- session_count: 2", rendered)
         self.assertIn("session:main:one | task_count=1", rendered)
         self.assertIn("session:main:two | task_count=1", rendered)
@@ -508,6 +515,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["queue_count"], 1)
         self.assertEqual(summary["queues"][0]["agent_id"], "main")
         self.assertEqual(summary["queues"][0]["queue_kind"], "shared")
+        self.assertEqual(summary["queues"][0]["shared_sessions"], ["session:main:one", "session:main:two"])
         self.assertEqual(summary["queues"][0]["session_count"], 2)
         self.assertEqual(len(summary["queues"][0]["sessions"]), 2)
 
