@@ -1012,8 +1012,11 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "noop")
         self.assertEqual(result["reason"], "no-auto-resumable-tasks")
+        self.assertTrue(result["closure_complete"])
         self.assertFalse(result["safe_to_apply"])
         self.assertFalse(result["auto_resume_ready"])
+        self.assertEqual(result["primary_action_kind"], "none")
+        self.assertFalse(result["requires_action"])
 
     def test_auto_resume_watchdog_blocked_main_tasks_if_safe_skips_when_blocked(self) -> None:
         task = self.store.register_task(
@@ -1045,9 +1048,12 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(result["reason"], "auto-resume-blocked")
+        self.assertFalse(result["closure_complete"])
         self.assertTrue(result["auto_resume_ready"])
         self.assertFalse(result["safe_to_apply"])
         self.assertEqual(result["auto_resume_blockers"], ["manual-review-present"])
+        self.assertEqual(result["primary_action_kind"], "preview-auto-resume")
+        self.assertTrue(result["requires_action"])
 
     def test_auto_resume_watchdog_blocked_main_tasks_if_safe_applies_when_safe(self) -> None:
         task = self.store.register_task(
@@ -1068,11 +1074,14 @@ class MainOpsTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "applied")
+        self.assertFalse(result["closure_complete"])
         self.assertTrue(result["safe_to_apply"])
         self.assertTrue(result["auto_resume_ready"])
         self.assertEqual(result["auto_resume_blockers"], [])
         self.assertIn("resume_result", result)
         self.assertEqual(result["resume_result"]["resumed_count"], 1)
+        self.assertEqual(result["primary_action_kind"], "followup-session")
+        self.assertTrue(result["requires_action"])
         resumed = self.store.load_task(task.task_id)
         self.assertEqual(resumed.status, task_state_module.STATUS_RUNNING)
 

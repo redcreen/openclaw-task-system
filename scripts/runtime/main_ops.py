@@ -1046,14 +1046,23 @@ def auto_resume_watchdog_blocked_main_tasks_if_safe(
         "dry_run": dry_run,
         "would_apply": safe_to_apply and ready,
         "continuity": continuity,
+        "focus_session_key": continuity.get("focus_session_key"),
+        "primary_action_kind": continuity.get("primary_action_kind"),
+        "primary_action_command": continuity.get("primary_action_command"),
+        "runbook_status": continuity.get("runbook_status"),
+        "requires_action": bool(continuity.get("requires_action")),
+        "primary_action": continuity.get("primary_action"),
+        "runbook": continuity.get("runbook"),
     }
     if not ready:
         result["status"] = "noop"
         result["reason"] = "no-auto-resumable-tasks"
+        result["closure_complete"] = True
         return result
     if not safe_to_apply:
         result["status"] = "skipped"
         result["reason"] = "auto-resume-blocked"
+        result["closure_complete"] = False
         return result
 
     respect_execution_advice = str(continuity.get("auto_resume_mode") or "") == "respect-execution-advice"
@@ -1073,6 +1082,10 @@ def auto_resume_watchdog_blocked_main_tasks_if_safe(
     result["primary_action_kind"] = str(resume_result.get("primary_action_kind") or "none")
     result["primary_action_command"] = resume_result.get("primary_action_command")
     result["focus_session_key"] = resume_result.get("focus_session_key")
+    result["runbook_status"] = resume_result.get("runbook_status")
+    result["requires_action"] = bool(resume_result.get("requires_action"))
+    result["primary_action"] = resume_result.get("primary_action")
+    result["runbook"] = resume_result.get("runbook")
     return result
 
 
