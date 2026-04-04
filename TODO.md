@@ -66,7 +66,7 @@
 - 队列文案是否符合当前真实队列状态
 
 
-## P2 下一步建议优先做
+## P2 已完成的运维与可观测能力
 
 ### 1. 取消队列中的任务
 
@@ -92,90 +92,93 @@
 - 运行中：优先带最近一次真实进展 `last_progress_note`
 - 无进展笔记时：退回到预计秒数 / 分钟数
 
-
-## P3 未开始 / 方案阶段
-
-### 1. 连续执行任务的持续执行机制
-
-当前状态：部分完成
-
-已新增：
-
-- `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity`
-- `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --limit 1`
-
-当前可以直接看到：
-
-- `main` 当前是否存在连续执行风险
-- watchdog 正在监控的超时任务数量
-- 是否已经出现 `watchdog_blocked_task`
-- 哪些任务可优先 `resume`
-- 也可以直接按限额恢复 watchdog 拦住的主任务
-- continuity 输出已按三类区分：
-  - `Auto-Resumable`
-  - `Needs Manual Review`
-  - `Not Recommended For Auto Resume`
-- 也已按 `session` 聚合，便于直接看问题集中在哪几个会话
-- 已支持 `--session-key` 过滤，可只看某个具体会话的 continuity 状态
-- 已支持 `--json`，便于后续给插件、状态栏或外部脚本直接消费
-
-原问题：
-
-- 任务看起来开始了
-- 但没有持续推进机制
-- 当前虽有监控，但还不是完整的执行闭环
-
-这部分需要单独设计：
-
-- 任务持续推进
-- 任务恢复
-- 长任务收口
-- 与 watchdog 的关系
-
-### 2. 并发执行与 lane 感知
-
-当前状态：部分完成
-
-- 已新增 `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes`
-- 已新增 `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues`
-- 可以查看当前各 agent 的：
-  - active_task_count
-  - running_task_count
-  - queued_task_count
-  - paused_task_count
-  - session_lane_count
-  - running_lane_count
-- 也会列出当前 running task 和 queued head，方便判断“前面是什么任务”
-- `queues` 会直接展示当前有几个 agent 队列、每个队列下有哪些 session，便于解释“为什么前面有几个号”
-- `queues` / `lanes` 已支持 `--json`，便于后续直接给外部脚本或 UI 消费
-- 已收紧 due continuation claim 规则：同一 session lane 一次最多 claim 1 条，避免多条到期任务同时变成 `running`
-- 已补回归：前一条 continuation 完成后，下一轮 poll 会自动 claim 同 session 的下一条 continuation
-
-仍待回答的问题：
-
-- 能否改成并发执行
-- OpenClaw 当前是否本身已并发
-- 系统是否能感知当前并发 lane
-- 当前实际有几个队列
-
-### 3. 临时关闭功能 / `/taskmonitor`
+### 4. 队列 / lane / continuity / taskmonitor 运维接口
 
 当前状态：已完成
 
 - 已支持：
-  - `/taskmonitor`
-  - `/taskmonitor status`
-  - `/taskmonitor on`
-  - `/taskmonitor off`
-- 当前为按 session 粒度持久化开关
-- 关闭后，该会话后续消息将跳过 task system 监控
-- 已新增运维命令：
-  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status`
-  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action status --json`
-  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '<session_key>' --action off`
-  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list`
-  - `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --action list --json`
-- runtime 命令级验证已通过
+  - `queues`
+  - `lanes`
+  - `continuity`
+  - `taskmonitor`
+- 已支持结构化输出：
+  - `queues --json`
+  - `lanes --json`
+  - `continuity --json`
+  - `taskmonitor --action status --json`
+  - `taskmonitor --action list --json`
+- `continuity` 已支持：
+  - `--session-key`
+  - `--resume-watchdog-blocked --limit N`
+  - 分类输出：
+    - `Auto-Resumable`
+    - `Needs Manual Review`
+    - `Not Recommended For Auto Resume`
+    - `By Session`
+
+
+## P3 下一步建议优先做
+
+### 1. 短消息体感的真实验证与优化
+
+当前状态：待继续真实验证
+
+- 连续发 `在么`
+- 重点确认：
+  - `[wd]` 是否每条都快速返回
+  - 正式回复后是否不再误发 30 秒 follow-up
+  - 队列文案是否符合当前真实队列状态
+- 现在逻辑已基本稳定，但体感速度和视觉时序还值得继续盯
+
+### 2. 连续执行任务的持续执行闭环
+
+当前状态：部分完成
+
+- 当前已经具备：
+  - 风险识别
+  - 分类输出
+  - 指定 session 过滤
+  - watchdog blocked 任务限额恢复
+- 但还没有完全形成自动闭环：
+  - 任务持续推进
+  - 恢复后的后续收口
+  - watchdog 与长任务续跑的完整策略
+
+### 3. 并发执行策略与 lane 模型
+
+当前状态：部分完成
+
+- 当前已经能看到：
+  - 当前有几个 queue
+  - 当前有几个 lane
+  - 哪些 task 在 running / queued / paused
+- 但还没最终回答：
+  - 是否要开放真正并发执行
+  - OpenClaw 当前天然并发能力边界
+  - lane 应如何影响叫号、恢复、持续执行
+
+### 4. 预计时间进一步细化
+
+当前状态：已做基础版，待细化
+
+- 现在是保守估算
+- 后续可继续按：
+  - agent
+  - session
+  - 任务类型
+  做更细粒度估算
+
+## P4 未开始 / 方案阶段
+
+### 1. 更产品化的开关与控制面板
+
+当前状态：未开始
+
+- runtime 侧的 `/taskmonitor` 开关和运维命令已经完成
+- 但更产品化的控制面板仍未开始，例如：
+  - 更直观的统一状态入口
+  - 面向普通使用者的开关与提示
+  - 更低成本的日常管理界面
 
 
 ## 未单独处理的历史问题
