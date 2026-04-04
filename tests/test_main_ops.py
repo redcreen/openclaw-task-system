@@ -1488,6 +1488,50 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("## Non-Retryable Failed Instructions", rendered)
         self.assertIn("chat_id=@example", rendered)
 
+    def test_render_main_triage_prefers_guarded_auto_resume_for_watchdog_blocked(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:triage-auto",
+            channel="telegram",
+            chat_id="chat:main:triage-auto",
+            task_label="triage auto task",
+        )
+        blocked = self.store.block_task(task.task_id, "watchdog blocked")
+        blocked.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked)
+
+        rendered = main_ops.render_main_triage(paths=self.paths)
+
+        self.assertIn("Apply guarded auto-resume first", rendered)
+        self.assertIn("continuity --auto-resume-if-safe", rendered)
+
+    def test_render_main_triage_falls_back_to_preview_when_auto_resume_has_blockers(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:triage-blocked",
+            channel="telegram",
+            chat_id="chat:main:triage-blocked",
+            task_label="triage blocked task",
+        )
+        blocked = self.store.block_task(task.task_id, "watchdog blocked")
+        blocked.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked)
+        queued = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:triage-blocked",
+            channel="telegram",
+            chat_id="chat:main:triage-blocked",
+            task_label="manual review sibling",
+        )
+        queued_task = self.store.start_task(queued.task_id)
+        queued_task.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        self.store.save_task(queued_task)
+
+        rendered = main_ops.render_main_triage(paths=self.paths)
+
+        self.assertIn("Preview guarded auto-resume first", rendered)
+        self.assertIn("continuity --resume-watchdog-blocked --dry-run", rendered)
+
     def test_render_main_triage_includes_blocked_age_and_sweep_hint(self) -> None:
         task = self.store.register_task(
             agent_id="main",

@@ -183,6 +183,7 @@
 - `continuity --auto-resume-if-safe --json` 也已统一提供顶层 `closure_state / closure_hint / next_followup_summary`
 - `dashboard --json` / `issue_summary` 也已统一提供 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_blockers / auto_resume_command`
 - `dashboard --only-issues` 文本视图也已直接显示 auto-resume 状态
+- `triage` 也已接入这条主线，在 watchdog-blocked 场景下优先提示 guarded auto-resume
 - 现在剩余的真正残留主要是：
   - 恢复后的最终自动收口判定
   - watchdog 与长任务续跑的更完整自动策略

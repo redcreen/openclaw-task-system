@@ -2278,6 +2278,7 @@ def render_main_triage(
     blocked_main = [
         task for task in overview["active_tasks"] if task["agent_id"] == "main" and task["status"] == "blocked"
     ]
+    continuity = get_main_continuity_summary(config_path=config_path, paths=paths)
     failed_summary = report["failed_instruction_summary"]
 
     lines = [
@@ -2297,9 +2298,18 @@ def render_main_triage(
     if blocked_main:
         task = blocked_main[0]
         blocked_age = _blocked_age_minutes(task)
-        lines.append(
-            f"- Resume blocked main task: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resume {task['task_id']} --note \"继续推进并同步真实进展\"`"
-        )
+        if bool(continuity.get("auto_resume_safe_to_apply")) and str(continuity.get("primary_action_command") or "").strip():
+            lines.append(
+                f"- Apply guarded auto-resume first: `{continuity['primary_action_command']}`"
+            )
+        elif bool(continuity.get("auto_resume_ready")) and str(continuity.get("auto_resume_preview_command") or "").strip():
+            lines.append(
+                f"- Preview guarded auto-resume first: `{continuity['auto_resume_preview_command']}`"
+            )
+        else:
+            lines.append(
+                f"- Resume blocked main task: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py resume {task['task_id']} --note \"继续推进并同步真实进展\"`"
+            )
         lines.append(
             f"- Or fail it explicitly: `python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py fail {task['task_id']} --reason \"manual close after triage\"`"
         )
