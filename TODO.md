@@ -132,7 +132,7 @@
 
 ### 2. 连续执行任务的持续执行闭环
 
-当前状态：已形成可用闭环，剩余为自动化深化
+当前状态：已形成可用闭环，且已完成重启恢复验收；剩余为自动化深化
 
 - 当前已经具备：
   - 风险识别
@@ -188,6 +188,13 @@
 - `triage --json` 也已提供 `primary_action / runbook / focus_session_key`
 - `triage --json` 也已提供 `auto_resume_ready / auto_resume_safe_to_apply / auto_resume_blockers / auto_resume_command`
 - 插件已新增 `watchdog-auto-recover` 启动/轮询链路，用于把重启后卡住的长任务推进到 guarded auto-resume
+- 已完成真实验收：
+  - OpenClaw 重启后，`main` 下已接收但未完成的普通 running 主任务
+  - 会被 `startupRecovery` 自动提升并恢复
+  - 并在继续执行后把最终结果回到原 channel（已验证 Feishu direct session）
+- 启动恢复链路已补一层延迟重试兜底：
+  - 启动时立即跑一次 `startupRecovery`
+  - 并在 10 秒后补跑一次，避免插件/网关启动时序导致的漏恢复
 - 现在剩余的真正残留主要是：
   - 恢复后的最终自动收口判定
   - watchdog 与长任务续跑的更完整自动策略
