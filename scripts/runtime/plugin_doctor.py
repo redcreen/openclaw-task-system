@@ -111,7 +111,7 @@ def render_markdown() -> str:
             "",
             "## Suggested Install Command",
             "",
-            f"`openclaw plugins install --link {PLUGIN_ROOT}`",
+            f"`openclaw plugins install {PLUGIN_ROOT}`",
             "",
             "## Suggested OpenClaw Config Snippet",
             "",
@@ -127,7 +127,7 @@ def render_markdown() -> str:
 def render_json() -> str:
     payload = {
         "checks": [asdict(check) for check in run_checks()],
-        "installCommand": f"openclaw plugins install --link {PLUGIN_ROOT}",
+        "installCommand": f"openclaw plugins install {PLUGIN_ROOT}",
         "openclawConfigSnippet": build_openclaw_config_snippet(),
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)

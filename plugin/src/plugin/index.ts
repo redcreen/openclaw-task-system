@@ -52,7 +52,7 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
     runtimeRoot:
       typeof value.runtimeRoot === "string" && value.runtimeRoot.trim()
         ? value.runtimeRoot.trim()
-        : `${process.env.HOME ?? ""}/.openclaw/workspace/openclaw-task-system`,
+        : `${process.env.HOME ?? ""}/Project/openclaw-task-system`,
     configPath: typeof value.configPath === "string" ? value.configPath.trim() : "",
     debugLogPath:
       typeof value.debugLogPath === "string" && value.debugLogPath.trim()

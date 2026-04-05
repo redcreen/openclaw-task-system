@@ -45,12 +45,12 @@ bash workspace/openclaw-task-system/scripts/run_tests.sh
 
 核心覆盖文件：
 
-- [plugin/tests/pre-register-and-ack.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/pre-register-and-ack.test.mjs)
-- [plugin/tests/control-plane-lane.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/control-plane-lane.test.mjs)
-- [plugin/tests/scheduler-diagnostics.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/scheduler-diagnostics.test.mjs)
-- [plugin/tests/delivery-runners.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/delivery-runners.test.mjs)
-- [tests/test_openclaw_hooks.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_openclaw_hooks.py)
-- [tests/test_openclaw_bridge.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_openclaw_bridge.py)
+- [plugin/tests/pre-register-and-ack.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/pre-register-and-ack.test.mjs)
+- [plugin/tests/control-plane-lane.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/control-plane-lane.test.mjs)
+- [plugin/tests/scheduler-diagnostics.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/scheduler-diagnostics.test.mjs)
+- [plugin/tests/delivery-runners.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/delivery-runners.test.mjs)
+- [tests/test_openclaw_hooks.py](/Users/redcreen/Project/openclaw-task-system/tests/test_openclaw_hooks.py)
+- [tests/test_openclaw_bridge.py](/Users/redcreen/Project/openclaw-task-system/tests/test_openclaw_bridge.py)
 
 ### 2.3 冒烟与接线层
 
@@ -118,13 +118,13 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py --json
 
 测试目录：
 
-- [tests/](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests)
+- [tests/](/Users/redcreen/Project/openclaw-task-system/tests)
 
 ### 4.1 Runtime / Hook / Bridge
 
-- [test_openclaw_hooks.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_openclaw_hooks.py)
-- [test_openclaw_bridge.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_openclaw_bridge.py)
-- [test_main_task_adapter.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_main_task_adapter.py)
+- [test_openclaw_hooks.py](/Users/redcreen/Project/openclaw-task-system/tests/test_openclaw_hooks.py)
+- [test_openclaw_bridge.py](/Users/redcreen/Project/openclaw-task-system/tests/test_openclaw_bridge.py)
+- [test_main_task_adapter.py](/Users/redcreen/Project/openclaw-task-system/tests/test_main_task_adapter.py)
 
 覆盖：
 
@@ -134,12 +134,12 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py --json
 
 ### 4.2 Task Truth Source
 
-- [test_task_state.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_task_state.py)
-- [test_task_status.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_task_status.py)
-- [test_task_policy.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_task_policy.py)
-- [test_task_config.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_task_config.py)
-- [test_task_store_lookup.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_task_store_lookup.py)
-- [test_taskmonitor_state.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_taskmonitor_state.py)
+- [test_task_state.py](/Users/redcreen/Project/openclaw-task-system/tests/test_task_state.py)
+- [test_task_status.py](/Users/redcreen/Project/openclaw-task-system/tests/test_task_status.py)
+- [test_task_policy.py](/Users/redcreen/Project/openclaw-task-system/tests/test_task_policy.py)
+- [test_task_config.py](/Users/redcreen/Project/openclaw-task-system/tests/test_task_config.py)
+- [test_task_store_lookup.py](/Users/redcreen/Project/openclaw-task-system/tests/test_task_store_lookup.py)
+- [test_taskmonitor_state.py](/Users/redcreen/Project/openclaw-task-system/tests/test_taskmonitor_state.py)
 
 覆盖：
 
@@ -150,10 +150,10 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py --json
 
 ### 4.3 运维与 CLI
 
-- [test_main_ops.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_main_ops.py)
-- [test_health_report.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_health_report.py)
-- [test_watchdog_cycle.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_watchdog_cycle.py)
-- [test_silence_monitor.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_silence_monitor.py)
+- [test_main_ops.py](/Users/redcreen/Project/openclaw-task-system/tests/test_main_ops.py)
+- [test_health_report.py](/Users/redcreen/Project/openclaw-task-system/tests/test_health_report.py)
+- [test_watchdog_cycle.py](/Users/redcreen/Project/openclaw-task-system/tests/test_watchdog_cycle.py)
+- [test_silence_monitor.py](/Users/redcreen/Project/openclaw-task-system/tests/test_silence_monitor.py)
 
 覆盖：
 
@@ -162,27 +162,27 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py --json
 
 ### 4.4 Delivery / Instruction Path
 
-- [test_delivery_flow.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_delivery_flow.py)
-- [test_delivery_outage.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_delivery_outage.py)
-- [test_delivery_reconcile.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_delivery_reconcile.py)
-- [test_instruction_executor.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_instruction_executor.py)
-- [test_enqueue_test_instruction.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_enqueue_test_instruction.py)
-- [test_notify.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_notify.py)
+- [test_delivery_flow.py](/Users/redcreen/Project/openclaw-task-system/tests/test_delivery_flow.py)
+- [test_delivery_outage.py](/Users/redcreen/Project/openclaw-task-system/tests/test_delivery_outage.py)
+- [test_delivery_reconcile.py](/Users/redcreen/Project/openclaw-task-system/tests/test_delivery_reconcile.py)
+- [test_instruction_executor.py](/Users/redcreen/Project/openclaw-task-system/tests/test_instruction_executor.py)
+- [test_enqueue_test_instruction.py](/Users/redcreen/Project/openclaw-task-system/tests/test_enqueue_test_instruction.py)
+- [test_notify.py](/Users/redcreen/Project/openclaw-task-system/tests/test_notify.py)
 
 ### 4.5 接线与 acceptance 脚本
 
-- [test_plugin_doctor.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_plugin_doctor.py)
-- [test_plugin_smoke.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_plugin_smoke.py)
-- [test_main_acceptance.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_main_acceptance.py)
-- [test_channel_acceptance.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_channel_acceptance.py)
-- [test_stable_acceptance.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_stable_acceptance.py)
+- [test_plugin_doctor.py](/Users/redcreen/Project/openclaw-task-system/tests/test_plugin_doctor.py)
+- [test_plugin_smoke.py](/Users/redcreen/Project/openclaw-task-system/tests/test_plugin_smoke.py)
+- [test_main_acceptance.py](/Users/redcreen/Project/openclaw-task-system/tests/test_main_acceptance.py)
+- [test_channel_acceptance.py](/Users/redcreen/Project/openclaw-task-system/tests/test_channel_acceptance.py)
+- [test_stable_acceptance.py](/Users/redcreen/Project/openclaw-task-system/tests/test_stable_acceptance.py)
 
 ## 5. Node plugin 测试分组
 
-- [plugin/tests/pre-register-and-ack.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/pre-register-and-ack.test.mjs)
-- [plugin/tests/control-plane-lane.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/control-plane-lane.test.mjs)
-- [plugin/tests/scheduler-diagnostics.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/scheduler-diagnostics.test.mjs)
-- [plugin/tests/delivery-runners.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/delivery-runners.test.mjs)
+- [plugin/tests/pre-register-and-ack.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/pre-register-and-ack.test.mjs)
+- [plugin/tests/control-plane-lane.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/control-plane-lane.test.mjs)
+- [plugin/tests/scheduler-diagnostics.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/scheduler-diagnostics.test.mjs)
+- [plugin/tests/delivery-runners.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/delivery-runners.test.mjs)
 
 合起来覆盖：
 

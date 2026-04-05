@@ -6,10 +6,10 @@
 
 - 如果你想了解“任务真相源、runtime hook、CLI 运维”怎么验证，先看这里。
 - 如果你想了解 plugin 的 control-plane lane / scheduler，去看：
-- [pre-register-and-ack.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/pre-register-and-ack.test.mjs)
-- [control-plane-lane.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/control-plane-lane.test.mjs)
-- [scheduler-diagnostics.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/scheduler-diagnostics.test.mjs)
-- [delivery-runners.test.mjs](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin/tests/delivery-runners.test.mjs)
+- [pre-register-and-ack.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/pre-register-and-ack.test.mjs)
+- [control-plane-lane.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/control-plane-lane.test.mjs)
+- [scheduler-diagnostics.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/scheduler-diagnostics.test.mjs)
+- [delivery-runners.test.mjs](/Users/redcreen/Project/openclaw-task-system/plugin/tests/delivery-runners.test.mjs)
 
 按职责可粗分为：
 
@@ -26,4 +26,4 @@
 
 正式 testsuite 说明见：
 
-- [docs/TESTSUITE.md](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/TESTSUITE.md)
+- [docs/TESTSUITE.md](/Users/redcreen/Project/openclaw-task-system/docs/TESTSUITE.md)

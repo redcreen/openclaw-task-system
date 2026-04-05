@@ -7,8 +7,8 @@
 
 项目是什么、为什么存在、主线状态是什么，统一看：
 
-- [README.md](/Users/redcreen/.openclaw/workspace/openclaw-task-system/README.md)
-- [ROADMAP.md](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/ROADMAP.md)
+- [README.md](/Users/redcreen/Project/openclaw-task-system/README.md)
+- [ROADMAP.md](/Users/redcreen/Project/openclaw-task-system/docs/ROADMAP.md)
 
 ## 1. 日常使用模型
 

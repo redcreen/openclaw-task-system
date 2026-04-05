@@ -62,15 +62,15 @@ The automated testsuite is also fully green.
 
 ### Repository Layout
 
-- [`docs/ROADMAP.md`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/ROADMAP.md): official roadmap
-- [`docs/ARCHITECTURE.md`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/ARCHITECTURE.md): architecture and design model
-- [`docs/TESTSUITE.md`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/TESTSUITE.md): test layers and validation rules
-- [`docs/USAGE_GUIDE.md`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/USAGE_GUIDE.md): extended usage notes
-- [`docs/PLUGIN_INSTALLATION.md`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/PLUGIN_INSTALLATION.md): plugin installation details
-- [`docs/TODO.md`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/TODO.md): temporary notes only, not the mainline
-- [`plugin/`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin): OpenClaw plugin
-- [`scripts/runtime/`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/scripts/runtime): runtime tools, truth sources, and CLI
-- [`config/`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/config): example configs
+- [`docs/ROADMAP.md`](/Users/redcreen/Project/openclaw-task-system/docs/ROADMAP.md): official roadmap
+- [`docs/ARCHITECTURE.md`](/Users/redcreen/Project/openclaw-task-system/docs/ARCHITECTURE.md): architecture and design model
+- [`docs/TESTSUITE.md`](/Users/redcreen/Project/openclaw-task-system/docs/TESTSUITE.md): test layers and validation rules
+- [`docs/USAGE_GUIDE.md`](/Users/redcreen/Project/openclaw-task-system/docs/USAGE_GUIDE.md): extended usage notes
+- [`docs/PLUGIN_INSTALLATION.md`](/Users/redcreen/Project/openclaw-task-system/docs/PLUGIN_INSTALLATION.md): plugin installation details
+- [`docs/TODO.md`](/Users/redcreen/Project/openclaw-task-system/docs/TODO.md): temporary notes only, not the mainline
+- [`plugin/`](/Users/redcreen/Project/openclaw-task-system/plugin): OpenClaw plugin
+- [`scripts/runtime/`](/Users/redcreen/Project/openclaw-task-system/scripts/runtime): runtime tools, truth sources, and CLI
+- [`config/`](/Users/redcreen/Project/openclaw-task-system/config): example configs
 
 ### Installation
 
@@ -78,7 +78,7 @@ The automated testsuite is also fully green.
 
 - OpenClaw installed locally
 - Python 3 available as `python3`
-- this repository available under your OpenClaw workspace
+- this repository available locally under a stable path such as `/Users/redcreen/Project/openclaw-task-system`
 
 #### 1. Validate the plugin and runtime
 
@@ -87,21 +87,21 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py
 python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py
 ```
 
-#### 2. Link-install the plugin
+#### 2. Install the plugin
 
 ```bash
-openclaw plugins install --link /Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin
+openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
 ```
 
 #### 3. Prepare runtime config
 
 Use:
 
-- [`config/task_system.json`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/config/task_system.json)
+- [`config/task_system.json`](/Users/redcreen/Project/openclaw-task-system/config/task_system.json)
 
 or start from:
 
-- [`config/task_system.example.json`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/config/task_system.example.json)
+- [`config/task_system.example.json`](/Users/redcreen/Project/openclaw-task-system/config/task_system.example.json)
 
 Example:
 
@@ -142,7 +142,7 @@ Example:
 
 Start from:
 
-- [`config/openclaw_plugin.example.json`](/Users/redcreen/.openclaw/workspace/openclaw-task-system/config/openclaw_plugin.example.json)
+- [`config/openclaw_plugin.example.json`](/Users/redcreen/Project/openclaw-task-system/config/openclaw_plugin.example.json)
 
 Example:
 
@@ -156,9 +156,9 @@ Example:
           "enabled": true,
           "taskMessagePrefix": "[wd] ",
           "pythonBin": "python3",
-          "runtimeRoot": "/Users/redcreen/.openclaw/workspace/openclaw-task-system",
-          "configPath": "/Users/redcreen/.openclaw/workspace/openclaw-task-system/config/task_system.json",
-          "debugLogPath": "/Users/redcreen/.openclaw/workspace/openclaw-task-system/data/plugin-debug.log",
+          "runtimeRoot": "/Users/redcreen/Project/openclaw-task-system",
+          "configPath": "/Users/redcreen/Project/openclaw-task-system/config/task_system.json",
+          "debugLogPath": "/Users/redcreen/Project/openclaw-task-system/data/plugin-debug.log",
           "defaultAgentId": "main",
           "registerOnBeforeDispatch": true,
           "sendImmediateAckOnRegister": true,
@@ -358,15 +358,15 @@ OpenClaw 天然更像消息驱动系统，但真实使用需要的是任务驱�
 
 ### 仓库结构
 
-- [docs/ROADMAP.md](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/ROADMAP.md)：正式 roadmap
-- [docs/ARCHITECTURE.md](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/ARCHITECTURE.md)：架构设计
-- [docs/TESTSUITE.md](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/TESTSUITE.md)：测试体系
-- [docs/USAGE_GUIDE.md](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/USAGE_GUIDE.md)：扩展使用说明
-- [docs/PLUGIN_INSTALLATION.md](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/PLUGIN_INSTALLATION.md)：插件安装说明
-- [docs/TODO.md](/Users/redcreen/.openclaw/workspace/openclaw-task-system/docs/TODO.md)：临时记录，不是正式主线
-- [plugin/](/Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin)：OpenClaw 插件
-- [scripts/runtime/](/Users/redcreen/.openclaw/workspace/openclaw-task-system/scripts/runtime)：运行时、truth source 与 CLI
-- [config/](/Users/redcreen/.openclaw/workspace/openclaw-task-system/config)：配置样例
+- [docs/ROADMAP.md](/Users/redcreen/Project/openclaw-task-system/docs/ROADMAP.md)：正式 roadmap
+- [docs/ARCHITECTURE.md](/Users/redcreen/Project/openclaw-task-system/docs/ARCHITECTURE.md)：架构设计
+- [docs/TESTSUITE.md](/Users/redcreen/Project/openclaw-task-system/docs/TESTSUITE.md)：测试体系
+- [docs/USAGE_GUIDE.md](/Users/redcreen/Project/openclaw-task-system/docs/USAGE_GUIDE.md)：扩展使用说明
+- [docs/PLUGIN_INSTALLATION.md](/Users/redcreen/Project/openclaw-task-system/docs/PLUGIN_INSTALLATION.md)：插件安装说明
+- [docs/TODO.md](/Users/redcreen/Project/openclaw-task-system/docs/TODO.md)：临时记录，不是正式主线
+- [plugin/](/Users/redcreen/Project/openclaw-task-system/plugin)：OpenClaw 插件
+- [scripts/runtime/](/Users/redcreen/Project/openclaw-task-system/scripts/runtime)：运行时、truth source 与 CLI
+- [config/](/Users/redcreen/Project/openclaw-task-system/config)：配置样例
 
 ### 安装方式
 
@@ -383,21 +383,21 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py
 python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py
 ```
 
-#### 2. 链接安装插件
+#### 2. 正式安装插件
 
 ```bash
-openclaw plugins install --link /Users/redcreen/.openclaw/workspace/openclaw-task-system/plugin
+openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
 ```
 
 #### 3. 准备 runtime 配置
 
 可以直接使用：
 
-- [config/task_system.json](/Users/redcreen/.openclaw/workspace/openclaw-task-system/config/task_system.json)
+- [config/task_system.json](/Users/redcreen/Project/openclaw-task-system/config/task_system.json)
 
 或者从样例开始：
 
-- [config/task_system.example.json](/Users/redcreen/.openclaw/workspace/openclaw-task-system/config/task_system.example.json)
+- [config/task_system.example.json](/Users/redcreen/Project/openclaw-task-system/config/task_system.example.json)
 
 示例：
 
@@ -438,7 +438,7 @@ openclaw plugins install --link /Users/redcreen/.openclaw/workspace/openclaw-tas
 
 从这里开始：
 
-- [config/openclaw_plugin.example.json](/Users/redcreen/.openclaw/workspace/openclaw-task-system/config/openclaw_plugin.example.json)
+- [config/openclaw_plugin.example.json](/Users/redcreen/Project/openclaw-task-system/config/openclaw_plugin.example.json)
 
 示例：
 
@@ -452,9 +452,9 @@ openclaw plugins install --link /Users/redcreen/.openclaw/workspace/openclaw-tas
           "enabled": true,
           "taskMessagePrefix": "[wd] ",
           "pythonBin": "python3",
-          "runtimeRoot": "/Users/redcreen/.openclaw/workspace/openclaw-task-system",
-          "configPath": "/Users/redcreen/.openclaw/workspace/openclaw-task-system/config/task_system.json",
-          "debugLogPath": "/Users/redcreen/.openclaw/workspace/openclaw-task-system/data/plugin-debug.log",
+          "runtimeRoot": "/Users/redcreen/Project/openclaw-task-system",
+          "configPath": "/Users/redcreen/Project/openclaw-task-system/config/task_system.json",
+          "debugLogPath": "/Users/redcreen/Project/openclaw-task-system/data/plugin-debug.log",
           "defaultAgentId": "main",
           "registerOnBeforeDispatch": true,
           "sendImmediateAckOnRegister": true,
