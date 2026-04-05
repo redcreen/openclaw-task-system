@@ -58,19 +58,30 @@ After installation, the normal user-visible flow becomes:
 
 ### quick install
 
-If you already have OpenClaw and `python3`, the fastest path is:
+If you already have OpenClaw and `python3`, the fastest stable install is:
 
 ```bash
-python3 scripts/runtime/plugin_doctor.py
-python3 scripts/runtime/plugin_smoke.py
-openclaw plugins install ./plugin
-python3 scripts/runtime/main_ops.py dashboard --json
+bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.1.0/scripts/install_remote.sh)
 ```
 
-Then enable the plugin with the example config:
+That command will:
 
-- [`./config/task_system.json`](./config/task_system.json)
-- [`./config/openclaw_plugin.example.json`](./config/openclaw_plugin.example.json)
+- download the `v0.1.0` release bundle
+- install the plugin into OpenClaw
+- write a minimal plugin entry into `~/.openclaw/openclaw.json`
+- run a post-install smoke check
+
+For development installs from the latest main branch:
+
+```bash
+OPENCLAW_TASK_SYSTEM_REF=main bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/main/scripts/install_remote.sh)
+```
+
+If you prefer pure OpenClaw remote install without the helper script:
+
+```bash
+openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.git#v0.1.0
+```
 
 ### quick example
 
@@ -149,12 +160,28 @@ The automated testsuite is also fully green.
 
 #### 1. validate the plugin and runtime
 
+If you are developing from source:
+
 ```bash
 python3 scripts/runtime/plugin_doctor.py
 python3 scripts/runtime/plugin_smoke.py
 ```
 
 #### 2. install the plugin
+
+Recommended stable release install:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.1.0/scripts/install_remote.sh)
+```
+
+Development install from the latest main branch:
+
+```bash
+OPENCLAW_TASK_SYSTEM_REF=main bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/main/scripts/install_remote.sh)
+```
+
+Local source install:
 
 ```bash
 openclaw plugins install ./plugin
@@ -168,7 +195,18 @@ openclaw plugins install ./plugin
 
 #### 3. prepare runtime config
 
-Use:
+The remote installer already writes a minimal working plugin entry into:
+
+- `~/.openclaw/openclaw.json`
+
+If you want to preview or rewrite that minimal entry from source:
+
+```bash
+python3 scripts/runtime/configure_openclaw_plugin.py
+python3 scripts/runtime/configure_openclaw_plugin.py --write
+```
+
+If you want the full runtime config file, use:
 
 - [`config/task_system.json`](./config/task_system.json)
 
@@ -190,8 +228,7 @@ Example:
         "classification": {
           "minRequestLength": 24,
           "minReasonCount": 2,
-          "estimatedStepsThreshold": 3,
-          "keywords": ["继续", "处理", "排查", "修复", "整理", "实现", "测试", "验证"]
+          "estimatedStepsThreshold": 3
         },
         "silenceMonitor": {
           "enabled": true,
@@ -476,19 +513,30 @@ OpenClaw Task System 是给 OpenClaw 补上的一层正式 task runtime。
 
 ### 快速安装
 
-如果你已经装好 OpenClaw 和 `python3`，最快可以直接这样做：
+如果你已经装好 OpenClaw 和 `python3`，推荐直接用稳定版远程一键安装：
 
 ```bash
-python3 scripts/runtime/plugin_doctor.py
-python3 scripts/runtime/plugin_smoke.py
-openclaw plugins install ./plugin
-python3 scripts/runtime/main_ops.py dashboard --json
+bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.1.0/scripts/install_remote.sh)
 ```
 
-然后启用示例配置：
+这条命令会自动完成：
 
-- [./config/task_system.json](./config/task_system.json)
-- [./config/openclaw_plugin.example.json](./config/openclaw_plugin.example.json)
+- 下载 `v0.1.0` 稳定版源码包
+- 安装插件到 OpenClaw
+- 写入一份最小可用的插件配置到 `~/.openclaw/openclaw.json`
+- 跑一轮安装后 smoke 检查
+
+如果你是开发用户，想直接安装主干最新版：
+
+```bash
+OPENCLAW_TASK_SYSTEM_REF=main bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/main/scripts/install_remote.sh)
+```
+
+如果你更喜欢纯 OpenClaw 的远程安装方式，也可以直接：
+
+```bash
+openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.git#v0.1.0
+```
 
 ### 快速使用示例
 
@@ -574,6 +622,20 @@ python3 scripts/runtime/plugin_smoke.py
 
 #### 2. 正式安装插件
 
+推荐普通用户直接安装稳定版 tag：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.1.0/scripts/install_remote.sh)
+```
+
+开发用户如果要安装主干最新版：
+
+```bash
+OPENCLAW_TASK_SYSTEM_REF=main bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/main/scripts/install_remote.sh)
+```
+
+如果你已经在源码目录里，也可以继续用本地正式安装方式：
+
 ```bash
 openclaw plugins install ./plugin
 ```
@@ -585,6 +647,17 @@ openclaw plugins install ./plugin
 ```
 
 #### 3. 准备 runtime 配置
+
+远程安装脚本会自动写入一份最小可用配置到：
+
+- `~/.openclaw/openclaw.json`
+
+如果你想先预览或重写这份最小配置：
+
+```bash
+python3 scripts/runtime/configure_openclaw_plugin.py
+python3 scripts/runtime/configure_openclaw_plugin.py --write
+```
 
 可以直接使用：
 
@@ -608,8 +681,7 @@ openclaw plugins install ./plugin
         "classification": {
           "minRequestLength": 24,
           "minReasonCount": 2,
-          "estimatedStepsThreshold": 3,
-          "keywords": ["继续", "处理", "排查", "修复", "整理", "实现", "测试", "验证"]
+          "estimatedStepsThreshold": 3
         },
         "silenceMonitor": {
           "enabled": true,

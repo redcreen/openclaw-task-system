@@ -9,17 +9,7 @@
         "classification": {
           "minRequestLength": 24,
           "minReasonCount": 2,
-          "estimatedStepsThreshold": 3,
-          "keywords": [
-            "继续",
-            "处理",
-            "排查",
-            "修复",
-            "整理",
-            "实现",
-            "测试",
-            "验证"
-          ]
+          "estimatedStepsThreshold": 3
         },
         "silenceMonitor": {
           "enabled": true,

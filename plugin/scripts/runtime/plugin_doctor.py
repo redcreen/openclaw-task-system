@@ -68,25 +68,7 @@ def build_openclaw_plugin_entry() -> dict[str, object]:
         "enabled": True,
         "pythonBin": "python3",
         "defaultAgentId": "main",
-        "registerOnBeforeDispatch": True,
-        "sendImmediateAckOnRegister": True,
-        "sendImmediateAckForShortTasks": True,
-        "shortTaskFollowupTimeoutMs": 30000,
-        "syncProgressOnMessageSending": True,
-        "finalizeOnAgentEnd": True,
-        "enableHostFeishuDelivery": True,
-        "enableContinuationRunner": True,
-        "enableWatchdogRecoveryRunner": True,
-        "minProgressMessageLength": 20,
-        "ignoreProgressPatterns": [
-            "^收到$",
-            "^好的$",
-            "^继续$",
-            "^处理中$",
-            "^稍等$",
-            "^thinking\\.\\.\\.$",
-            "^\\.\\.\\.$",
-        ],
+        "taskMessagePrefix": "[wd] ",
     }
 
 

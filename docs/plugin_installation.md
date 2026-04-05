@@ -3,7 +3,7 @@
 本文件只负责：
 
 - 安装前检查
-- 插件链接安装
+- 插件正式安装
 - OpenClaw 插件配置
 - 安装后的最小验证
 
@@ -41,13 +41,42 @@ python3 scripts/runtime/plugin_smoke.py --json
 
 ## 3. 正式安装插件
 
-推荐直接用正式安装方式：
+推荐普通用户直接用稳定版远程一键安装：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.1.0/scripts/install_remote.sh)
+```
+
+如果你更喜欢 OpenClaw 原生的远程安装方式，也可以直接：
+
+```bash
+openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.git#v0.1.0
+```
+
+开发用户如果需要主干最新版，可以用：
+
+```bash
+OPENCLAW_TASK_SYSTEM_REF=main bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/main/scripts/install_remote.sh)
+```
+
+如果你已经在源码目录里，也可以继续用本地正式安装方式：
 
 ```bash
 openclaw plugins install ./plugin
 ```
 
 ## 4. OpenClaw 插件配置
+
+远程安装脚本会自动写入一个最小可用配置到：
+
+- `~/.openclaw/openclaw.json`
+
+如果你想先预览或手动重写最小配置，可以运行：
+
+```bash
+python3 scripts/runtime/configure_openclaw_plugin.py
+python3 scripts/runtime/configure_openclaw_plugin.py --write
+```
 
 最常用的配置示例：
 
