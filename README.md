@@ -31,6 +31,36 @@ Instead, users get a predictable task experience:
 - restart recovery keeps accepted work from being silently lost
 - watchdog, continuity, follow-up, cancel, and resume stop being ad-hoc behaviors
 
+### before / after
+
+Before:
+
+- a user sends a message and does not know whether the system really accepted it
+- long tasks and delayed work feel like fragile chat behavior
+- restart or silence can make state unclear
+- operators inspect multiple places and still do not get one truth
+
+After:
+
+- every accepted request becomes a managed task
+- users see `[wd]`, queue state, follow-up, and final state as part of one task flow
+- restart recovery and continuity become first-class system behavior
+- users and operators read the same task truth source
+
+### who this is for
+
+This project is a good fit if:
+
+- you use OpenClaw for work that takes longer than one quick reply
+- you want `[wd]`, queueing, recovery, and status to behave like product features
+- you operate multiple channels and want one task model instead of channel-by-channel hacks
+
+It is probably not for you if:
+
+- you only need plain chat replies with no task lifecycle
+- you do not care about restart recovery, delayed replies, or operator views
+- you want a general-purpose multi-agent orchestrator rather than an OpenClaw-native task runtime
+
 ### what problem it solves
 
 OpenClaw is naturally message-driven, but real usage needs task-driven behavior.
@@ -418,6 +448,36 @@ OpenClaw Task System 是 OpenClaw 之上的统一任务运行时和控制面。
 - 排队状态和等待状态可查看，不再只能靠猜
 - 重启后，已接收但未完成的任务可以恢复
 - watchdog、continuity、follow-up、cancel、resume 都进入统一控制面
+
+### before / after
+
+之前：
+
+- 用户发出一条消息后，不确定系统是否真的接住了
+- 长任务、延迟任务、更像脆弱的聊天行为，而不是正式任务
+- 一旦沉默、重启、跨轮次，状态就容易不清楚
+- 运维需要看很多入口，也不一定能拼出同一份真相
+
+现在：
+
+- 每个被接收的请求都会变成可管理的 task
+- 用户会把 `[wd]`、排队状态、follow-up、终态，作为同一条任务流来感知
+- 重启恢复和 continuity 不再是临时补丁，而是正式系统能力
+- 用户和运维读取的是同一份任务真相源
+
+### 适合谁
+
+如果你符合下面这些情况，这个项目就很适合：
+
+- 你用 OpenClaw 处理的不只是秒回消息，而是会持续一段时间的任务
+- 你希望 `[wd]`、排队、恢复、状态同步成为正式产品能力
+- 你同时在多个 channel 上使用 OpenClaw，希望任务语义保持一致
+
+如果你只需要下面这些，这个项目可能就不是重点：
+
+- 只要简单聊天回复，不关心任务生命周期
+- 不关心重启恢复、延迟任务、运维状态视图
+- 你想要的是通用多 agent orchestrator，而不是 OpenClaw 原生 task runtime
 
 ### 这个项目解决什么问题
 
