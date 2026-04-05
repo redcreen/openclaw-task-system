@@ -22,14 +22,14 @@
 
 ```mermaid
 flowchart TD
-    classDef source fill:#f8fafc,stroke:#94a3b8,color:#111827,stroke-width:1.2px;
-    classDef core fill:#eff6ff,stroke:#60a5fa,color:#0f172a,stroke-width:1.4px;
-    classDef lane fill:#eef2ff,stroke:#818cf8,color:#1e1b4b,stroke-width:1.2px;
-    classDef output fill:#ecfeff,stroke:#22c55e,color:#052e16,stroke-width:1.2px;
-    style intake fill:#fafaf9,stroke:#cbd5e1,stroke-width:1px,color:#111827
-    style runtime fill:#eff6ff,stroke:#93c5fd,stroke-width:1px,color:#111827
-    style lanes fill:#f5f3ff,stroke:#c4b5fd,stroke-width:1px,color:#111827
-    style projection fill:#f0fdf4,stroke:#86efac,stroke-width:1px,color:#111827
+    classDef source fill:#dbe4ee,stroke:#64748b,color:#0f172a,stroke-width:1.2px;
+    classDef core fill:#dbeafe,stroke:#3b82f6,color:#0f172a,stroke-width:1.4px;
+    classDef lane fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b,stroke-width:1.2px;
+    classDef output fill:#d1fae5,stroke:#10b981,color:#064e3b,stroke-width:1.2px;
+    style intake fill:#e5e7eb,stroke:#94a3b8,stroke-width:1px,color:#111827
+    style runtime fill:#dbeafe,stroke:#60a5fa,stroke-width:1px,color:#111827
+    style lanes fill:#e9ddff,stroke:#a78bfa,stroke-width:1px,color:#111827
+    style projection fill:#dcfce7,stroke:#4ade80,stroke-width:1px,color:#111827
 
     U["用户消息"]
 
@@ -158,11 +158,11 @@ projection layer 负责把 truth source 投影给不同入口：
 
 ```mermaid
 flowchart TD
-    classDef source fill:#f8fafc,stroke:#94a3b8,color:#111827,stroke-width:1.2px;
-    classDef branch fill:#fff7ed,stroke:#fb923c,color:#7c2d12,stroke-width:1.2px;
-    classDef core fill:#eff6ff,stroke:#60a5fa,color:#0f172a,stroke-width:1.4px;
-    classDef lane fill:#eef2ff,stroke:#818cf8,color:#1e1b4b,stroke-width:1.2px;
-    classDef output fill:#ecfeff,stroke:#14b8a6,color:#134e4a,stroke-width:1.2px;
+    classDef source fill:#dbe4ee,stroke:#64748b,color:#0f172a,stroke-width:1.2px;
+    classDef branch fill:#fed7aa,stroke:#f97316,color:#7c2d12,stroke-width:1.2px;
+    classDef core fill:#dbeafe,stroke:#3b82f6,color:#0f172a,stroke-width:1.4px;
+    classDef lane fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b,stroke-width:1.2px;
+    classDef output fill:#ccfbf1,stroke:#14b8a6,color:#134e4a,stroke-width:1.2px;
 
     M["message received"]
     G{"channel 是否具备 receive-side producer"}
