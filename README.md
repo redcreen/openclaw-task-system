@@ -4,97 +4,112 @@
 
 ## English
 
-### overview
+### what this is
 
-OpenClaw Task System gives OpenClaw a real task layer.
+OpenClaw Task System turns OpenClaw from "a chat that replies" into "a system that accepts, tracks, and completes tasks".
 
-Instead of treating every incoming message as just another chat turn, it turns accepted work into a managed task with:
+If your OpenClaw usage includes:
 
-- visible acknowledgement
-- queue identity
-- lifecycle state
-- control-plane feedback
-- recovery after interruption
+- requests that may take time
+- delayed replies
+- work that should survive restart
+- queueing, cancel, resume, or recovery
+
+then this plugin gives you that missing task layer.
+
+### what `[wd]` means
+
+`[wd]` is the immediate acknowledgement message users see before the final answer.
+
+It means:
+
+- the request was accepted
+- the system created or attached to a task
+- the task is now queued, running, paused, or otherwise managed
+
+In other words, `[wd]` is the first visible "your work is now under task management" signal.
+
+### what problem this solves
+
+Without this task system, users often run into the same confusion:
+
+- "Did OpenClaw actually receive my request?"
+- "Is it still working, or did it get stuck?"
+- "Why did a long task disappear after restart?"
+- "Why do delayed replies, follow-up, and recovery all feel inconsistent?"
+
+This project solves that by giving OpenClaw:
+
+- immediate task acknowledgement with `[wd]`
+- visible task state and queue state
+- delayed reply / continuation support
+- restart recovery for accepted-but-not-finished work
 - one shared truth source for both users and operators
 
-In practical terms, it makes OpenClaw behave less like "a chat that sometimes does work" and more like "a system that accepts, tracks, and completes work."
+### what you will see after installing it
 
-### what you get as a user
+After installation, the normal user-visible flow becomes:
 
-After installing it, OpenClaw stops behaving like a chat stream that sometimes "forgets" task state.
-Instead, users get a predictable task experience:
+1. you send a request
+2. OpenClaw quickly replies with `[wd] ...`
+3. the request is tracked as a task
+4. if it takes longer, the system can send progress or follow-up
+5. the task finishes with a final reply or a managed state such as `done`, `failed`, `blocked`, or `paused`
 
-- a request is acknowledged immediately with `[wd]`
-- long tasks and delayed replies are tracked as real tasks
-- queue position and wait state can be inspected instead of guessed
-- restart recovery keeps accepted work from being silently lost
-- watchdog, continuity, follow-up, cancel, and resume stop being ad-hoc behaviors
+### quick install
+
+If you already have OpenClaw and `python3`, the fastest path is:
+
+```bash
+python3 scripts/runtime/plugin_doctor.py
+python3 scripts/runtime/plugin_smoke.py
+openclaw plugins install ./plugin
+python3 scripts/runtime/main_ops.py dashboard --json
+```
+
+Then enable the plugin with the example config:
+
+- [`./config/task_system.json`](./config/task_system.json)
+- [`./config/openclaw_plugin.example.json`](./config/openclaw_plugin.example.json)
+
+### quick example
+
+User sends:
+
+```text
+整理一下这批问题，然后给我一个最终结论
+```
+
+User first sees:
+
+```text
+[wd] 已收到，你的请求已进入队列；你现在排第 1 位。
+```
+
+Later, the user gets the final answer.
 
 ### before / after
 
 | before | after |
 | --- | --- |
-| a user sends a message and is not sure whether the system really accepted it | every accepted request becomes a managed task with a visible `[wd]` |
-| long tasks and delayed replies feel like fragile chat behavior | long-running work is tracked as one task flow with queueing and status |
-| restart, silence, or cross-turn work can make state unclear | recovery and continuity are first-class system behavior |
-| users and operators inspect different places and see different truths | users and operators read the same task truth source |
+| a user is not sure whether the request was accepted | the user sees `[wd]` immediately |
+| long tasks feel like fragile chat behavior | long tasks are managed as tasks |
+| restart or silence makes state unclear | recovery and continuity become system behavior |
+| users and operators inspect different places and see different truths | both sides read one task truth source |
 
 ### who this is for
 
 This project is a good fit if:
 
 - you use OpenClaw for work that takes longer than one quick reply
-- you want `[wd]`, queueing, recovery, and status to behave like product features
-- you operate multiple channels and want one task model instead of channel-by-channel hacks
+- you want queueing, restart recovery, delayed replies, and task status as product features
+- you want users and operators to see the same task truth
 
 It is probably not for you if:
 
-- you only need plain chat replies with no task lifecycle
-- you do not care about restart recovery, delayed replies, or operator views
+- you only need plain chat replies
+- you do not care about task lifecycle
 - you want a general-purpose multi-agent orchestrator rather than an OpenClaw-native task runtime
-
-### what problem it solves
-
-OpenClaw is naturally message-driven, but real usage needs task-driven behavior.
-
-Without a task system, these problems appear quickly:
-
-- a user asks for something non-trivial and has no clear sign the system really accepted it
-- a long-running task becomes "some replies in chat" instead of one trackable task
-- delayed replies, follow-up, continuity, cancel, and resume all behave like local tricks rather than system features
-- after restart or silence, nobody is fully sure whether the task is still alive, blocked, or lost
-- different views and different channels slowly drift into different truths
-
-This project exists to provide one control plane for those concerns.
-
-### quick start
-
-If you want the shortest path to a working install:
-
-1. verify the runtime
-
-```bash
-python3 scripts/runtime/plugin_doctor.py
-python3 scripts/runtime/plugin_smoke.py
-```
-
-2. install the plugin
-
-```bash
-openclaw plugins install ./plugin
-```
-
-3. use the bundled defaults or copy from:
-
-- [`./config/task_system.json`](./config/task_system.json)
-- [`./config/openclaw_plugin.example.json`](./config/openclaw_plugin.example.json)
-
-4. run a quick health check
-
-```bash
-python3 scripts/runtime/main_ops.py dashboard --json
-python3 scripts/runtime/stable_acceptance.py --json
-```
 
 ### what it does
 
@@ -415,11 +430,49 @@ Candidate directions:
 
 ## 中文
 
-### 项目概览
+### 这是什么
 
-OpenClaw Task System 是 OpenClaw 之上的一层正式 task runtime。
+OpenClaw Task System 是给 OpenClaw 补上的一层正式 task runtime。
 
-它不是单纯补几个 `[wd]` 或几条队列脚本，而是把“收到一条消息后顺手处理一下”这件事，升级成“系统正式接收、跟踪、恢复并收口一个任务”。
+它解决的不是“多发一条提示消息”，而是把：
+
+- “收到一条消息顺手处理一下”
+
+变成：
+
+- “系统正式接收、跟踪、恢复并收口一个任务”
+
+如果你的 OpenClaw 使用里存在这些场景：
+
+- 请求会跑一段时间
+- 有延迟回复
+- 重启后任务不能丢
+- 想看排队、取消、恢复、状态
+
+那这个项目就是补这层能力的。
+
+### `[wd]` 是什么
+
+`[wd]` 是用户在最终结果之前先看到的那条确认消息。
+
+它表示：
+
+- 请求已经被系统接住了
+- 系统已经创建或接管了对应 task
+- 这条请求现在处于排队、执行、暂停或其它受控状态
+
+也就是说，`[wd]` 不是普通聊天文案，而是“这条活已经进入任务系统”的可见信号。
+
+### 它解决什么问题
+
+没有这层 task system 时，用户最常见的困惑就是：
+
+- “系统到底有没有真正收到我的请求？”
+- “它现在是在执行，还是卡住了？”
+- “为什么一重启，长任务状态就说不清了？”
+- “为什么延迟回复、follow-up、恢复这些行为都不稳定？”
+
+这个项目就是为了解决这些问题。
 
 它补上的核心能力包括：
 
@@ -432,24 +485,56 @@ OpenClaw Task System 是 OpenClaw 之上的一层正式 task runtime。
 
 一句话说，它让 OpenClaw 更像“能正式接活并把活做完的系统”，而不只是“偶尔能完成工作的聊天流”。
 
-### 用户实际会得到什么
+### 装上后用户会看到什么
 
-装上以后，OpenClaw 不再像一个偶尔“忘记状态”的聊天流，而会更像一个稳定的任务系统：
+安装后，正常用户视角下的流程会变成：
 
-- 用户发出请求后，会先收到 `[wd]`
-- 长任务和延迟任务会作为真实 task 被跟踪
-- 排队状态和等待状态可查看，不再只能靠猜
-- 重启后，已接收但未完成的任务可以恢复
-- watchdog、continuity、follow-up、cancel、resume 都进入统一控制面
+1. 用户发出请求
+2. OpenClaw 很快先回一条 `[wd] ...`
+3. 这条请求被正式当成 task 跟踪
+4. 如果任务比较长，系统会继续发进展或 follow-up
+5. 最后返回正式结果，或者以 `done / failed / blocked / paused` 等状态收口
 
-### before / after
+### 快速安装
+
+如果你已经装好 OpenClaw 和 `python3`，最快可以直接这样做：
+
+```bash
+python3 scripts/runtime/plugin_doctor.py
+python3 scripts/runtime/plugin_smoke.py
+openclaw plugins install ./plugin
+python3 scripts/runtime/main_ops.py dashboard --json
+```
+
+然后启用示例配置：
+
+- [./config/task_system.json](./config/task_system.json)
+- [./config/openclaw_plugin.example.json](./config/openclaw_plugin.example.json)
+
+### 快速使用示例
+
+用户发：
+
+```text
+整理一下这批问题，然后给我一个最终结论
+```
+
+用户先看到：
+
+```text
+[wd] 已收到，你的请求已进入队列；你现在排第 1 位。
+```
+
+之后再收到正式结果。
+
+### before / after 对比
 
 | 之前 | 现在 |
 | --- | --- |
-| 用户发出请求后，不确定系统是否真的接住了 | 每个被接收的请求都会先得到可见的 `[wd]` |
-| 长任务、延迟任务更像脆弱的聊天行为 | 长任务会作为一条正式 task 被跟踪 |
-| 一旦沉默、重启、跨轮次，状态就容易不清楚 | 重启恢复和 continuity 成为正式系统能力 |
-| 用户和运维看到的是不同入口、不同真相 | 用户和运维读取同一份任务真相源 |
+| 用户不确定系统是否真的接住了请求 | 用户会立刻看到 `[wd]` |
+| 长任务像几段零散聊天回复 | 长任务作为正式 task 被跟踪 |
+| 一旦重启或沉默，状态容易说不清 | continuity 和恢复成为系统能力 |
+| 用户和运维看到的是不同入口、不同真相 | 双方读取同一份任务真相源 |
 
 ### 适合谁
 
@@ -464,49 +549,6 @@ OpenClaw Task System 是 OpenClaw 之上的一层正式 task runtime。
 - 只要简单聊天回复，不关心任务生命周期
 - 不关心重启恢复、延迟任务、运维状态视图
 - 你想要的是通用多 agent orchestrator，而不是 OpenClaw 原生 task runtime
-
-### 这个项目解决什么问题
-
-OpenClaw 天然更像消息驱动系统，但真实使用需要的是任务驱动行为。
-
-如果没有 task system，很快就会出现这些问题：
-
-- 用户发出一条复杂请求后，不知道系统到底有没有真正接单
-- 长任务、延迟任务、跨轮次任务只表现为几段聊天记录，没有统一 task 对象
-- `[wd]`、follow-up、watchdog、continuity、cancel、resume 更像局部技巧，而不是系统能力
-- 一旦重启、沉默或中断，就很难判断任务是还在跑、已卡住，还是已经丢了
-- 同一任务在不同入口里看到的是不同真相，不同 channel 也会慢慢长成不同逻辑
-
-所以这个项目要补的，不是某一个 feature，而是一层统一控制面。
-
-### 快速开始
-
-如果你只想最快装起来，走这 4 步：
-
-1. 先做 runtime 自检
-
-```bash
-python3 scripts/runtime/plugin_doctor.py
-python3 scripts/runtime/plugin_smoke.py
-```
-
-2. 安装插件
-
-```bash
-openclaw plugins install ./plugin
-```
-
-3. 直接使用默认配置，或者从下面两个文件开始：
-
-- [./config/task_system.json](./config/task_system.json)
-- [./config/openclaw_plugin.example.json](./config/openclaw_plugin.example.json)
-
-4. 跑一轮最小健康检查
-
-```bash
-python3 scripts/runtime/main_ops.py dashboard --json
-python3 scripts/runtime/stable_acceptance.py --json
-```
 
 ### 当前能力
 
