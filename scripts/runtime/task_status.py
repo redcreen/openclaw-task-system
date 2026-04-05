@@ -8,6 +8,7 @@ from typing import Optional
 
 from task_config import TaskSystemConfig, load_task_system_config
 from task_state import ACTIVE_STATUSES, OBSERVED_STATUSES, STATUS_QUEUED, STATUS_RECEIVED, STATUS_RUNNING, TaskPaths, TaskStore, default_paths
+from user_status import project_user_facing_status
 
 FINAL_INSTRUCTION_DIRS = ("processed-instructions", "failed-instructions")
 INTERMEDIATE_DELIVERY_DIRS = ("outbox", "sent", "delivery-ready", "send-instructions")
@@ -229,6 +230,10 @@ def build_status_summary(
         "queued_count": queue_snapshot["queued_count"],
     }
     task["queue"] = queue_summary
+    projection = project_user_facing_status(task)
+    task["user_facing_status_code"] = projection["code"]
+    task["user_facing_status"] = projection["label"]
+    task["user_facing_status_family"] = projection["family"]
     return task
 
 
@@ -325,6 +330,8 @@ def render_status_markdown(
         f"- label: {status['task_label']}",
         f"- agent: {status['agent_id']}",
         f"- status: {status['status']}",
+        f"- user_facing_status_code: {status['user_facing_status_code']}",
+        f"- user_facing_status: {status['user_facing_status']}",
         f"- session_key: {status['session_key']}",
         f"- channel: {status['channel']}",
         f"- chat_id: {status['chat_id']}",
@@ -386,7 +393,7 @@ def render_inflight_markdown(
     lines = ["# Active Tasks", ""]
     for status in statuses:
         lines.append(
-            f"- {status['task_id']} | {status['status']} | delivery={status['delivery']['state']} | {status['task_label']}"
+            f"- {status['task_id']} | {status['status']} | user_status={status['user_facing_status']} | delivery={status['delivery']['state']} | {status['task_label']}"
         )
     return "\n".join(lines) + "\n"
 
@@ -428,7 +435,7 @@ def render_overview_markdown(
         lines.append("")
         for status in overview["active_tasks"]:
             lines.append(
-                f"- {status['task_id']} | {status['status']} | pos={status['queue']['position']} | delivery={status['delivery']['state']} | {status['task_label']}"
+                f"- {status['task_id']} | {status['status']} | user_status={status['user_facing_status']} | pos={status['queue']['position']} | delivery={status['delivery']['state']} | {status['task_label']}"
             )
     return "\n".join(lines) + "\n"
 

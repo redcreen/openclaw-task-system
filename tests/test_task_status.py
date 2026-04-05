@@ -148,6 +148,10 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(second_summary["queue"]["active_count"], 2)
         self.assertEqual(second_summary["queue"]["running_count"], 1)
         self.assertEqual(second_summary["queue"]["queued_count"], 1)
+        self.assertEqual(first_summary["user_facing_status_code"], "running")
+        self.assertEqual(first_summary["user_facing_status"], "处理中")
+        self.assertEqual(second_summary["user_facing_status_code"], "queued")
+        self.assertEqual(second_summary["user_facing_status"], "排队中")
 
     def test_build_queue_snapshot_includes_received_tasks(self) -> None:
         running = self.store.register_task(
@@ -173,6 +177,21 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(snapshot["items"][0]["task_id"], running.task_id)
         self.assertEqual(snapshot["items"][1]["task_id"], observed.task_id)
         self.assertEqual(snapshot["items"][1]["status"], task_state_module.STATUS_RECEIVED)
+
+    def test_build_status_summary_maps_waiting_queue_head_to_pending_start(self) -> None:
+        queued = self.store.register_task(
+            agent_id="main",
+            session_key="session:pending-start",
+            channel="telegram",
+            chat_id="chat:pending-start",
+            task_label="pending start task",
+        )
+
+        summary = task_status.build_status_summary(queued.task_id, paths=self.paths)
+
+        self.assertEqual(summary["queue"]["position"], 1)
+        self.assertEqual(summary["user_facing_status_code"], "pending-start")
+        self.assertEqual(summary["user_facing_status"], "待开始")
 
     def test_render_overview_markdown_includes_counts(self) -> None:
         task = self.store.register_task(

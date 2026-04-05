@@ -50,6 +50,29 @@ class OpenClawHooksTests(unittest.TestCase):
         )
         self.assertTrue(result["should_register_task"])
         self.assertIsNotNone(result["task_id"])
+        self.assertIn("register_decision", result)
+        self.assertIsInstance(result["register_decision"], dict)
+        self.assertEqual(result["register_decision"]["task_id"], result["task_id"])
+
+    def test_register_from_payload_includes_structured_register_decision(self) -> None:
+        result = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:structured-decision",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:structured-decision",
+                "user_id": "ou_test",
+                "user_request": "帮我继续排队处理这个任务",
+                "observe_only": True,
+            }
+        )
+        decision = result["register_decision"]
+        self.assertEqual(decision["should_register_task"], result["should_register_task"])
+        self.assertEqual(decision["task_id"], result["task_id"])
+        self.assertEqual(decision["classification_reason"], result["classification_reason"])
+        self.assertEqual(decision["task_status"], result["task_status"])
+        self.assertEqual(decision["queue_position"], result["queue_position"])
 
     def test_openclaw_hooks_cli_accepts_stdin_payload(self) -> None:
         script = Path("/Users/redcreen/.openclaw/workspace/openclaw-task-system/scripts/runtime/openclaw_hooks.py")
@@ -131,6 +154,10 @@ class OpenClawHooksTests(unittest.TestCase):
                 "primary_action_command": "python3 ... continuity --session-key 'session:main:recover'",
                 "runbook_status": "needs-followup",
                 "requires_action": True,
+                "top_risk_session": {
+                    "session_key": "session:main:recover",
+                    "user_facing_status_counts": {"已阻塞": 1},
+                },
                 "primary_action": {"kind": "followup-session", "command": "python3 ... continuity --session-key 'session:main:recover'"},
                 "runbook": {"status": "needs-followup", "primary_action": {"kind": "followup-session"}, "steps": [], "commands": []},
                 "suggested_next_commands": ["python3 ... continuity --session-key 'session:main:recover'"],
@@ -153,6 +180,15 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(result["watchdog_notified_count"], 1)
         self.assertEqual(result["watchdog_blocked_count"], 1)
         self.assertEqual(result["focus_session_key"], "session:main:recover")
+        self.assertEqual(result["control_plane_message"]["event_name"], "watchdog-auto-recover")
+        self.assertEqual(result["control_plane_message"]["priority"], "p1-task-management")
+        self.assertEqual(result["control_plane_message"]["metadata"]["primary_action_kind"], "followup-session")
+        self.assertEqual(result["control_plane_message"]["metadata"]["top_risk_session_key"], "session:main:recover")
+        self.assertEqual(
+            result["control_plane_message"]["metadata"]["top_risk_session_user_status_counts"],
+            {"已阻塞": 1},
+        )
+        self.assertIn("当前重点 session：session:main:recover（已阻塞:1）", result["control_plane_message"]["text"])
 
     def test_watchdog_auto_recover_startup_recovery_promotes_stale_running_main_task(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
@@ -275,6 +311,43 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(result["reason"], "task-active:queued")
         self.assertIn("仍在排队处理中", result["followup_message"])
         self.assertIn("前面还有 1 个号", result["followup_message"])
+        self.assertIn("control_plane_message", result)
+        self.assertEqual(result["control_plane_message"]["event_name"], "short-task-followup")
+        self.assertEqual(result["control_plane_message"]["priority"], "p2-progress-followup")
+        self.assertEqual(result["control_plane_message"]["task_id"], queued.task_id)
+        self.assertEqual(result["control_plane_message"]["text"], result["followup_message"])
+        self.assertEqual(result["user_facing_status_code"], "queued")
+        self.assertEqual(result["user_facing_status"], "排队中")
+        self.assertEqual(result["control_plane_message"]["user_facing_status_code"], "queued")
+        self.assertEqual(result["control_plane_message"]["user_facing_status"], "排队中")
+        self.assertEqual(result["control_plane_message"]["metadata"]["user_facing_status_code"], "queued")
+        self.assertEqual(result["control_plane_message"]["metadata"]["user_facing_status"], "排队中")
+
+    def test_should_send_short_followup_for_queue_head_uses_pending_start_user_status(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        queued = store.register_task(
+            agent_id="main",
+            session_key="session:queued-head",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:queued-head",
+            task_label="queued head task",
+        )
+
+        result = openclaw_hooks.should_send_short_followup_from_payload(
+            {"task_id": queued.task_id},
+            config_path=self.config_path,
+        )
+
+        self.assertTrue(result["should_send"])
+        self.assertEqual(result["reason"], "task-active:queued")
+        self.assertEqual(result["user_facing_status_code"], "pending-start")
+        self.assertEqual(result["user_facing_status"], "待开始")
+        self.assertIn("当前状态：待开始", result["followup_message"])
+        self.assertEqual(result["control_plane_message"]["user_facing_status_code"], "pending-start")
+        self.assertEqual(result["control_plane_message"]["user_facing_status"], "待开始")
+        self.assertEqual(result["control_plane_message"]["metadata"]["user_facing_status_code"], "pending-start")
+        self.assertEqual(result["control_plane_message"]["metadata"]["user_facing_status"], "待开始")
 
     def test_should_send_short_followup_for_running_task_prefers_last_progress(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
@@ -299,6 +372,12 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(result["reason"], "task-active:running")
         self.assertIn("最近进展", result["followup_message"])
         self.assertIn("正在检查 webhook 配置", result["followup_message"])
+        self.assertEqual(result["control_plane_message"]["task_status"], "running")
+        self.assertEqual(result["control_plane_message"]["text"], result["followup_message"])
+        self.assertEqual(result["user_facing_status_code"], "running")
+        self.assertEqual(result["user_facing_status"], "处理中")
+        self.assertEqual(result["control_plane_message"]["user_facing_status_code"], "running")
+        self.assertEqual(result["control_plane_message"]["user_facing_status"], "处理中")
 
     def test_taskmonitor_control_can_toggle_session(self) -> None:
         off = openclaw_hooks.taskmonitor_control_from_payload(
@@ -443,6 +522,10 @@ class OpenClawHooksTests(unittest.TestCase):
             }
         )
         self.assertEqual(task["status"], task_state_module.STATUS_DONE)
+        self.assertEqual(task["control_plane_message"]["event_name"], "task-completed")
+        self.assertEqual(task["control_plane_message"]["priority"], "p1-task-management")
+        self.assertEqual(task["control_plane_message"]["task_id"], task_id)
+        self.assertIn("hook finished", task["control_plane_message"]["text"])
 
     def test_resolve_and_progress_active_task_by_session(self) -> None:
         registration = openclaw_hooks.register_from_payload(
@@ -499,6 +582,8 @@ class OpenClawHooksTests(unittest.TestCase):
         )
         self.assertTrue(finalized["updated"])
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
+        self.assertEqual(finalized["control_plane_message"]["event_name"], "task-completed")
+        self.assertIn("completed by agent_end", finalized["control_plane_message"]["text"])
 
     def test_should_send_short_followup_only_for_active_tasks(self) -> None:
         registration = openclaw_hooks.register_from_payload(
@@ -628,6 +713,192 @@ class OpenClawHooksTests(unittest.TestCase):
         )
         self.assertTrue(finalized["updated"])
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_FAILED)
+        self.assertEqual(finalized["control_plane_message"]["event_name"], "task-failed")
+        self.assertTrue(str(finalized["control_plane_message"]["text"]).startswith("当前任务已失败"))
+
+    def test_taskmonitor_control_returns_control_plane_message(self) -> None:
+        off = openclaw_hooks.taskmonitor_control_from_payload(
+            {
+                "session_key": "session:taskmonitor-control-plane",
+                "action": "off",
+            }
+        )
+        self.assertTrue(off["ok"])
+        self.assertEqual(off["control_plane_message"]["event_name"], "taskmonitor-disabled")
+        self.assertEqual(off["control_plane_message"]["priority"], "p1-task-management")
+        self.assertEqual(off["control_plane_message"]["session_key"], "session:taskmonitor-control-plane")
+
+    def test_resume_main_task_returns_control_plane_message(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:resume-control-plane",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:resume-control-plane",
+                "user_request": "继续处理这个较长任务并同步进展",
+                "estimated_steps": 3,
+            }
+        )
+        task_id = registration["task_id"]
+        assert task_id is not None
+        openclaw_hooks.activate_latest_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:resume-control-plane",
+                "task_id": task_id,
+            }
+        )
+        openclaw_hooks.blocked_active_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:resume-control-plane",
+                "reason": "waiting-on-user-confirmation",
+            }
+        )
+
+        resumed = openclaw_hooks.resume_main_task_from_payload(
+            {
+                "task_id": task_id,
+                "progress_note": "继续推进并同步真实进展",
+            },
+            config_path=self.config_path,
+        )
+
+        self.assertTrue(resumed["updated"])
+        self.assertEqual(resumed["task"]["task_id"], task_id)
+        self.assertEqual(resumed["control_plane_message"]["event_name"], "task-resumed")
+        self.assertEqual(resumed["control_plane_message"]["priority"], "p1-task-management")
+        self.assertEqual(resumed["control_plane_message"]["task_id"], task_id)
+
+    def test_cancel_main_queue_task_returns_control_plane_message(self) -> None:
+        running_registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:cancel-control-plane:running",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:cancel-control-plane:running",
+                "user_request": "先处理这个占位长任务",
+                "estimated_steps": 3,
+            },
+            config_path=self.config_path,
+        )
+        running_task_id = running_registration["task_id"]
+        assert running_task_id is not None
+        openclaw_hooks.activate_latest_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:cancel-control-plane:running",
+                "task_id": running_task_id,
+            }
+        )
+
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:cancel-control-plane",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:cancel-control-plane",
+                "user_request": "帮我继续排队处理这个任务",
+                "estimated_steps": 3,
+            },
+            config_path=self.config_path,
+        )
+        task_id = registration["task_id"]
+        assert task_id is not None
+
+        cancelled = openclaw_hooks.cancel_main_queue_task_from_payload(
+            {
+                "task_id": task_id,
+                "reason": "user requested queued task cancel",
+            },
+            config_path=self.config_path,
+        )
+
+        self.assertEqual(cancelled["action"], "cancelled-queued-task")
+        self.assertEqual(cancelled["task_id"], task_id)
+        self.assertEqual(cancelled["control_plane_message"]["event_name"], "task-cancelled")
+        self.assertEqual(cancelled["control_plane_message"]["priority"], "p1-task-management")
+        self.assertEqual(cancelled["control_plane_message"]["task_id"], task_id)
+        self.assertEqual(cancelled["control_plane_message"]["metadata"]["queue_position"], 1)
+
+    def test_main_continuity_wrapper_returns_control_plane_message_for_idle_state(self) -> None:
+        summary = openclaw_hooks.main_continuity_from_payload({}, config_path=self.config_path)
+
+        self.assertEqual(summary["runbook_status"], "ok")
+        self.assertIn("control_plane_message", summary)
+        self.assertEqual(summary["control_plane_message"]["event_name"], "continuity-summary")
+        self.assertEqual(summary["control_plane_message"]["priority"], "p1-task-management")
+
+    def test_main_continuity_wrapper_reports_focus_session_in_control_plane_message(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:continuity-wrapper",
+            channel="telegram",
+            chat_id="chat:continuity-wrapper",
+            task_label="continuity wrapper task",
+        )
+        running = store.start_task(task.task_id)
+        running.last_user_visible_update_at = "2020-01-01T00:00:00+00:00"
+        running.meta["finalize_skipped_reason"] = "success-without-visible-progress"
+        store.save_task(running)
+
+        silence_monitor = load_runtime_module("silence_monitor")
+        silence_monitor.process_overdue_tasks(paths=self.paths)
+
+        summary = openclaw_hooks.main_continuity_from_payload(
+            {"session_key": "session:continuity-wrapper"},
+            config_path=self.config_path,
+        )
+
+        self.assertEqual(summary["runbook_status"], "warn")
+        self.assertEqual(summary["control_plane_message"]["event_name"], "continuity-summary")
+        self.assertEqual(summary["control_plane_message"]["session_key"], "session:continuity-wrapper")
+        self.assertEqual(summary["control_plane_message"]["metadata"]["top_risk_session_key"], "session:continuity-wrapper")
+        self.assertEqual(
+            summary["control_plane_message"]["metadata"]["top_risk_session_user_status_code_counts"],
+            {"blocked": 1},
+        )
+        self.assertEqual(
+            summary["control_plane_message"]["metadata"]["top_risk_session_user_status_counts"],
+            {"已阻塞": 1},
+        )
+
+    def test_main_tasks_summary_wrapper_reports_session_tasks(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        running = store.register_task(
+            agent_id="main",
+            session_key="session:tasks-wrapper",
+            channel="telegram",
+            chat_id="chat:tasks-wrapper",
+            task_label="正在处理的任务",
+        )
+        store.start_task(running.task_id)
+        queued = store.register_task(
+            agent_id="main",
+            session_key="session:tasks-wrapper",
+            channel="telegram",
+            chat_id="chat:tasks-wrapper",
+            task_label="排队中的任务",
+        )
+
+        summary = openclaw_hooks.main_tasks_summary_from_payload(
+            {"session_key": "session:tasks-wrapper"},
+            config_path=self.config_path,
+        )
+
+        self.assertEqual(summary["task_count"], 2)
+        self.assertEqual(summary["control_plane_message"]["event_name"], "main-tasks-summary")
+        self.assertEqual(summary["control_plane_message"]["priority"], "p1-task-management")
+        self.assertEqual(summary["control_plane_message"]["session_key"], "session:tasks-wrapper")
+        self.assertIn("当前会话共有 2 条活动任务", summary["control_plane_message"]["text"])
+        self.assertIn("处理中", summary["control_plane_message"]["text"])
+        self.assertIn("排队中", summary["control_plane_message"]["text"])
+        self.assertEqual(summary["tasks"][0]["user_facing_status"], "处理中")
+        self.assertEqual(summary["tasks"][1]["user_facing_status"], "排队中")
 
     def test_finalize_active_skips_generic_success_without_progress(self) -> None:
         registration = openclaw_hooks.register_from_payload(

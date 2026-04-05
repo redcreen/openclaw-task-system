@@ -161,6 +161,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["top_followup_session"]["session_key"], "session:main:dashboard-risk")
         self.assertEqual(summary["focus_session_key"], "session:main:dashboard-risk")
         self.assertEqual(summary["top_followup_session"]["auto_resumable_count"], 1)
+        self.assertEqual(summary["top_followup_session"]["user_facing_status_counts"], {"已阻塞": 1})
+        self.assertEqual(summary["top_followup_session"]["user_facing_status_code_counts"], {"blocked": 1})
         self.assertEqual(summary["action_hint"], "Apply the watchdog auto-resume plan now.")
         self.assertEqual(
             summary["action_hint_command"],
@@ -436,6 +438,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["manual_review"], [])
         self.assertEqual(summary["not_recommended"], [])
         self.assertEqual(summary["by_session"], [])
+        self.assertEqual(summary["control_plane_message"]["event_name"], "continuity-summary")
+        self.assertEqual(summary["control_plane_message"]["priority"], "p1-task-management")
+        self.assertFalse(summary["control_plane_message"]["metadata"]["auto_resume_ready"])
+        self.assertEqual(summary["control_plane_message"]["metadata"]["top_risk_session_user_status_counts"], {})
 
     def test_render_main_continuity_includes_watchdog_blocked_task(self) -> None:
         task = self.store.register_task(
@@ -465,6 +471,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- execution_recommendation: parallel-safe", rendered)
         self.assertIn("## Execution Plan", rendered)
         self.assertIn("Run a dry-run first to preview which watchdog-blocked tasks are eligible.", rendered)
+        self.assertIn("user_statuses: 已阻塞:1", rendered)
 
     def test_get_main_continuity_summary_exposes_auto_resume_plan(self) -> None:
         task = self.store.register_task(
@@ -495,6 +502,8 @@ class MainOpsTests(unittest.TestCase):
             summary["auto_resume_apply_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked",
         )
+        self.assertTrue(summary["control_plane_message"]["metadata"]["auto_resume_ready"])
+        self.assertEqual(summary["control_plane_message"]["metadata"]["primary_action_kind"], "apply-auto-resume")
 
     def test_render_main_continuity_separates_manual_review_and_not_recommended(self) -> None:
         queued = self.store.register_task(
@@ -1339,6 +1348,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("session:main:queued", rendered)
         self.assertIn("main queued", rendered)
         self.assertIn("code running", rendered)
+        self.assertIn("status=处理中", rendered)
+        self.assertIn("status=排队中", rendered)
 
     def test_get_queue_lanes_summary_reports_agents(self) -> None:
         main_running = self.store.register_task(
@@ -1372,6 +1383,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["agents"][1]["running_task_count"], 1)
         self.assertEqual(summary["agents"][1]["shared_sessions"], [])
         self.assertEqual(summary["agents"][0]["queued_head"][0]["task_id"], code_queued.task_id)
+        self.assertEqual(summary["agents"][0]["queued_head"][0]["user_facing_status_code"], "queued")
+        self.assertEqual(summary["agents"][0]["queued_head"][0]["user_facing_status"], "排队中")
+        self.assertEqual(summary["agents"][1]["running_tasks"][0]["user_facing_status_code"], "running")
+        self.assertEqual(summary["agents"][1]["running_tasks"][0]["user_facing_status"], "处理中")
 
     def test_get_queue_lanes_summary_reports_serial_per_session_for_shared_idle_lane(self) -> None:
         self.store.register_task(
@@ -1458,8 +1473,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- execution_recommendation: serial", rendered)
         self.assertIn("- shared_sessions:", rendered)
         self.assertIn("- session_count: 2", rendered)
-        self.assertIn("session:main:one | task_count=1", rendered)
-        self.assertIn("session:main:two | task_count=1", rendered)
+        self.assertIn("session:main:one | task_count=1 | user_statuses=处理中:1", rendered)
+        self.assertIn("session:main:two | task_count=1 | user_statuses=排队中:1", rendered)
         self.assertIn("## Queue: code", rendered)
         self.assertIn("- queue_kind: single-session", rendered)
 
@@ -1494,6 +1509,10 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["queues"][0]["shared_sessions"], ["session:main:one", "session:main:two"])
         self.assertEqual(summary["queues"][0]["session_count"], 2)
         self.assertEqual(len(summary["queues"][0]["sessions"]), 2)
+        self.assertEqual(summary["queues"][0]["sessions"][0]["user_facing_status_counts"], {"处理中": 1})
+        self.assertEqual(summary["queues"][0]["sessions"][0]["user_facing_status_code_counts"], {"running": 1})
+        self.assertEqual(summary["queues"][0]["sessions"][1]["user_facing_status_counts"], {"排队中": 1})
+        self.assertEqual(summary["queues"][0]["sessions"][1]["user_facing_status_code_counts"], {"queued": 1})
 
     def test_render_main_triage_includes_resume_and_retry_actions(self) -> None:
         task = self.store.register_task(

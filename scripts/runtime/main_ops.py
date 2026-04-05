@@ -22,6 +22,7 @@ from task_config import load_task_system_config
 from task_status import list_inflight_statuses, render_overview_markdown, render_status_markdown
 from task_state import STATUS_QUEUED, STATUS_RUNNING, TaskPaths, TaskStore, default_paths
 from taskmonitor_state import get_taskmonitor_enabled, list_taskmonitor_overrides, set_taskmonitor_enabled
+from user_status import project_user_facing_status
 
 
 def _resolve_paths(config_path: Optional[Path], *, paths: Optional[TaskPaths] = None) -> TaskPaths:
@@ -54,7 +55,7 @@ def render_main_list(
     lines = ["# Main Tasks", ""]
     for task in tasks:
         lines.append(
-            f"- {task['task_id']} | {task['status']} | delivery={task['delivery']['state']} | {task['task_label']}"
+            f"- {task['task_id']} | {task['status']} | user_status={_task_user_facing_status(task)} | delivery={task['delivery']['state']} | {task['task_label']}"
         )
     return "\n".join(lines) + "\n"
 
@@ -182,6 +183,12 @@ def render_main_continuity(
     main_tasks = store.find_inflight_tasks(agent_id="main")
     if normalized_session_key:
         main_tasks = [task for task in main_tasks if task.session_key == normalized_session_key]
+    inflight_statuses = {
+        str(status["task_id"]): status
+        for status in list_inflight_statuses(config_path=config_path, paths=resolved_paths)
+        if str(status.get("agent_id")) == "main"
+        and (normalized_session_key is None or str(status.get("session_key")) == normalized_session_key)
+    }
     queue_like_tasks = [task for task in main_tasks if task.status in {"received", "queued", "running", "paused"}]
     execution_strategy = _summarize_agent_execution_strategy("main", queue_like_tasks)
     blocked_without_watchdog = [
@@ -234,6 +241,8 @@ def render_main_continuity(
                 "manual_review_count": 0,
                 "not_recommended_count": 0,
                 "task_labels": [],
+                "user_facing_status_counts": {},
+                "user_facing_status_code_counts": {},
             }
             session_summary[session_key] = bucket
         return bucket
@@ -252,6 +261,22 @@ def render_main_continuity(
         bucket = ensure_session(task.session_key)
         bucket["not_recommended_count"] = int(bucket["not_recommended_count"]) + 1
         bucket["task_labels"].append(task.task_label)
+
+    for task in main_tasks:
+        bucket = session_summary.get(task.session_key)
+        if bucket is None:
+            continue
+        status_entry = inflight_statuses.get(task.task_id)
+        if status_entry:
+            projection = _task_user_facing_projection(status_entry)
+            label_counts = bucket["user_facing_status_counts"]
+            if isinstance(label_counts, dict):
+                label = projection["label"]
+                label_counts[label] = int(label_counts.get(label, 0)) + 1
+            code_counts = bucket["user_facing_status_code_counts"]
+            if isinstance(code_counts, dict):
+                code = projection["code"]
+                code_counts[code] = int(code_counts.get(code, 0)) + 1
 
     suggested_next_commands = [
         "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
@@ -416,6 +441,13 @@ def render_main_continuity(
             lines.append(
                 f"- {session_key} | auto_resumable={bucket['auto_resumable_count']} | manual_review={bucket['manual_review_count']} | not_recommended={bucket['not_recommended_count']}"
             )
+            status_counts = bucket.get("user_facing_status_counts")
+            if isinstance(status_counts, dict) and status_counts:
+                ordered = sorted(status_counts.items(), key=lambda item: (-int(item[1]), str(item[0])))
+                lines.append(
+                    "  user_statuses: "
+                    + ", ".join(f"{label}:{count}" for label, count in ordered)
+                )
             if unique_labels:
                 lines.append(f"  labels: {', '.join(unique_labels[:3])}")
 
@@ -446,6 +478,12 @@ def get_main_continuity_summary(
     main_tasks = store.find_inflight_tasks(agent_id="main")
     if normalized_session_key:
         main_tasks = [task for task in main_tasks if task.session_key == normalized_session_key]
+    inflight_statuses = {
+        str(status["task_id"]): status
+        for status in list_inflight_statuses(config_path=config_path, paths=resolved_paths)
+        if str(status.get("agent_id")) == "main"
+        and (normalized_session_key is None or str(status.get("session_key")) == normalized_session_key)
+    }
     queue_like_tasks = [task for task in main_tasks if task.status in {"received", "queued", "running", "paused"}]
     execution_strategy = _summarize_agent_execution_strategy("main", queue_like_tasks)
     blocked_without_watchdog = [
@@ -497,6 +535,8 @@ def get_main_continuity_summary(
                 "manual_review_count": 0,
                 "not_recommended_count": 0,
                 "task_labels": [],
+                "user_facing_status_counts": {},
+                "user_facing_status_code_counts": {},
             }
             session_summary[summary_session_key] = bucket
         return bucket
@@ -515,6 +555,22 @@ def get_main_continuity_summary(
         bucket = ensure_session(task.session_key)
         bucket["not_recommended_count"] = int(bucket["not_recommended_count"]) + 1
         bucket["task_labels"].append(task.task_label)
+
+    for task in main_tasks:
+        bucket = session_summary.get(task.session_key)
+        if bucket is None:
+            continue
+        status_entry = inflight_statuses.get(task.task_id)
+        if status_entry:
+            projection = _task_user_facing_projection(status_entry)
+            label_counts = bucket["user_facing_status_counts"]
+            if isinstance(label_counts, dict):
+                label = projection["label"]
+                label_counts[label] = int(label_counts.get(label, 0)) + 1
+            code_counts = bucket["user_facing_status_code_counts"]
+            if isinstance(code_counts, dict):
+                code = projection["code"]
+                code_counts[code] = int(code_counts.get(code, 0)) + 1
 
     suggested_next_commands = [
         "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
@@ -570,6 +626,18 @@ def get_main_continuity_summary(
             "manual_review_count": session_entry["manual_review_count"],
             "not_recommended_count": session_entry["not_recommended_count"],
             "task_labels": sorted({str(label) for label in session_entry["task_labels"] if str(label).strip()}),
+            "user_facing_status_counts": dict(
+                sorted(
+                    (session_entry.get("user_facing_status_counts") or {}).items(),
+                    key=lambda item: (-int(item[1]), str(item[0])),
+                )
+            ),
+            "user_facing_status_code_counts": dict(
+                sorted(
+                    (session_entry.get("user_facing_status_code_counts") or {}).items(),
+                    key=lambda item: (-int(item[1]), str(item[0])),
+                )
+            ),
         }
         for session_entry in sorted(
             session_summary.values(),
@@ -592,6 +660,8 @@ def get_main_continuity_summary(
             "manual_review_count": top_session["manual_review_count"],
             "not_recommended_count": top_session["not_recommended_count"],
             "task_labels": top_session["task_labels"],
+            "user_facing_status_counts": top_session["user_facing_status_counts"],
+            "user_facing_status_code_counts": top_session["user_facing_status_code_counts"],
             "next_command": (
                 f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{top_session['session_key']}'"
             ),
@@ -652,6 +722,15 @@ def get_main_continuity_summary(
             *[command for command in suggested_next_commands if command != primary_action["command"]],
         ],
     }
+
+    if auto_resume_safe_to_apply:
+        continuity_text = "检测到可直接执行的 continuity auto-resume 计划。"
+    elif auto_resume_ready:
+        continuity_text = "检测到 continuity 风险，建议先预览 auto-resume 候选。"
+    elif top_risk_session:
+        continuity_text = f"检测到 continuity 风险，建议先跟进 session {top_risk_session['session_key']}。"
+    else:
+        continuity_text = "当前没有需要立即处理的 continuity 风险。"
 
     return {
         "session_filter": normalized_session_key or "all",
@@ -715,6 +794,27 @@ def get_main_continuity_summary(
         "runbook": runbook,
         "suggested_next_commands": suggested_next_commands,
         "execution_plan": execution_plan,
+        "control_plane_message": {
+            "schema": "openclaw.task-system.control-plane.v1",
+            "kind": "continuity-summary",
+            "event_name": "continuity-summary",
+            "priority": "p1-task-management",
+            "text": continuity_text,
+            "session_key": normalized_session_key or (top_risk_session["session_key"] if top_risk_session else None),
+            "metadata": {
+                "auto_resume_ready": auto_resume_ready,
+                "auto_resume_safe_to_apply": auto_resume_safe_to_apply,
+                "primary_action_kind": primary_action["kind"],
+                "primary_action_command": primary_action["command"],
+                "top_risk_session_key": top_risk_session["session_key"] if top_risk_session else None,
+                "top_risk_session_user_status_code_counts": (
+                    top_risk_session["user_facing_status_code_counts"] if top_risk_session else {}
+                ),
+                "top_risk_session_user_status_counts": (
+                    top_risk_session["user_facing_status_counts"] if top_risk_session else {}
+                ),
+            },
+        },
     }
 
 
@@ -1560,6 +1660,8 @@ def get_main_dashboard_summary(
             "manual_review_count": top_session["manual_review_count"],
             "not_recommended_count": top_session["not_recommended_count"],
             "task_labels": top_session["task_labels"],
+            "user_facing_status_counts": top_session.get("user_facing_status_counts", {}),
+            "user_facing_status_code_counts": top_session.get("user_facing_status_code_counts", {}),
             "next_command": (
                 f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{top_session['session_key']}'"
             ),
@@ -1606,7 +1708,10 @@ def get_main_dashboard_summary(
             else "none"
         ),
         "top_followup_session_summary": (
-            str(top_followup_session["session_key"])
+            (
+                f"{top_followup_session['session_key']} | user_statuses="
+                f"{', '.join(f'{label}:{count}' for label, count in (top_followup_session.get('user_facing_status_counts') or {}).items()) or 'none'}"
+            )
             if top_followup_session
             else "none"
         ),
@@ -1826,7 +1931,7 @@ def render_queue_lanes(
                 ),
             ):
                 lines.append(
-                    f"  {task['task_id']} | {task['session_key']} | {task['task_label']}"
+                    f"  status={_task_user_facing_status(task)} | {task['task_id']} | {task['session_key']} | {task['task_label']}"
                 )
         if queued_tasks:
             lines.append("- queued_head:")
@@ -1839,7 +1944,7 @@ def render_queue_lanes(
                 ),
             )[:5]:
                 lines.append(
-                    f"  pos={task['queue']['position']} | {task['task_id']} | {task['session_key']} | {task['task_label']}"
+                    f"  pos={task['queue']['position']} | status={_task_user_facing_status(task)} | {task['task_id']} | {task['session_key']} | {task['task_label']}"
                 )
         if paused_tasks:
             lines.append("- paused_tasks:")
@@ -1851,7 +1956,7 @@ def render_queue_lanes(
                 ),
             )[:5]:
                 lines.append(
-                    f"  {task['task_id']} | {task['session_key']} | {task['task_label']}"
+                    f"  status={_task_user_facing_status(task)} | {task['task_id']} | {task['session_key']} | {task['task_label']}"
                 )
         if due_paused_tasks:
             lines.append("- due_paused_tasks:")
@@ -1870,7 +1975,7 @@ def render_queue_lanes(
                 ),
             )[:5]:
                 lines.append(
-                    f"  {task['task_id']} | {task['session_key']} | {task['task_label']}"
+                    f"  status={_task_user_facing_status(task)} | {task['task_id']} | {task['session_key']} | {task['task_label']}"
                 )
         lines.append("")
 
@@ -1935,6 +2040,8 @@ def get_queue_lanes_summary(
                         "task_id": str(task["task_id"]),
                         "session_key": str(task["session_key"]),
                         "task_label": str(task["task_label"]),
+                        "user_facing_status_code": _task_user_facing_status_code(task),
+                        "user_facing_status": _task_user_facing_status(task),
                     }
                     for task in sorted(
                         running_tasks,
@@ -1950,6 +2057,8 @@ def get_queue_lanes_summary(
                         "task_id": str(task["task_id"]),
                         "session_key": str(task["session_key"]),
                         "task_label": str(task["task_label"]),
+                        "user_facing_status_code": _task_user_facing_status_code(task),
+                        "user_facing_status": _task_user_facing_status(task),
                     }
                     for task in sorted(
                         queued_tasks,
@@ -1965,6 +2074,8 @@ def get_queue_lanes_summary(
                         "task_id": str(task["task_id"]),
                         "session_key": str(task["session_key"]),
                         "task_label": str(task["task_label"]),
+                        "user_facing_status_code": _task_user_facing_status_code(task),
+                        "user_facing_status": _task_user_facing_status(task),
                     }
                     for task in sorted(
                         paused_tasks,
@@ -1979,6 +2090,8 @@ def get_queue_lanes_summary(
                         "task_id": str(task["task_id"]),
                         "session_key": str(task["session_key"]),
                         "task_label": str(task["task_label"]),
+                        "user_facing_status_code": _task_user_facing_status_code(task),
+                        "user_facing_status": _task_user_facing_status(task),
                     }
                     for task in sorted(
                         due_paused_tasks,
@@ -2064,7 +2177,12 @@ def render_queue_topology(
         if session_counts:
             lines.append("- sessions:")
             for session_key, count in session_counts:
-                lines.append(f"  {session_key} | task_count={count}")
+                session_tasks = [
+                    status for status in agent_tasks if str(status["session_key"]) == session_key
+                ]
+                lines.append(
+                    f"  {session_key} | task_count={count} | user_statuses={_render_user_facing_status_counts(session_tasks)}"
+                )
         lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
@@ -2119,6 +2237,20 @@ def get_queue_topology_summary(
                         "task_count": len(
                             [status for status in agent_tasks if str(status["session_key"]) == session_key]
                         ),
+                        "user_facing_status_counts": _summarize_user_facing_statuses(
+                            [
+                                status
+                                for status in agent_tasks
+                                if str(status["session_key"]) == session_key
+                            ]
+                        ),
+                        "user_facing_status_code_counts": _summarize_user_facing_status_codes(
+                            [
+                                status
+                                for status in agent_tasks
+                                if str(status["session_key"]) == session_key
+                            ]
+                        ),
                     }
                     for session_key in session_keys
                 ],
@@ -2138,6 +2270,47 @@ def _parse_iso8601(value: Optional[str]) -> Optional[datetime]:
         return datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def _task_user_facing_status(task: dict[str, object]) -> str:
+    return _task_user_facing_projection(task)["label"]
+
+
+def _task_user_facing_projection(task: dict[str, object]) -> dict[str, str]:
+    code = str(task.get("user_facing_status_code") or "").strip()
+    label = str(task.get("user_facing_status") or "").strip()
+    family = str(task.get("user_facing_status_family") or "").strip()
+    if code and label:
+        return {"code": code, "label": label, "family": family or "unknown"}
+    return project_user_facing_status(task)
+
+
+def _task_user_facing_status_code(task: dict[str, object]) -> str:
+    return _task_user_facing_projection(task)["code"]
+
+
+def _summarize_user_facing_statuses(tasks: list[dict[str, object]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for task in tasks:
+        label = _task_user_facing_status(task)
+        counts[label] = counts.get(label, 0) + 1
+    return counts
+
+
+def _summarize_user_facing_status_codes(tasks: list[dict[str, object]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for task in tasks:
+        code = _task_user_facing_status_code(task)
+        counts[code] = counts.get(code, 0) + 1
+    return counts
+
+
+def _render_user_facing_status_counts(tasks: list[dict[str, object]]) -> str:
+    counts = _summarize_user_facing_statuses(tasks)
+    if not counts:
+        return "none"
+    ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return ", ".join(f"{label}:{count}" for label, count in ordered)
 
 
 def _blocked_age_minutes(task: dict[str, object], *, now: Optional[datetime] = None) -> Optional[int]:

@@ -17,11 +17,14 @@ from openclaw_bridge import (
     record_progress,
     register_inbound_task,
 )
-from main_ops import auto_resume_watchdog_blocked_main_tasks_if_safe
+from main_ops import auto_resume_watchdog_blocked_main_tasks_if_safe, cancel_main_queue_task, get_main_continuity_summary
 from silence_monitor import process_overdue_tasks
 from task_config import load_task_system_config
 from task_state import TaskStore, now_iso
+from task_status import list_inflight_statuses
 from taskmonitor_state import get_taskmonitor_enabled, set_taskmonitor_enabled
+from main_task_adapter import resume_main_task
+from user_status import USER_STATUS_PENDING_START, USER_STATUS_QUEUED, USER_STATUS_RECEIVED, project_user_facing_status
 
 
 GENERIC_SUCCESS_SUMMARIES = {
@@ -29,6 +32,55 @@ GENERIC_SUCCESS_SUMMARIES = {
     "agent run completed",
     "assistant",
 }
+
+
+def _build_control_plane_message(
+    *,
+    kind: str,
+    event_name: str,
+    priority: str,
+    text: str,
+    task: Optional[Any] = None,
+    session_key: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    message: dict[str, Any] = {
+        "schema": "openclaw.task-system.control-plane.v1",
+        "kind": kind,
+        "event_name": event_name,
+        "priority": priority,
+        "text": text,
+    }
+    if task is not None:
+        message["task_id"] = task.task_id
+        message["task_status"] = task.status
+        message["session_key"] = task.session_key
+    elif session_key:
+        message["session_key"] = session_key
+    if metadata:
+        message["metadata"] = metadata
+    return message
+
+
+def _build_terminal_message_text(task: Any, *, success: bool) -> str:
+    summary = str(task.meta.get("result_summary") or "").strip()
+    if success:
+        return f"当前任务已完成。{summary}" if summary else "当前任务已完成。"
+    failure_reason = str(getattr(task, "failure_reason", "") or task.meta.get("failure_reason") or "").strip()
+    if failure_reason:
+        return f"当前任务已失败：{failure_reason}"
+    return "当前任务已失败。"
+
+
+def _find_inflight_status_entry(
+    task_id: str,
+    *,
+    config_path: Optional[Path] = None,
+) -> Optional[dict[str, Any]]:
+    for status in list_inflight_statuses(config_path=config_path):
+        if str(status.get("task_id") or "") == task_id:
+            return status
+    return None
 
 
 def load_payload(path: Path) -> dict[str, Any]:
@@ -81,19 +133,21 @@ def register_from_payload(
         config_path=config_path,
         observe_only=bool(payload.get("observe_only", False)),
     )
+    serialized = decision.to_payload()
     return {
-        "should_register_task": decision.should_register_task,
-        "task_id": decision.task_id,
-        "classification_reason": decision.classification_reason,
-        "confidence": decision.confidence,
-        "task_status": decision.task_status,
-        "queue_position": decision.queue_position,
-        "ahead_count": decision.ahead_count,
-        "active_count": decision.active_count,
-        "running_count": decision.running_count,
-        "queued_count": decision.queued_count,
-        "estimated_wait_seconds": decision.estimated_wait_seconds,
-        "continuation_due_at": decision.continuation_due_at,
+        "should_register_task": serialized["should_register_task"],
+        "task_id": serialized["task_id"],
+        "classification_reason": serialized["classification_reason"],
+        "confidence": serialized["confidence"],
+        "task_status": serialized["task_status"],
+        "queue_position": serialized["queue_position"],
+        "ahead_count": serialized["ahead_count"],
+        "active_count": serialized["active_count"],
+        "running_count": serialized["running_count"],
+        "queued_count": serialized["queued_count"],
+        "estimated_wait_seconds": serialized["estimated_wait_seconds"],
+        "continuation_due_at": serialized["continuation_due_at"],
+        "register_decision": serialized,
     }
 
 
@@ -199,6 +253,50 @@ def watchdog_auto_recover_from_payload(
     result["watchdog_notified_count"] = sum(1 for finding in findings if bool(finding.get("should_notify")))
     result["watchdog_blocked_count"] = sum(
         1 for finding in findings if str(finding.get("escalation") or "").strip() == "blocked-no-visible-progress"
+    )
+    primary_action_kind = str(result.get("primary_action_kind") or result.get("primary_action", {}).get("kind") or "none")
+    primary_action_command = str(
+        result.get("primary_action_command") or result.get("primary_action", {}).get("command") or ""
+    ).strip()
+    top_risk_session = result.get("top_risk_session") if isinstance(result.get("top_risk_session"), dict) else {}
+    top_risk_session_key = str(top_risk_session.get("session_key") or "").strip() or None
+    top_risk_status_counts = top_risk_session.get("user_facing_status_counts")
+    top_risk_status_code_counts = top_risk_session.get("user_facing_status_code_counts")
+    rendered_top_risk_statuses = None
+    if isinstance(top_risk_status_counts, dict) and top_risk_status_counts:
+        rendered_top_risk_statuses = ", ".join(
+            f"{label}:{count}"
+            for label, count in sorted(top_risk_status_counts.items(), key=lambda item: (-int(item[1]), str(item[0])))
+        )
+    if result.get("startup_promoted_count"):
+        watchdog_text = f"已执行 watchdog 启动恢复，提升了 {result['startup_promoted_count']} 条任务。"
+    elif result.get("watchdog_blocked_count"):
+        watchdog_text = f"watchdog 检测到 {result['watchdog_blocked_count']} 条阻塞风险，当前主动作：{primary_action_kind}。"
+    elif result.get("watchdog_findings_count"):
+        watchdog_text = f"watchdog 检测到 {result['watchdog_findings_count']} 条连续性风险，当前主动作：{primary_action_kind}。"
+    else:
+        watchdog_text = "watchdog 检查已完成，当前没有新的连续性风险。"
+    if top_risk_session_key and rendered_top_risk_statuses:
+        watchdog_text = f"{watchdog_text} 当前重点 session：{top_risk_session_key}（{rendered_top_risk_statuses}）。"
+    result["control_plane_message"] = _build_control_plane_message(
+        kind="watchdog-auto-recover",
+        event_name="watchdog-auto-recover",
+        priority="p1-task-management",
+        text=watchdog_text,
+        session_key=str(payload.get("session_key") or "").strip() or None,
+        metadata={
+            "status": result.get("status"),
+            "startup_recovery": startup_recovery,
+            "watchdog_findings_count": result.get("watchdog_findings_count"),
+            "watchdog_blocked_count": result.get("watchdog_blocked_count"),
+            "primary_action_kind": primary_action_kind,
+            "primary_action_command": primary_action_command or None,
+            "top_risk_session_key": top_risk_session_key,
+            "top_risk_session_user_status_code_counts": (
+                top_risk_status_code_counts if isinstance(top_risk_status_code_counts, dict) else {}
+            ),
+            "top_risk_session_user_status_counts": top_risk_status_counts if isinstance(top_risk_status_counts, dict) else {},
+        },
     )
     return result
     claimed = store.claim_execution_slot(observed.task_id)
@@ -434,7 +532,16 @@ def blocked_from_payload(
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
     task = record_blocked(payload["task_id"], payload["reason"], config_path=config_path)
-    return task.to_dict()
+    result = task.to_dict()
+    reason = str(task.meta.get("blocked_reason") or payload.get("reason") or "").strip()
+    result["control_plane_message"] = _build_control_plane_message(
+        kind="task-blocked",
+        event_name="task-blocked",
+        priority="p1-task-management",
+        text=f"当前任务已阻塞：{reason}" if reason else "当前任务已阻塞。",
+        task=task,
+    )
+    return result
 
 
 def blocked_active_from_payload(
@@ -447,7 +554,17 @@ def blocked_active_from_payload(
     if not task_id:
         return {"updated": False, "reason": "no-active-task"}
     task = record_blocked(str(task_id), payload["reason"], config_path=config_path)
-    return {"updated": True, "task": task.to_dict()}
+    return {
+        "updated": True,
+        "task": task.to_dict(),
+        "control_plane_message": _build_control_plane_message(
+            kind="task-blocked",
+            event_name="task-blocked",
+            priority="p1-task-management",
+            text=f"当前任务已阻塞：{payload['reason']}".strip(),
+            task=task,
+        ),
+    }
 
 
 def completed_from_payload(
@@ -456,7 +573,15 @@ def completed_from_payload(
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
     task = record_completed(payload["task_id"], result_summary=payload.get("result_summary"), config_path=config_path)
-    return task.to_dict()
+    result = task.to_dict()
+    result["control_plane_message"] = _build_control_plane_message(
+        kind="task-completed",
+        event_name="task-completed",
+        priority="p1-task-management",
+        text=_build_terminal_message_text(task, success=True),
+        task=task,
+    )
+    return result
 
 
 def completed_active_from_payload(
@@ -469,7 +594,17 @@ def completed_active_from_payload(
     if not task_id:
         return {"updated": False, "reason": "no-active-task"}
     task = record_completed(str(task_id), result_summary=payload.get("result_summary"), config_path=config_path)
-    return {"updated": True, "task": task.to_dict()}
+    return {
+        "updated": True,
+        "task": task.to_dict(),
+        "control_plane_message": _build_control_plane_message(
+            kind="task-completed",
+            event_name="task-completed",
+            priority="p1-task-management",
+            text=_build_terminal_message_text(task, success=True),
+            task=task,
+        ),
+    }
 
 
 def failed_from_payload(
@@ -478,7 +613,15 @@ def failed_from_payload(
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
     task = record_failed(payload["task_id"], payload["reason"], config_path=config_path)
-    return task.to_dict()
+    result = task.to_dict()
+    result["control_plane_message"] = _build_control_plane_message(
+        kind="task-failed",
+        event_name="task-failed",
+        priority="p1-task-management",
+        text=_build_terminal_message_text(task, success=False),
+        task=task,
+    )
+    return result
 
 
 def failed_active_from_payload(
@@ -491,7 +634,17 @@ def failed_active_from_payload(
     if not task_id:
         return {"updated": False, "reason": "no-active-task"}
     task = record_failed(str(task_id), payload["reason"], config_path=config_path)
-    return {"updated": True, "task": task.to_dict()}
+    return {
+        "updated": True,
+        "task": task.to_dict(),
+        "control_plane_message": _build_control_plane_message(
+            kind="task-failed",
+            event_name="task-failed",
+            priority="p1-task-management",
+            text=_build_terminal_message_text(task, success=False),
+            task=task,
+        ),
+    }
 
 
 def finalize_active_from_payload(
@@ -566,6 +719,10 @@ def should_send_short_followup_from_payload(
         return {"should_send": False, "reason": "task-not-found"}
     if task.status not in {"received", "queued", "running"}:
         return {"should_send": False, "reason": f"task-not-active:{task.status}", "task": task.to_dict()}
+    status_entry = _find_inflight_status_entry(task.task_id, config_path=config_path)
+    projection = project_user_facing_status(status_entry or {"status": task.status})
+    user_facing_status = projection["label"]
+    user_facing_status_code = projection["code"]
     queue_position, ahead_count, active_count, running_count, _ = _queue_metrics(
         store,
         agent_id=task.agent_id,
@@ -592,7 +749,12 @@ def should_send_short_followup_from_payload(
                 f"你现在排第 {position} 位。"
             )
         else:
-            followup_message = "已收到你的消息，当前正在等待真正开始处理；马上继续。"
+            if user_facing_status_code == USER_STATUS_PENDING_START:
+                followup_message = "已收到你的消息，当前状态：待开始；马上继续。"
+            elif user_facing_status_code == USER_STATUS_RECEIVED:
+                followup_message = "已收到你的消息，当前状态：已收到；马上继续进入处理。"
+            else:
+                followup_message = f"已收到你的消息，当前状态：{user_facing_status}；马上继续。"
     elif task.status == "running":
         last_progress_note = str(task.meta.get("last_progress_note") or "").strip()
         if last_progress_note:
@@ -614,11 +776,31 @@ def should_send_short_followup_from_payload(
         "reason": f"task-active:{task.status}",
         "task": task.to_dict(),
         "followup_message": followup_message,
+        "control_plane_message": {
+            "schema": "openclaw.task-system.control-plane.v1",
+            "kind": "short-task-followup",
+            "event_name": "short-task-followup",
+            "priority": "p2-progress-followup",
+            "task_id": task.task_id,
+            "task_status": task.status,
+            "user_facing_status_code": user_facing_status_code,
+            "user_facing_status": user_facing_status,
+            "text": followup_message,
+            "metadata": {
+                "user_facing_status_code": user_facing_status_code,
+                "user_facing_status": user_facing_status,
+                "queue_position": queue_position,
+                "ahead_count": ahead_count,
+                "estimated_wait_seconds": estimated_wait_seconds,
+            },
+        },
         "queue_position": queue_position,
         "ahead_count": ahead_count,
         "active_count": active_count,
         "running_count": running_count,
         "estimated_wait_seconds": estimated_wait_seconds,
+        "user_facing_status_code": user_facing_status_code,
+        "user_facing_status": user_facing_status,
     }
 
 
@@ -654,6 +836,14 @@ def taskmonitor_control_from_payload(
             "session_key": session_key,
             "enabled": enabled,
             "message": "当前会话的 taskmonitor 已开启。" if enabled else "当前会话的 taskmonitor 已关闭。",
+            "control_plane_message": _build_control_plane_message(
+                kind="taskmonitor-status",
+                event_name="taskmonitor-status",
+                priority="p1-task-management",
+                text="当前会话的 taskmonitor 已开启。" if enabled else "当前会话的 taskmonitor 已关闭。",
+                session_key=session_key,
+                metadata={"enabled": enabled, "action": "status"},
+            ),
         }
     if action in {"on", "enable", "enabled"}:
         updated = set_taskmonitor_enabled(session_key, True, config_path=config_path)
@@ -661,6 +851,14 @@ def taskmonitor_control_from_payload(
             "ok": True,
             **updated,
             "message": "已开启当前会话的 taskmonitor。",
+            "control_plane_message": _build_control_plane_message(
+                kind="taskmonitor-updated",
+                event_name="taskmonitor-enabled",
+                priority="p1-task-management",
+                text="已开启当前会话的 taskmonitor。",
+                session_key=session_key,
+                metadata={"enabled": True, "action": "on"},
+            ),
         }
     if action in {"off", "disable", "disabled"}:
         updated = set_taskmonitor_enabled(session_key, False, config_path=config_path)
@@ -668,11 +866,192 @@ def taskmonitor_control_from_payload(
             "ok": True,
             **updated,
             "message": "已关闭当前会话的 taskmonitor；后续消息将不再进入 task system 监控。",
+            "control_plane_message": _build_control_plane_message(
+                kind="taskmonitor-updated",
+                event_name="taskmonitor-disabled",
+                priority="p1-task-management",
+                text="已关闭当前会话的 taskmonitor；后续消息将不再进入 task system 监控。",
+                session_key=session_key,
+                metadata={"enabled": False, "action": "off"},
+            ),
         }
     return {
         "ok": False,
         "reason": "unsupported-action",
         "message": "不支持的 taskmonitor 命令；可用值：on / off / status",
+    }
+
+
+def resume_main_task_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    task_id = str(payload.get("task_id") or "").strip()
+    if not task_id:
+        return {"updated": False, "reason": "missing-task-id"}
+    runtime_config = load_task_system_config(config_path=config_path)
+    resolved_paths = runtime_config.build_paths()
+    updated = resume_main_task(
+        task_id,
+        progress_note=str(payload.get("progress_note") or "").strip() or None,
+        paths=resolved_paths,
+    )
+    if updated.status == "running":
+        text = "当前任务已恢复执行。"
+    elif updated.status == "queued":
+        text = "当前任务已恢复排队，等待继续处理。"
+    else:
+        text = f"当前任务已恢复到 {updated.status} 状态。"
+    return {
+        "updated": True,
+        "task": updated.to_dict(),
+        "control_plane_message": _build_control_plane_message(
+            kind="task-resumed",
+            event_name="task-resumed",
+            priority="p1-task-management",
+            text=text,
+            task=updated,
+            metadata={"progress_note": str(payload.get("progress_note") or "").strip() or None},
+        ),
+    }
+
+
+def cancel_main_queue_task_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    task_id = str(payload.get("task_id") or "").strip() or None
+    queue_position_raw = payload.get("queue_position")
+    queue_position = int(queue_position_raw) if queue_position_raw is not None else None
+    runtime_config = load_task_system_config(config_path=config_path)
+    resolved_paths = runtime_config.build_paths()
+    store = TaskStore(paths=resolved_paths)
+
+    selected_task = None
+    if task_id:
+        try:
+            selected_task = store.load_task(task_id, allow_archive=False)
+        except FileNotFoundError:
+            selected_task = None
+    elif queue_position is not None and queue_position >= 1:
+        queued_tasks = store.find_queued_tasks(agent_id="main")
+        if queue_position <= len(queued_tasks):
+            selected_task = queued_tasks[queue_position - 1]
+
+    result = cancel_main_queue_task(
+        config_path=config_path,
+        paths=resolved_paths,
+        task_id=task_id,
+        queue_position=queue_position,
+        reason=str(payload.get("reason") or "user requested queued task cancel"),
+    )
+    if result.get("action") != "cancelled-queued-task":
+        return result
+
+    cancelled_task_id = str(result.get("task_id") or task_id or "").strip()
+    archived_task = None
+    if cancelled_task_id:
+        try:
+            archived_task = store.load_task(cancelled_task_id, allow_archive=True)
+        except FileNotFoundError:
+            archived_task = None
+    message_text = str(result.get("suggestion") or "").strip() or "已取消排队中的任务。"
+    return {
+        **result,
+        "task": archived_task.to_dict() if archived_task else (selected_task.to_dict() if selected_task else None),
+        "control_plane_message": _build_control_plane_message(
+            kind="task-cancelled",
+            event_name="task-cancelled",
+            priority="p1-task-management",
+            text=message_text,
+            task=archived_task or selected_task,
+            metadata={
+                "queue_position": result.get("queue_position"),
+                "remaining_queued_count": result.get("remaining_queued_count"),
+                "remaining_active_count": result.get("remaining_active_count"),
+            },
+        ),
+    }
+
+
+def main_continuity_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    return get_main_continuity_summary(
+        config_path=config_path,
+        session_key=str(payload.get("session_key") or "").strip() or None,
+    )
+
+
+def _render_session_tasks_summary_text(items: list[dict[str, Any]], *, session_key: Optional[str]) -> str:
+    if not items:
+        if session_key:
+            return "当前会话没有活动中的 task。"
+        return "当前没有活动中的 main task。"
+    rendered_items: list[str] = []
+    for entry in items[:3]:
+        status = str(entry.get("status") or "")
+        projection = project_user_facing_status(entry)
+        label = projection["label"] or (status or "未知状态")
+        status_code = projection["code"]
+        queue = entry.get("queue") if isinstance(entry.get("queue"), dict) else {}
+        position = queue.get("position") if isinstance(queue, dict) else None
+        task_label = str(entry.get("task_label") or "").strip() or str(entry.get("task_id") or "")
+        if status_code in {USER_STATUS_QUEUED, USER_STATUS_PENDING_START} and position is not None:
+            rendered_items.append(f"{label}，第 {position} 位：{task_label}")
+        else:
+            rendered_items.append(f"{label}：{task_label}")
+    summary = "；".join(rendered_items)
+    if len(items) > 3:
+        summary = f"{summary}；另有 {len(items) - 3} 条任务未展开。"
+    prefix = f"当前会话共有 {len(items)} 条活动任务：" if session_key else f"当前共有 {len(items)} 条活动 main task："
+    return f"{prefix}{summary}"
+
+
+def main_tasks_summary_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    resolved_paths = runtime_config.build_paths()
+    session_key = str(payload.get("session_key") or "").strip() or None
+    statuses = list_inflight_statuses(paths=resolved_paths)
+    relevant = [
+        status
+        for status in statuses
+        if str(status.get("agent_id") or "") == "main"
+        and (session_key is None or str(status.get("session_key") or "") == session_key)
+        and str(status.get("status") or "") in {"received", "queued", "running", "paused", "blocked"}
+    ]
+    relevant = sorted(
+        relevant,
+        key=lambda item: (
+            int(((item.get("queue") or {}) if isinstance(item.get("queue"), dict) else {}).get("position") or 999999),
+            str(item.get("created_at") or ""),
+            str(item.get("task_id") or ""),
+        ),
+    )
+    text = _render_session_tasks_summary_text(relevant, session_key=session_key)
+    return {
+        "session_key": session_key,
+        "task_count": len(relevant),
+        "tasks": relevant,
+        "control_plane_message": _build_control_plane_message(
+            kind="main-tasks-summary",
+            event_name="main-tasks-summary",
+            priority="p1-task-management",
+            text=text,
+            session_key=session_key,
+            metadata={
+                "task_count": len(relevant),
+                "focus_session_key": session_key,
+            },
+        ),
     }
 
 
@@ -715,6 +1094,14 @@ def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Pat
         return taskmonitor_status_from_payload(payload, config_path=config_path)
     if command == "taskmonitor-control":
         return taskmonitor_control_from_payload(payload, config_path=config_path)
+    if command == "resume-main-task":
+        return resume_main_task_from_payload(payload, config_path=config_path)
+    if command == "cancel-main-queue-task":
+        return cancel_main_queue_task_from_payload(payload, config_path=config_path)
+    if command == "main-continuity":
+        return main_continuity_from_payload(payload, config_path=config_path)
+    if command == "main-tasks-summary":
+        return main_tasks_summary_from_payload(payload, config_path=config_path)
     raise ValueError(f"unsupported command: {command}")
 
 
@@ -722,7 +1109,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     usage = (
         "usage: openclaw_hooks.py "
-        "<register|watchdog-auto-recover|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control> "
+        "<register|watchdog-auto-recover|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control|resume-main-task|cancel-main-queue-task|main-continuity|main-tasks-summary> "
         "<payload.json|-> [config.json]"
     )
     if args and args[0] in {"-h", "--help"}:
