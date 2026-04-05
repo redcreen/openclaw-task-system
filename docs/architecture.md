@@ -22,6 +22,15 @@
 
 ```mermaid
 flowchart TD
+    classDef source fill:#f8fafc,stroke:#94a3b8,color:#111827,stroke-width:1.2px;
+    classDef core fill:#eff6ff,stroke:#60a5fa,color:#0f172a,stroke-width:1.4px;
+    classDef lane fill:#eef2ff,stroke:#818cf8,color:#1e1b4b,stroke-width:1.2px;
+    classDef output fill:#ecfeff,stroke:#22c55e,color:#052e16,stroke-width:1.2px;
+    style intake fill:#fafaf9,stroke:#cbd5e1,stroke-width:1px,color:#111827
+    style runtime fill:#eff6ff,stroke:#93c5fd,stroke-width:1px,color:#111827
+    style lanes fill:#f5f3ff,stroke:#c4b5fd,stroke-width:1px,color:#111827
+    style projection fill:#f0fdf4,stroke:#86efac,stroke-width:1px,color:#111827
+
     U["用户消息"]
 
     subgraph intake["接入层"]
@@ -52,6 +61,11 @@ flowchart TD
     C --> C3["cancel · watchdog · continuity"]
     A --> A1["agent reply · tool output · final answer"]
     V --> V1["tasks · queues · lanes · dashboard · triage"]
+
+    class U source
+    class R,P,T core
+    class C,A,V lane
+    class C1,C2,C3,A1,V1 output
 ```
 
 这张图表达 4 件事：
@@ -144,6 +158,12 @@ projection layer 负责把 truth source 投影给不同入口：
 
 ```mermaid
 flowchart TD
+    classDef source fill:#f8fafc,stroke:#94a3b8,color:#111827,stroke-width:1.2px;
+    classDef branch fill:#fff7ed,stroke:#fb923c,color:#7c2d12,stroke-width:1.2px;
+    classDef core fill:#eff6ff,stroke:#60a5fa,color:#0f172a,stroke-width:1.4px;
+    classDef lane fill:#eef2ff,stroke:#818cf8,color:#1e1b4b,stroke-width:1.2px;
+    classDef output fill:#ecfeff,stroke:#14b8a6,color:#134e4a,stroke-width:1.2px;
+
     M["message received"]
     G{"channel 是否具备 receive-side producer"}
     PR["pre-register · early control-plane"]
@@ -166,6 +186,12 @@ flowchart TD
     AD --> RL
     CL --> CP --> ST
     RL --> RR --> ST
+
+    class M source
+    class G branch
+    class PR,DP,TT,AD core
+    class CL,RL lane
+    class CP,RR,ST output
 ```
 
 这条路径对应当前正式实现：
