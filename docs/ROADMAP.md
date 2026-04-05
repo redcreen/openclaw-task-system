@@ -423,3 +423,21 @@ Phase 5 收口结论：
 - 保持完整 testsuite 与 channel acceptance matrix 持续全绿
 - 新增事项先进入 `docs/TODO.md`
 - 等新的正式主线成熟后，再合并回下一版 roadmap
+
+## 11. 主线完成后的候选方向
+
+当前 `Phase 0 ~ Phase 5` 已经完成。下面这些方向可以继续做，但它们都属于新一轮 roadmap 候选，而不是当前主线欠账：
+
+1. 更强的 auto-recovery / auto-resume 闭环
+   - 在现有 guarded auto-resume 与 continuity 基础上继续往更自动推进
+
+2. 更多 channel 的 receive-side producer 支持
+   - 在当前 `feishu validated / telegram-webchat accepted-with-boundary` 的基础上继续缩小边界差异
+
+3. 更完整的用户控制面
+   - 更强的 `/tasks`
+   - 批量操作
+   - 更丰富的 session / agent 视图
+
+4. Feishu queue 与 task queue 边界继续收口
+   - 在现有 contract 模型下继续减少 channel queue 对用户可见 control-plane 的影响
