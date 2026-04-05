@@ -47,11 +47,11 @@ flowchart TD
     T --> A
     T --> V
 
-    C --> C1[[wd]]
-    C --> C2[follow-up]
-    C --> C3[cancel / watchdog / continuity]
-    A --> A1[agent reply / tool output / final answer]
-    V --> V1[/tasks / queues / lanes / dashboard / triage]
+    C --> C1["wd ack"]
+    C --> C2["follow-up"]
+    C --> C3["cancel · watchdog · continuity"]
+    A --> A1["agent reply · tool output · final answer"]
+    V --> V1["tasks · queues · lanes · dashboard · triage"]
 ```
 
 这张图表达 4 件事：
@@ -145,16 +145,16 @@ projection layer 负责把 truth source 投影给不同入口：
 ```mermaid
 flowchart TD
     M[message received]
-    G{channel 是否具备<br/>receive-side producer}
-    PR[pre-register / early control-plane]
-    DP[dispatch-side priority path]
-    TT[task truth source]
-    AD[admission / queue / active task decision]
-    CL[control-plane lane]
-    RL[reply lane]
-    CP[发送 [wd] / follow-up / task 管理消息]
-    RR[agent 执行 / 最终回复]
-    ST[更新可见状态]
+    G{"channel 是否具备<br/>receive-side producer"}
+    PR["pre-register · early control-plane"]
+    DP["dispatch-side priority path"]
+    TT["task truth source"]
+    AD["admission · queue · active task decision"]
+    CL["control-plane lane"]
+    RL["reply lane"]
+    CP["发送 wd · follow-up · task 管理消息"]
+    RR["agent 执行 · 最终回复"]
+    ST["更新可见状态"]
 
     M --> G
     G -- yes --> PR
