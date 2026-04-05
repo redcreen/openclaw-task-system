@@ -21,16 +21,37 @@
 ## 2. 一张图看整体
 
 ```mermaid
-flowchart LR
-    A[用户消息] --> B[channel receive / plugin hook]
-    B --> C[producer]
-    C --> D[task truth source]
-    D --> E[control-plane lane]
-    D --> F[reply lane]
-    D --> G[projection layer]
-    E --> H[[wd] / follow-up / cancel / watchdog / continuity]
-    F --> I[agent reply / tool output / final answer]
-    G --> J[/tasks / queues / lanes / dashboard / triage]
+flowchart TD
+    U[用户消息]
+
+    subgraph intake[接入层]
+        R[channel receive / plugin hook]
+        P[producer]
+    end
+
+    subgraph runtime[任务运行时]
+        T[task truth source]
+    end
+
+    subgraph lanes[输出分层]
+        C[control-plane lane]
+        A[reply lane]
+    end
+
+    subgraph projection[状态投影]
+        V[projection layer]
+    end
+
+    U --> R --> P --> T
+    T --> C
+    T --> A
+    T --> V
+
+    C --> C1[[wd]]
+    C --> C2[follow-up]
+    C --> C3[cancel / watchdog / continuity]
+    A --> A1[agent reply / tool output / final answer]
+    V --> V1[/tasks / queues / lanes / dashboard / triage]
 ```
 
 这张图表达 4 件事：
@@ -123,18 +144,28 @@ projection layer 负责把 truth source 投影给不同入口：
 
 ```mermaid
 flowchart TD
-    A[message received] --> B{channel 当前是否具备 receive-side producer}
-    B -- yes --> C[pre-register / early control-plane]
-    B -- no --> D[dispatch-side priority path]
-    C --> E[task truth source]
-    D --> E
-    E --> F[admission / queue / active task decision]
-    F --> G[control-plane lane]
-    F --> H[reply lane]
-    G --> I[发送 [wd] / follow-up / task 管理消息]
-    H --> J[agent 执行 / 最终回复]
-    I --> K[更新可见状态]
-    J --> K
+    M[message received]
+    G{channel 是否具备<br/>receive-side producer}
+    PR[pre-register / early control-plane]
+    DP[dispatch-side priority path]
+    TT[task truth source]
+    AD[admission / queue / active task decision]
+    CL[control-plane lane]
+    RL[reply lane]
+    CP[发送 [wd] / follow-up / task 管理消息]
+    RR[agent 执行 / 最终回复]
+    ST[更新可见状态]
+
+    M --> G
+    G -- yes --> PR
+    G -- no --> DP
+    PR --> TT
+    DP --> TT
+    TT --> AD
+    AD --> CL
+    AD --> RL
+    CL --> CP --> ST
+    RL --> RR --> ST
 ```
 
 这条路径对应当前正式实现：

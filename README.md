@@ -4,7 +4,7 @@
 
 ## English
 
-### Overview
+### overview
 
 OpenClaw Task System is a task runtime and control plane for OpenClaw.
 
@@ -20,7 +20,7 @@ It upgrades plain chat requests into managed tasks with:
 
 In short, this project turns OpenClaw from a message-only flow into a message flow plus a task flow.
 
-### Why This Project Exists
+### why this project exists
 
 OpenClaw is naturally message-driven, but real usage needs task-driven behavior.
 
@@ -34,7 +34,7 @@ Without a task system, these problems appear quickly:
 
 This project exists to provide one control plane for those concerns.
 
-### What It Does
+### what it does
 
 Current shipped capabilities include:
 
@@ -47,7 +47,7 @@ Current shipped capabilities include:
 - operator views such as `dashboard`, `triage`, `queues`, `lanes`, and `continuity`
 - producer contract and channel acceptance truth sources
 
-### Project Status
+### project status
 
 The current mainline roadmap is complete.
 
@@ -60,7 +60,7 @@ The current mainline roadmap is complete.
 
 The automated testsuite is also fully green.
 
-### Repository Layout
+### repository layout
 
 - Read in this order when starting fresh:
   - `README.md`
@@ -79,27 +79,28 @@ The automated testsuite is also fully green.
 - [`scripts/runtime/`](scripts/runtime): runtime tools, truth sources, and CLI
 - [`config/`](config): example configs
 
-### Installation
+### installation
 
-#### Prerequisites
+#### prerequisites
 
 - OpenClaw installed locally
 - Python 3 available as `python3`
 
-#### Source tree vs installed plugin
+#### source tree vs installed plugin
 
 - The source repository is where development happens.
 - The installed plugin directory under `~/.openclaw/extensions/openclaw-task-system` is what OpenClaw actually loads at runtime.
 - Runtime-generated state is expected to live under the installed plugin `data/` directory, not in the source repository.
 - The installable payload is the `plugin/` directory. When changing plugin runtime payload files, keep the installable `plugin/` tree in sync before reinstalling or releasing.
-#### 1. Validate the plugin and runtime
+
+#### 1. validate the plugin and runtime
 
 ```bash
 python3 scripts/runtime/plugin_doctor.py
 python3 scripts/runtime/plugin_smoke.py
 ```
 
-#### 2. Install the plugin
+#### 2. install the plugin
 
 ```bash
 openclaw plugins install ./plugin
@@ -111,7 +112,7 @@ Reinstall the plugin after changing the installable payload:
 openclaw plugins install ./plugin
 ```
 
-#### 3. Prepare runtime config
+#### 3. prepare runtime config
 
 Use:
 
@@ -156,7 +157,7 @@ Example:
 }
 ```
 
-#### 4. Configure the plugin entry in OpenClaw
+#### 4. configure the plugin entry in OpenClaw
 
 Start from:
 
@@ -194,9 +195,9 @@ Example:
 The plugin can now use its bundled runtime/config by default. You only need to override
 `runtimeRoot`, `configPath`, or `debugLogPath` when you want a non-default layout.
 
-### How To Use
+### how to use
 
-#### If you are taking over this project fresh
+#### if you are taking over this project fresh
 
 Use this sequence:
 
@@ -215,7 +216,7 @@ When changing code:
 4. run `bash scripts/run_tests.sh`
 5. verify with `python3 scripts/runtime/plugin_doctor.py`
 
-#### Normal user-facing behavior
+#### normal user-facing behavior
 
 When a request enters task management, the expected flow is:
 
@@ -225,7 +226,7 @@ When a request enters task management, the expected flow is:
 4. sync user-visible progress when appropriate
 5. finish as `done`, `failed`, `blocked`, `paused`, or recovered
 
-#### Common operator commands
+#### common operator commands
 
 Health and summary:
 
@@ -273,7 +274,7 @@ python3 scripts/runtime/main_ops.py stop-all
 python3 scripts/runtime/main_ops.py purge --session-key '<session_key>'
 ```
 
-### Channel Status
+### channel status
 
 Current accepted channel contracts:
 
@@ -286,7 +287,7 @@ This means:
 - Feishu has the strongest early control-plane path in the current boundary
 - Telegram and WebChat are accepted under a dispatch-side contract, not full receive-side parity
 
-### Validation
+### validation
 
 Run the full automated testsuite:
 
@@ -304,7 +305,7 @@ python3 scripts/runtime/main_ops.py dashboard --json
 python3 scripts/runtime/main_ops.py channel-acceptance --json
 ```
 
-### Problems Already Solved
+### problems already solved
 
 The current project already solves these core problems:
 
@@ -315,7 +316,7 @@ The current project already solves these core problems:
 - user-facing status is projected consistently across runtime views
 - producer contract and channel acceptance are formalized in code, not only in prose
 
-### Boundaries
+### boundaries
 
 These boundaries are intentional:
 
@@ -324,7 +325,7 @@ These boundaries are intentional:
 - no modifications to other plugins as a project requirement
 - all behavior is built through this repo's plugin, runtime, state, and docs
 
-### Roadmap After The Mainline
+### roadmap after the mainline
 
 The current mainline is complete. Future work is optional and should be treated as a new roadmap, not as unfinished mainline debt.
 
