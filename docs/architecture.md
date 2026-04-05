@@ -26,12 +26,15 @@ flowchart TD
     classDef core fill:#dbeafe,stroke:#3b82f6,color:#0f172a,stroke-width:1.4px;
     classDef lane fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b,stroke-width:1.2px;
     classDef output fill:#d1fae5,stroke:#10b981,color:#064e3b,stroke-width:1.2px;
+    classDef visible fill:#fef3c7,stroke:#f59e0b,color:#78350f,stroke-width:1.2px;
     style intake fill:#e5e7eb,stroke:#94a3b8,stroke-width:1px,color:#111827
     style runtime fill:#dbeafe,stroke:#60a5fa,stroke-width:1px,color:#111827
     style lanes fill:#e9ddff,stroke:#a78bfa,stroke-width:1px,color:#111827
     style projection fill:#dcfce7,stroke:#4ade80,stroke-width:1px,color:#111827
 
-    U["用户消息"]
+    U["用户输入"]
+    UX["用户可见反馈"]
+    OPS["运维可见状态"]
 
     subgraph intake["接入层"]
         R["channel receive · plugin hook"]
@@ -61,19 +64,27 @@ flowchart TD
     C --> C3["cancel · watchdog · continuity"]
     A --> A1["agent reply · tool output · final answer"]
     V --> V1["tasks · queues · lanes · dashboard · triage"]
+    C1 --> UX
+    C2 --> UX
+    C3 --> UX
+    A1 --> UX
+    V1 --> OPS
+    UX --> U
 
     class U source
     class R,P,T core
     class C,A,V lane
     class C1,C2,C3,A1,V1 output
+    class UX,OPS visible
 ```
 
-这张图表达 4 件事：
+这张图表达 5 件事：
 
 1. 用户消息先进入 producer，不直接等于普通 reply
 2. 所有任务状态先进入统一 truth source
 3. control-plane lane 与 reply lane 分离
-4. 用户与运维视图都从 projection layer 读取同一份真相
+4. 输出最终必须变成用户可见反馈，而不是停在内部 lane
+5. 用户与运维视图都从 projection layer 读取同一份真相
 
 ## 3. 核心分层
 
@@ -163,6 +174,7 @@ flowchart TD
     classDef core fill:#dbeafe,stroke:#3b82f6,color:#0f172a,stroke-width:1.4px;
     classDef lane fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b,stroke-width:1.2px;
     classDef output fill:#ccfbf1,stroke:#14b8a6,color:#134e4a,stroke-width:1.2px;
+    classDef visible fill:#fef3c7,stroke:#f59e0b,color:#78350f,stroke-width:1.2px;
 
     M["message received"]
     G{"channel 是否具备 receive-side producer"}
@@ -175,6 +187,7 @@ flowchart TD
     CP["发送 wd · follow-up · task 管理消息"]
     RR["agent 执行 · 最终回复"]
     ST["更新可见状态"]
+    UV["用户看到状态与回复"]
 
     M --> G
     G -- yes --> PR
@@ -186,12 +199,16 @@ flowchart TD
     AD --> RL
     CL --> CP --> ST
     RL --> RR --> ST
+    CP --> UV
+    RR --> UV
+    ST --> UV
 
     class M source
     class G branch
     class PR,DP,TT,AD core
     class CL,RL lane
     class CP,RR,ST output
+    class UV visible
 ```
 
 这条路径对应当前正式实现：
