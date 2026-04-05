@@ -5,6 +5,9 @@ import { basename, join } from "node:path";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 const INTERNAL_STARTUP_RESUME_MARKER = "[[TASK-SYSTEM-STARTUP-RESUME]]";
+const EARLY_ACK_STATE_KEY = "__openclawTaskSystemEarlyAckState";
+const EARLY_ACK_TTL_MS = 5 * 60 * 1000;
+const PRE_REGISTER_STATE_KEY = "__openclawTaskSystemPreRegisterState";
 
 type TaskSystemPluginConfig = {
   enabled?: boolean;
@@ -115,6 +118,376 @@ function withTaskPrefix(config: Required<TaskSystemPluginConfig>, message: strin
 
 function buildHooksScriptPath(config: Required<TaskSystemPluginConfig>): string {
   return `${config.runtimeRoot}/scripts/runtime/openclaw_hooks.py`;
+}
+
+type QueueScope = "direct" | "conversation" | "thread";
+
+type QueueIdentity = {
+  channel: string;
+  accountId: string;
+  conversationId: string;
+  threadId?: string;
+  senderId?: string;
+  sessionKey?: string;
+  scope: QueueScope;
+  queueKey: string;
+};
+
+type EarlyAckMarker = {
+  version?: number;
+  queueKey?: string;
+  sentAt: number;
+  channel?: string;
+  accountId?: string;
+  conversationId?: string;
+  threadId?: string;
+  messageId?: string;
+};
+
+function getEarlyAckState(): Map<string, Array<number | EarlyAckMarker>> {
+  const scope = globalThis as typeof globalThis & {
+    [EARLY_ACK_STATE_KEY]?: Map<string, Array<number | EarlyAckMarker>>;
+  };
+  if (!(scope[EARLY_ACK_STATE_KEY] instanceof Map)) {
+    scope[EARLY_ACK_STATE_KEY] = new Map<string, Array<number | EarlyAckMarker>>();
+  }
+  return scope[EARLY_ACK_STATE_KEY] as Map<string, Array<number | EarlyAckMarker>>;
+}
+
+function buildEarlyAckKey(channel: string, accountId: string, chatId: string): string {
+  return `${normalizeText(channel).toLowerCase()}:${normalizeText(accountId)}:${normalizeText(chatId)}`;
+}
+
+function buildQueueIdentity(params: {
+  channel: string;
+  accountId?: string;
+  conversationId?: string;
+  threadId?: string;
+  senderId?: string;
+  sessionKey?: string;
+  isGroup?: boolean;
+}): QueueIdentity {
+  const channel = normalizeText(params.channel).toLowerCase() || "unknown";
+  const accountId = normalizeText(params.accountId);
+  const conversationId = normalizeText(params.conversationId) || normalizeText(params.sessionKey) || "unknown";
+  const threadId = normalizeText(params.threadId) || undefined;
+  const senderId = normalizeText(params.senderId) || undefined;
+  const sessionKey = normalizeText(params.sessionKey) || undefined;
+  const scope: QueueScope = threadId ? "thread" : params.isGroup ? "conversation" : "direct";
+  return {
+    channel,
+    accountId,
+    conversationId,
+    ...(threadId ? { threadId } : {}),
+    ...(senderId ? { senderId } : {}),
+    ...(sessionKey ? { sessionKey } : {}),
+    scope,
+    queueKey: buildEarlyAckKey(channel, accountId, threadId ? `${conversationId}:thread:${threadId}` : conversationId),
+  };
+}
+
+function buildCandidateQueueKeys(channel: string, accountId: string, ids: string[]): string[] {
+  const seen = new Set<string>();
+  const keys: string[] = [];
+  for (const id of ids) {
+    const normalized = normalizeText(id);
+    if (!normalized) {
+      continue;
+    }
+    const key = buildEarlyAckKey(channel, accountId, normalized);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    keys.push(key);
+  }
+  return keys;
+}
+
+function buildFallbackQueueKeys(identity: QueueIdentity, ids: string[]): string[] {
+  const keys = [identity.queueKey];
+  return keys.concat(buildCandidateQueueKeys(identity.channel, identity.accountId, ids)).filter((entry, index, all) => {
+    return entry && all.indexOf(entry) === index;
+  });
+}
+
+function normalizeEarlyAckMarker(entry: number | EarlyAckMarker): EarlyAckMarker | null {
+  if (typeof entry === "number" && Number.isFinite(entry)) {
+    return {
+      sentAt: entry,
+    };
+  }
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const sentAt = Number((entry as EarlyAckMarker).sentAt);
+  if (!Number.isFinite(sentAt)) {
+    return null;
+  }
+  return {
+    ...entry,
+    sentAt,
+    queueKey: normalizeText(entry.queueKey),
+  };
+}
+
+function consumeQueuedEarlyAck(identity: QueueIdentity, ids: string[]): boolean {
+  const keys = buildFallbackQueueKeys(identity, ids);
+  const state = getEarlyAckState();
+  const now = Date.now();
+  for (const key of keys) {
+    const existing = Array.isArray(state.get(key)) ? state.get(key)! : [];
+    const fresh = existing
+      .map((entry) => normalizeEarlyAckMarker(entry))
+      .filter((entry): entry is EarlyAckMarker => Boolean(entry) && now - entry.sentAt <= EARLY_ACK_TTL_MS);
+    if (fresh.length === 0) {
+      state.delete(key);
+      continue;
+    }
+    fresh.shift();
+    if (fresh.length > 0) {
+      state.set(key, fresh);
+    } else {
+      state.delete(key);
+    }
+    return true;
+  }
+  return false;
+}
+
+type RawPreRegisterEntry = {
+  version?: number;
+  preRegisterSnapshot?: PreRegisterSnapshot | null;
+  queueIdentity?: Partial<QueueIdentity> | null;
+  queueKey?: string;
+  content?: string;
+  contentFingerprint?: string;
+  senderId?: string;
+  arrivalTs?: number;
+  snapshotTs?: number;
+  timestamp?: number;
+  registerDecision?: Record<string, unknown>;
+  registerResult?: Record<string, unknown>;
+  ack?: {
+    earlyAckEligible?: boolean;
+    earlyAckSent?: boolean;
+    earlyAckSentAt?: number;
+  };
+  earlyAckSent?: boolean;
+};
+
+type PreRegisterSnapshot = {
+  version?: number;
+  queueIdentity?: Partial<QueueIdentity> | null;
+  queueKey?: string;
+  content: string;
+  contentFingerprint?: string;
+  senderId: string;
+  arrivalTs?: number;
+  snapshotTs?: number;
+  registerDecision?: Record<string, unknown>;
+  ack?: {
+    earlyAckEligible?: boolean;
+    earlyAckSent?: boolean;
+    earlyAckSentAt?: number;
+  };
+};
+
+type ConsumedPreRegisterResult = {
+  snapshot: PreRegisterSnapshot;
+  registerResult: Record<string, unknown>;
+  earlyAckSent: boolean;
+};
+
+type NormalizedPreRegisterState = ConsumedPreRegisterResult & {
+  timestamp: number;
+};
+
+function extractPreRegisterSnapshot(entry: RawPreRegisterEntry): PreRegisterSnapshot | null {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const snapshot =
+    entry.preRegisterSnapshot && typeof entry.preRegisterSnapshot === "object"
+      ? entry.preRegisterSnapshot
+      : entry;
+  if (!snapshot || typeof snapshot !== "object") {
+    return null;
+  }
+  return snapshot;
+}
+
+function extractPreRegisterDecision(entry: RawPreRegisterEntry): Record<string, unknown> {
+  const snapshot = extractPreRegisterSnapshot(entry);
+  const snapshotDecision =
+    snapshot?.registerDecision && typeof snapshot.registerDecision === "object" ? snapshot.registerDecision : null;
+  if (snapshotDecision) {
+    return snapshotDecision;
+  }
+  if (entry.registerDecision && typeof entry.registerDecision === "object") {
+    return entry.registerDecision;
+  }
+  return entry.registerResult && typeof entry.registerResult === "object" ? entry.registerResult : {};
+}
+
+function extractPreRegisterQueueIdentity(entry: RawPreRegisterEntry): Partial<QueueIdentity> | null {
+  const snapshot = extractPreRegisterSnapshot(entry);
+  if (snapshot?.queueIdentity && typeof snapshot.queueIdentity === "object") {
+    return snapshot.queueIdentity;
+  }
+  if (entry.queueIdentity && typeof entry.queueIdentity === "object") {
+    return entry.queueIdentity;
+  }
+  return null;
+}
+
+function extractRawPreRegisterQueueKey(entry: RawPreRegisterEntry): string {
+  const snapshot = extractPreRegisterSnapshot(entry);
+  return normalizeText(snapshot?.queueKey || entry.queueKey);
+}
+
+function extractPreRegisterEarlyAckSent(entry: RawPreRegisterEntry): boolean {
+  const snapshot = extractPreRegisterSnapshot(entry);
+  return Boolean(snapshot?.ack?.earlyAckSent ?? entry.ack?.earlyAckSent ?? entry.earlyAckSent ?? false);
+}
+
+function extractRawPreRegisterAck(entry: RawPreRegisterEntry): PreRegisterSnapshot["ack"] | undefined {
+  const snapshot = extractPreRegisterSnapshot(entry);
+  if (snapshot?.ack && typeof snapshot.ack === "object") {
+    return snapshot.ack;
+  }
+  return entry.ack;
+}
+
+function getRawPreRegisterState(): Map<string, RawPreRegisterEntry[]> {
+  const scope = globalThis as typeof globalThis & {
+    [PRE_REGISTER_STATE_KEY]?: Map<string, RawPreRegisterEntry[]>;
+  };
+  if (!(scope[PRE_REGISTER_STATE_KEY] instanceof Map)) {
+    scope[PRE_REGISTER_STATE_KEY] = new Map<string, RawPreRegisterEntry[]>();
+  }
+  return scope[PRE_REGISTER_STATE_KEY] as Map<string, RawPreRegisterEntry[]>;
+}
+
+function fingerprintContent(content: string): string {
+  return normalizeText(content).toLowerCase();
+}
+
+function normalizeRawPreRegisterState(entry: RawPreRegisterEntry): NormalizedPreRegisterState | null {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const snapshot = extractPreRegisterSnapshot(entry);
+  if (!snapshot) {
+    return null;
+  }
+  const content = normalizeText(snapshot.content);
+  const senderId = normalizeText(snapshot.senderId);
+  const timestamp = Number.isFinite(snapshot.snapshotTs)
+    ? Number(snapshot.snapshotTs)
+    : Number.isFinite(snapshot.arrivalTs)
+      ? Number(snapshot.arrivalTs)
+      : Number(entry.timestamp);
+  if (!content || !senderId || !Number.isFinite(timestamp)) {
+    return null;
+  }
+  const registerDecision = extractPreRegisterDecision(entry);
+  return {
+    timestamp,
+    snapshot: {
+      ...snapshot,
+      content,
+      senderId,
+      queueKey: extractRawPreRegisterQueueKey(entry),
+      contentFingerprint: fingerprintContent(snapshot.contentFingerprint || content),
+      ack: extractRawPreRegisterAck(entry),
+      registerDecision: registerDecision ?? {},
+    },
+    registerResult: registerDecision ?? {},
+    earlyAckSent: extractPreRegisterEarlyAckSent(entry),
+  };
+}
+
+function listFreshConsumedPreRegisters(entries: RawPreRegisterEntry[], now: number): NormalizedPreRegisterState[] {
+  return entries
+    .map((entry) => {
+      const normalized = normalizeRawPreRegisterState(entry);
+      if (!normalized || now - normalized.timestamp > EARLY_ACK_TTL_MS) {
+        return null;
+      }
+      return normalized;
+    })
+    .filter((entry): entry is NormalizedPreRegisterState => Boolean(entry));
+}
+
+function toRawPreRegisterEntry(entry: NormalizedPreRegisterState | ConsumedPreRegisterResult, now: number): RawPreRegisterEntry {
+  const timestamp =
+    "timestamp" in entry && Number.isFinite(entry.timestamp)
+      ? Number(entry.timestamp)
+      : Number(entry.snapshot.snapshotTs ?? entry.snapshot.arrivalTs ?? now);
+  return {
+    version: entry.snapshot.version,
+    preRegisterSnapshot: entry.snapshot,
+    timestamp,
+    registerDecision: entry.registerResult,
+    registerResult: entry.registerResult,
+    earlyAckSent: entry.earlyAckSent,
+  };
+}
+
+function consumePreRegisteredSnapshot(
+  identity: QueueIdentity,
+  ids: string[],
+  contents: string[],
+  senderId: string,
+): ConsumedPreRegisterResult | null {
+  const state = getRawPreRegisterState();
+  const now = Date.now();
+  const normalizedSenderId = normalizeText(senderId);
+  const keys = buildFallbackQueueKeys(identity, ids);
+  const normalizedContents = contents
+    .map((entry) => fingerprintContent(entry))
+    .filter((entry, index, all) => entry && all.indexOf(entry) === index);
+
+  for (const key of keys) {
+    const existing = Array.isArray(state.get(key)) ? state.get(key)! : [];
+    const fresh = listFreshConsumedPreRegisters(existing, now);
+    let queueKeyMatchIndex = -1;
+    let fallbackMatchIndex = -1;
+    for (let index = 0; index < fresh.length; index += 1) {
+      const candidate = fresh[index];
+      const entryQueueKey = normalizeText(candidate.snapshot.queueKey);
+      const entryFingerprint = fingerprintContent(candidate.snapshot.contentFingerprint || candidate.snapshot.content);
+      if (entryQueueKey && entryQueueKey === identity.queueKey && normalizedContents.includes(entryFingerprint)) {
+        queueKeyMatchIndex = index;
+        break;
+      }
+      if (
+        fallbackMatchIndex < 0 &&
+        normalizedContents.includes(entryFingerprint) &&
+        normalizeText(candidate.snapshot.senderId) === normalizedSenderId
+      ) {
+        fallbackMatchIndex = index;
+      }
+    }
+    const matchIndex = queueKeyMatchIndex >= 0 ? queueKeyMatchIndex : fallbackMatchIndex;
+    if (matchIndex < 0) {
+      if (fresh.length > 0) {
+        state.set(key, fresh.map((entry) => toRawPreRegisterEntry(entry, now)));
+      } else {
+        state.delete(key);
+      }
+      continue;
+    }
+    const [match] = fresh.splice(matchIndex, 1);
+    if (fresh.length > 0) {
+      state.set(key, fresh.map((entry) => toRawPreRegisterEntry(entry, now)));
+    } else {
+      state.delete(key);
+    }
+    return match ?? null;
+  }
+  return null;
 }
 
 async function appendDebugLog(
@@ -243,7 +616,15 @@ async function callHook(
     return parsed;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    enqueueDebugLog(config, `hook:${command}:error`, { message });
+    enqueueDebugLog(config, `hook:${command}:error`, {
+      message,
+      command,
+      schedulerDecision: "error",
+      reason: "hook-call-failed",
+      logLevel: "warn",
+      operatorVisible: true,
+      errorCategory: "hook-call-failure",
+    });
     api.logger.warn(`[task-system] hook ${command} failed: ${message}`);
     return null;
   }
@@ -296,7 +677,15 @@ async function callGatewayCli(
     return parsed;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    enqueueDebugLog(config, `gateway:${method}:error`, { message });
+    enqueueDebugLog(config, `gateway:${method}:error`, {
+      message,
+      method,
+      schedulerDecision: "error",
+      reason: "gateway-call-failed",
+      logLevel: "warn",
+      operatorVisible: true,
+      errorCategory: "gateway-call-failure",
+    });
     api.logger.warn(`[task-system] gateway ${method} failed: ${message}`);
     return null;
   }
@@ -380,7 +769,7 @@ function normalizeText(value: unknown): string {
 
 function canSendDirectStatusMessage(channel: string, chatId: string): boolean {
   const normalizedChannel = normalizeText(channel).toLowerCase();
-  const normalizedChatId = normalizeText(chatId);
+  const normalizedChatId = normalizeDirectStatusRecipient(channel, chatId);
   if (!normalizedChannel || !normalizedChatId) {
     return false;
   }
@@ -388,6 +777,22 @@ function canSendDirectStatusMessage(channel: string, chatId: string): boolean {
     return true;
   }
   return /^-?\d+$/.test(normalizedChatId);
+}
+
+function normalizeDirectStatusRecipient(channel: string, chatId: string): string {
+  const normalizedChannel = normalizeText(channel).toLowerCase();
+  const normalizedChatId = normalizeText(chatId);
+  if (!normalizedChatId) {
+    return "";
+  }
+  if (normalizedChannel !== "telegram") {
+    return normalizedChatId;
+  }
+  const slashMatch = /^slash:(-?\d+)$/i.exec(normalizedChatId);
+  if (slashMatch?.[1]) {
+    return slashMatch[1];
+  }
+  return normalizedChatId;
 }
 
 function isInternalRetryPrompt(prompt: string): boolean {
@@ -524,6 +929,8 @@ async function processFeishuInstruction(
   const accountId = String(payload.account_id || "").trim();
   const chatId = String(payload.chat_id || "").trim();
   const message = String(payload.message || "").trim();
+  const audienceKey = buildControlPlaneAudienceKey("feishu", accountId, chatId);
+  const enqueueToken = Date.now();
   if (!accountId || !chatId || !message) {
     await writeHostDispatchResult(config, name, payload, {
       action: "send",
@@ -536,6 +943,19 @@ async function processFeishuInstruction(
       via: "plugin-host",
     });
     await archiveHostInstruction(config, path, name, { succeeded: false });
+    await appendDebugLog(config, "host-feishu-delivery:skipped-invalid-payload", {
+      taskId: payload.task_id || null,
+      accountId,
+      chatId,
+      audienceKey,
+      enqueueToken,
+      runner: "host-feishu-delivery",
+      lifecycleStage: "delivery-skipped",
+      deliveryPath: "plugin-host",
+      schedulerDecision: "skipped",
+      reason: !accountId ? "missing-account-id" : !chatId ? "missing-chat-id" : "empty-message",
+      instructionName: name,
+    });
     return;
   }
 
@@ -552,6 +972,19 @@ async function processFeishuInstruction(
       via: "plugin-host",
     });
     await archiveHostInstruction(config, path, name, { succeeded: false });
+    await appendDebugLog(config, "host-feishu-delivery:adapter-unavailable", {
+      taskId: payload.task_id || null,
+      accountId,
+      chatId,
+      audienceKey,
+      enqueueToken,
+      runner: "host-feishu-delivery",
+      lifecycleStage: "delivery-adapter-unavailable",
+      deliveryPath: "plugin-host",
+      schedulerDecision: "adapter-unavailable",
+      reason: "host-feishu-adapter-unavailable",
+      instructionName: name,
+    });
     return;
   }
 
@@ -578,6 +1011,14 @@ async function processFeishuInstruction(
       taskId: payload.task_id || null,
       accountId,
       chatId,
+      audienceKey,
+      enqueueToken,
+      runner: "host-feishu-delivery",
+      lifecycleStage: "delivery-sent",
+      deliveryPath: "plugin-host",
+      schedulerDecision: "sent",
+      reason: "host-feishu-send-succeeded",
+      instructionName: name,
     });
   } catch (error) {
     const messageText = error instanceof Error ? error.message : String(error);
@@ -594,6 +1035,16 @@ async function processFeishuInstruction(
     await archiveHostInstruction(config, path, name, { succeeded: false });
     await appendDebugLog(config, "host-feishu-delivery:error", {
       taskId: payload.task_id || null,
+      accountId,
+      chatId,
+      audienceKey,
+      enqueueToken,
+      runner: "host-feishu-delivery",
+      lifecycleStage: "delivery-error",
+      deliveryPath: "plugin-host",
+      schedulerDecision: "error",
+      reason: "host-feishu-send-failed",
+      instructionName: name,
       error: messageText,
     });
   }
@@ -628,6 +1079,7 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
     const chatId = normalizeText(String(payload.chat_id || ""));
     const taskId = normalizeText(String(payload.task_id || ""));
     const sessionKey = normalizeText(String(payload.session_key || ""));
+    const accountId = normalizeText(String(payload.account_id || ""));
     const replyText = normalizeText(String(payload.reply_text || ""));
     const originalUserRequest = normalizeText(
       String(
@@ -640,6 +1092,8 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
     if (!channel || !chatId || !taskId || !replyText) {
       continue;
     }
+    const audienceKey = buildControlPlaneAudienceKey(channel, accountId, chatId);
+    const enqueueToken = Date.now();
     try {
       const wakeStart = await callHook(api, config, "continuation-wake", {
         task_id: taskId,
@@ -652,6 +1106,14 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         attemptCount: wakeStart?.attempt_count ?? null,
         channel,
         chatId,
+        accountId,
+        audienceKey,
+        enqueueToken,
+        runner: "continuation-delivery",
+        lifecycleStage: "wake-start",
+        deliveryPath: "direct-channel-send",
+        schedulerDecision: "wake-start",
+        reason: "continuation-wake-started",
         originalUserRequest: originalUserRequest || null,
       });
       const adapter = await loadOutboundAdapter(api, channel);
@@ -661,6 +1123,14 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
           sessionKey,
           channel,
           chatId,
+          accountId,
+          audienceKey,
+          enqueueToken,
+          runner: "continuation-delivery",
+          lifecycleStage: "delivery-adapter-unavailable",
+          deliveryPath: "direct-channel-send",
+          schedulerDecision: "adapter-unavailable",
+          reason: "continuation-delivery-adapter-unavailable",
         });
         await callHook(api, config, "continuation-wake", {
           task_id: taskId,
@@ -673,7 +1143,6 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         });
         continue;
       }
-      const accountId = normalizeText(String(payload.account_id || ""));
       await adapter.sendText({
         cfg: api.config,
         to: chatId,
@@ -686,6 +1155,14 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         channel,
         chatId,
         message: replyText,
+        accountId,
+        audienceKey,
+        enqueueToken,
+        runner: "continuation-delivery",
+        lifecycleStage: "delivery-sent",
+        deliveryPath: "direct-channel-send",
+        schedulerDecision: "sent",
+        reason: "continuation-delivery-sent",
       });
       await callHook(api, config, "continuation-wake", {
         task_id: taskId,
@@ -701,6 +1178,14 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         sessionKey,
         channel,
         chatId,
+        accountId,
+        audienceKey,
+        enqueueToken,
+        runner: "continuation-delivery",
+        lifecycleStage: "wake-complete",
+        deliveryPath: "direct-channel-send",
+        schedulerDecision: "wake-ok",
+        reason: "continuation-wake-complete",
         deliveredReplyText: replyText,
       });
     } catch (error) {
@@ -717,6 +1202,16 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
       await appendDebugLog(config, "continuation-wake:error", {
         taskId,
         sessionKey,
+        channel,
+        chatId,
+        accountId,
+        audienceKey,
+        enqueueToken,
+        runner: "continuation-delivery",
+        lifecycleStage: "wake-error",
+        deliveryPath: "direct-channel-send",
+        schedulerDecision: "error",
+        reason: "continuation-wake-failed",
         error: messageText,
       });
     }
@@ -756,6 +1251,9 @@ async function processWatchdogRecovery(
       .join("\n");
     const useExplicitDelivery = !!channel && !!chatId;
     const method = useExplicitDelivery ? "chat.send" : "sessions.steer";
+    const audienceKey = useExplicitDelivery
+      ? buildControlPlaneAudienceKey(channel, accountId, chatId)
+      : `session:${sessionKey}`;
     const params = useExplicitDelivery
       ? {
           sessionKey,
@@ -779,87 +1277,12 @@ async function processWatchdogRecovery(
       channel,
       chatId,
       accountId,
+      audienceKey,
+      startupRecovery: true,
+      schedulerDecision: "sent",
+      reason: "startup-watchdog-recovery-dispatch",
     });
     await callGatewayCli(api, config, method, params);
-  }
-}
-
-async function sendImmediateAck(
-  api: OpenClawPluginApi,
-  config: Required<TaskSystemPluginConfig>,
-  payload: {
-    channel: string;
-    accountId?: string;
-    chatId: string;
-    taskId: string;
-    sessionKey: string;
-    message?: string;
-  },
-): Promise<void> {
-  if (!config.sendImmediateAckOnRegister) {
-    return;
-  }
-  const channel = String(payload.channel || "").trim().toLowerCase();
-  if (!channel || channel === "agent") {
-    return;
-  }
-  const chatId = String(payload.chatId || "").trim();
-  const message = withTaskPrefix(config, payload.message || config.immediateAckTemplate);
-  if (!chatId || !message) {
-    return;
-  }
-  if (!canSendDirectStatusMessage(channel, chatId)) {
-    await appendDebugLog(config, "immediate-ack:skipped", {
-      channel,
-      chatId,
-      taskId: payload.taskId,
-      sessionKey: payload.sessionKey,
-      reason: "unsupported-direct-recipient",
-    });
-    return;
-  }
-
-  try {
-    const loadStartedAt = Date.now();
-    const adapter = await loadOutboundAdapter(api, channel);
-    const adapterLoadMs = Date.now() - loadStartedAt;
-    if (!adapter?.sendText) {
-      await appendDebugLog(config, "immediate-ack:adapter-unavailable", {
-        channel,
-        taskId: payload.taskId,
-        sessionKey: payload.sessionKey,
-        adapterLoadMs,
-      });
-      return;
-    }
-
-    const sendStartedAt = Date.now();
-    await adapter.sendText({
-      cfg: api.config,
-      to: chatId,
-      text: message,
-      accountId: payload.accountId || "",
-    });
-    const sendMs = Date.now() - sendStartedAt;
-    await appendDebugLog(config, "immediate-ack:sent", {
-      channel,
-      chatId,
-      taskId: payload.taskId,
-      sessionKey: payload.sessionKey,
-      message,
-      adapterLoadMs,
-      sendMs,
-    });
-  } catch (error) {
-    const messageText = error instanceof Error ? error.message : String(error);
-    await appendDebugLog(config, "immediate-ack:error", {
-      channel,
-      chatId,
-      taskId: payload.taskId,
-      sessionKey: payload.sessionKey,
-      error: messageText,
-    });
-    api.logger.warn(`[task-system] immediate ack failed for ${channel}:${chatId}: ${messageText}`);
   }
 }
 
@@ -877,8 +1300,132 @@ type ActiveTaskBinding = {
   taskId: string;
 };
 
+type ControlPlanePriority = "p0-receive-ack" | "p1-task-management" | "p2-progress-followup" | "p3-advisory";
+
+type ControlPlaneMessage = {
+  eventName: string;
+  priority: ControlPlanePriority;
+  channel: string;
+  accountId?: string;
+  chatId: string;
+  sessionKey: string;
+  message: string;
+  taskId?: string;
+};
+
+type ControlPlaneTerminalState = {
+  eventName: string;
+  ts: number;
+  enqueueToken: number;
+  priority: ControlPlanePriority;
+  taskId: string | null;
+  terminalPhase: "committed";
+};
+
+type ControlPlanePendingTerminalState = {
+  eventName: string;
+  enqueueToken: number;
+  priority: ControlPlanePriority;
+  taskId: string | null;
+  terminalPhase: "pending";
+};
+
+type ControlPlaneBlockerMeta = {
+  enqueueToken: number;
+  eventName: string;
+  priority: ControlPlanePriority;
+  taskId: string | null;
+};
+
+function isSupersedableControlPlanePriority(priority: ControlPlanePriority): boolean {
+  return priority === "p2-progress-followup" || priority === "p3-advisory";
+}
+
+function normalizeControlPlanePriority(value: unknown): ControlPlanePriority {
+  const normalized = normalizeText(value).toLowerCase();
+  if (
+    normalized === "p0-receive-ack" ||
+    normalized === "p1-task-management" ||
+    normalized === "p2-progress-followup" ||
+    normalized === "p3-advisory"
+  ) {
+    return normalized;
+  }
+  return "p3-advisory";
+}
+
+function extractHookControlPlaneMessage(payload: Record<string, unknown> | null | undefined): Partial<ControlPlaneMessage> | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const raw = payload.control_plane_message;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const record = raw as Record<string, unknown>;
+  const message = normalizeText(record.text);
+  if (!message) {
+    return null;
+  }
+  return {
+    eventName: normalizeText(record.event_name) || "short-task-followup",
+    priority: normalizeControlPlanePriority(record.priority),
+    taskId: normalizeText(record.task_id) || undefined,
+    message,
+  };
+}
+
+function buildHookBackedControlPlaneMessage(
+  hookPayload: Record<string, unknown> | null | undefined,
+  fallback: Omit<ControlPlaneMessage, "eventName" | "priority" | "taskId" | "message"> & {
+    eventName: string;
+    priority: ControlPlanePriority;
+    message: string;
+    taskId?: string;
+  },
+): ControlPlaneMessage {
+  const extracted = extractHookControlPlaneMessage(hookPayload);
+  return {
+    ...fallback,
+    eventName: extracted?.eventName || fallback.eventName,
+    priority: extracted?.priority || fallback.priority,
+    taskId: extracted?.taskId || fallback.taskId,
+    message: extracted?.message || fallback.message,
+  };
+}
+
+function isTerminalControlPlanePriority(priority: ControlPlanePriority): boolean {
+  return priority === "p1-task-management";
+}
+
+function shouldDropForTerminalControlPlaneState(
+  priority: ControlPlanePriority,
+  terminalState: ControlPlaneTerminalState | undefined,
+): boolean {
+  if (!terminalState) {
+    return false;
+  }
+  return !isTerminalControlPlanePriority(priority);
+}
+
+function buildControlPlaneAudienceKey(channel: string, accountId: string | undefined, chatId: string): string {
+  return `${normalizeText(channel).toLowerCase()}:${normalizeText(accountId)}:${normalizeText(chatId)}`;
+}
+
+function isPreemptingControlPlanePriority(priority: ControlPlanePriority): boolean {
+  return priority === "p0-receive-ack" || priority === "p1-task-management";
+}
+
 type TaskMonitorCommand = {
   action: "on" | "off" | "status";
+};
+
+type ContinuitySummaryCommand = {
+  compact: boolean;
+};
+
+type TasksSummaryCommand = {
+  scope: "session";
 };
 
 function toInteger(value: unknown): number | null {
@@ -911,6 +1458,31 @@ function parseTaskMonitorCommand(content: string): TaskMonitorCommand | null {
   return null;
 }
 
+function parseContinuitySummaryCommand(content: string): ContinuitySummaryCommand | null {
+  const normalized = normalizeText(content).toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "/status" || normalized === "status") {
+    return { compact: false };
+  }
+  if (normalized === "/compact" || normalized === "compact") {
+    return { compact: true };
+  }
+  return null;
+}
+
+function parseTasksSummaryCommand(content: string): TasksSummaryCommand | null {
+  const normalized = normalizeText(content).toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized === "/tasks" || normalized === "tasks") {
+    return { scope: "session" };
+  }
+  return null;
+}
+
 function buildImmediateReceiptMessage(
   config: Required<TaskSystemPluginConfig>,
   registerResult: Record<string, unknown> | null,
@@ -919,13 +1491,14 @@ function buildImmediateReceiptMessage(
   if (!registerResult) {
     return fallback;
   }
-  const taskStatus = normalizeText(registerResult.task_status);
-  const queuePosition = toInteger(registerResult.queue_position);
-  const aheadCount = Math.max(toInteger(registerResult.ahead_count) ?? 0, 0);
-  const runningCount = Math.max(toInteger(registerResult.running_count) ?? 0, 0);
-  const activeCount = Math.max(toInteger(registerResult.active_count) ?? 0, 0);
-  const estimatedWaitSeconds = toInteger(registerResult.estimated_wait_seconds);
-  const continuationDueAt = normalizeText(String(registerResult.continuation_due_at || ""));
+  const resolvedDecision = resolveRegisterDecision(registerResult);
+  const taskStatus = normalizeText(resolvedDecision.task_status);
+  const queuePosition = toInteger(resolvedDecision.queue_position);
+  const aheadCount = Math.max(toInteger(resolvedDecision.ahead_count) ?? 0, 0);
+  const runningCount = Math.max(toInteger(resolvedDecision.running_count) ?? 0, 0);
+  const activeCount = Math.max(toInteger(resolvedDecision.active_count) ?? 0, 0);
+  const estimatedWaitSeconds = toInteger(resolvedDecision.estimated_wait_seconds);
+  const continuationDueAt = normalizeText(String(resolvedDecision.continuation_due_at || ""));
   const estimatedWaitLabel = formatEstimatedWaitLabel(estimatedWaitSeconds);
 
   if (taskStatus === "paused" && continuationDueAt) {
@@ -967,23 +1540,32 @@ function buildImmediateReceiptMessage(
   return fallback;
 }
 
-async function sendStatusMessage(
+function resolveRegisterDecision(registerResult: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (!registerResult || typeof registerResult !== "object") {
+    return {};
+  }
+  const nested = registerResult.register_decision;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    return nested as Record<string, unknown>;
+  }
+  return registerResult;
+}
+
+async function deliverControlPlaneMessage(
   api: OpenClawPluginApi,
   config: Required<TaskSystemPluginConfig>,
-  payload: {
-    channel: string;
-    accountId?: string;
-    chatId: string;
-    sessionKey: string;
-    message: string;
-    eventName: string;
+  payload: ControlPlaneMessage,
+  schedulerContext?: {
+    audienceKey?: string | null;
+    enqueueToken?: number | null;
+    audienceSequence?: number | null;
   },
 ): Promise<void> {
   const channel = String(payload.channel || "").trim().toLowerCase();
   if (!channel || channel === "agent") {
     return;
   }
-  const chatId = String(payload.chatId || "").trim();
+  const chatId = normalizeDirectStatusRecipient(channel, String(payload.chatId || ""));
   const message = withTaskPrefix(config, payload.message);
   if (!chatId || !message) {
     return;
@@ -992,8 +1574,13 @@ async function sendStatusMessage(
     await appendDebugLog(config, `${payload.eventName}:skipped`, {
       channel,
       chatId,
+      taskId: payload.taskId ?? null,
       sessionKey: payload.sessionKey,
+      schedulerDecision: "skipped",
       reason: "unsupported-direct-recipient",
+      audienceKey: schedulerContext?.audienceKey ?? null,
+      enqueueToken: schedulerContext?.enqueueToken ?? null,
+      audienceSequence: schedulerContext?.audienceSequence ?? null,
     });
     return;
   }
@@ -1005,8 +1592,13 @@ async function sendStatusMessage(
       await appendDebugLog(config, `${payload.eventName}:adapter-unavailable`, {
         channel,
         chatId,
+        taskId: payload.taskId ?? null,
         sessionKey: payload.sessionKey,
+        schedulerDecision: "adapter-unavailable",
         adapterLoadMs,
+        audienceKey: schedulerContext?.audienceKey ?? null,
+        enqueueToken: schedulerContext?.enqueueToken ?? null,
+        audienceSequence: schedulerContext?.audienceSequence ?? null,
       });
       return;
     }
@@ -1021,18 +1613,34 @@ async function sendStatusMessage(
     await appendDebugLog(config, `${payload.eventName}:sent`, {
       channel,
       chatId,
+      taskId: payload.taskId ?? null,
       sessionKey: payload.sessionKey,
+      schedulerDecision: "sent",
       message,
       adapterLoadMs,
       sendMs,
+      priority: payload.priority,
+      audienceKey: schedulerContext?.audienceKey ?? buildControlPlaneAudienceKey(channel, payload.accountId, chatId),
+      enqueueToken: schedulerContext?.enqueueToken ?? null,
+      audienceSequence: schedulerContext?.audienceSequence ?? null,
     });
   } catch (error) {
     const messageText = error instanceof Error ? error.message : String(error);
     await appendDebugLog(config, `${payload.eventName}:error`, {
       channel,
       chatId,
+      taskId: payload.taskId ?? null,
       sessionKey: payload.sessionKey,
+      schedulerDecision: "error",
+      reason: "control-plane-send-failed",
       error: messageText,
+      priority: payload.priority,
+      logLevel: "warn",
+      operatorVisible: true,
+      errorCategory: "control-plane-delivery-failure",
+      audienceKey: schedulerContext?.audienceKey ?? null,
+      enqueueToken: schedulerContext?.enqueueToken ?? null,
+      audienceSequence: schedulerContext?.audienceSequence ?? null,
     });
     api.logger.warn(`[task-system] ${payload.eventName} failed for ${channel}:${chatId}: ${messageText}`);
   }
@@ -1116,9 +1724,405 @@ const taskSystemPlugin = {
     const activeTaskBindings = new Map<string, ActiveTaskBinding>();
     const taskMonitorEnabledBySession = new Map<string, boolean>();
     const recentActivationBySession = new Map<string, { signature: string; ts: number }>();
+    const controlPlaneSequenceByAudience = new Map<string, number>();
+    const controlPlaneLaneByAudience = new Map<string, Promise<void>>();
+    const controlPlaneLatestPreemptingTokenByAudience = new Map<string, number>();
+    const controlPlaneLatestPreemptingMetaByAudience = new Map<string, ControlPlaneBlockerMeta>();
+    const controlPlaneLatestSupersedableTokenByAudience = new Map<string, number>();
+    const controlPlaneLatestSupersedableMetaByAudience = new Map<string, ControlPlaneBlockerMeta>();
+    const controlPlaneTerminalByTask = new Map<string, ControlPlaneTerminalState>();
+    const controlPlanePendingTerminalByTask = new Map<string, ControlPlanePendingTerminalState>();
+    const controlPlaneLatestSupersedableTokenByTask = new Map<string, number>();
+    const controlPlaneLatestSupersedableMetaByTask = new Map<string, ControlPlaneBlockerMeta>();
+    let controlPlaneEnqueueToken = 0;
     if (!config.enabled) {
+      enqueueDebugLog(config, "plugin:load:disabled", {
+        enabled: false,
+        runtimeRoot: config.runtimeRoot,
+        schedulerDecision: "skipped",
+        reason: "plugin-disabled-by-config",
+        logLevel: "info",
+        operatorVisible: true,
+      });
       api.logger.info("[task-system] plugin loaded in disabled mode");
       return;
+    }
+
+    async function appendControlPlaneDropLog(
+      payload: ControlPlaneMessage,
+      options: {
+        reason: string;
+        dropCategory: "terminal" | "preempted" | "superseded";
+        blockerScope: string;
+        audienceKey?: string;
+        enqueueToken?: number;
+        blockingTaskId?: string | null;
+        blockedBy?: string | null;
+        blockedByEnqueueToken?: number | null;
+        blockedByPriority?: ControlPlanePriority | null;
+        blockedByTerminalPhase?: "pending" | "committed" | null;
+        terminalPhase?: "pending" | "committed";
+        latestPreemptingTokenByAudience?: number | null;
+        latestSupersedableTokenByAudience?: number | null;
+        latestSupersedableTokenByTask?: number | null;
+        pendingTerminalEventByTask?: string | null;
+      },
+    ): Promise<void> {
+      await appendDebugLog(config, `${payload.eventName}:dropped`, {
+        channel: payload.channel,
+        chatId: payload.chatId,
+        taskId: normalizeText(payload.taskId) || null,
+        sessionKey: payload.sessionKey,
+        schedulerDecision: "dropped",
+        reason: options.reason,
+        dropCategory: options.dropCategory,
+        blockerScope: options.blockerScope,
+        blockingTaskId: normalizeText(options.blockingTaskId) || null,
+        blockedBy: options.blockedBy ?? null,
+        blockedByEnqueueToken: options.blockedByEnqueueToken ?? null,
+        blockedByPriority: options.blockedByPriority ?? null,
+        blockedByTerminalPhase: options.blockedByTerminalPhase ?? null,
+        terminalPhase: options.terminalPhase ?? null,
+        priority: payload.priority,
+        audienceKey: options.audienceKey ?? null,
+        enqueueToken: options.enqueueToken ?? null,
+        latestPreemptingTokenByAudience: options.latestPreemptingTokenByAudience ?? null,
+        latestSupersedableTokenByAudience: options.latestSupersedableTokenByAudience ?? null,
+        latestSupersedableTokenByTask: options.latestSupersedableTokenByTask ?? null,
+        pendingTerminalEventByTask: options.pendingTerminalEventByTask ?? null,
+      });
+    }
+
+    async function appendControlPlaneLaneLog(
+      payload: ControlPlaneMessage,
+      eventSuffix: "preempted-pending-followup" | "lane-enqueued" | "lane-pass",
+      options: {
+        schedulerDecision: "preempted-pending-followup" | "enqueued" | "passed";
+        audienceKey?: string;
+        enqueueToken?: number;
+        audienceSequence?: number;
+        latestPreemptingTokenByAudience?: number | null;
+        latestSupersedableTokenByAudience?: number | null;
+        latestSupersedableTokenByTask?: number | null;
+        pendingTerminalEventByTask?: string | null;
+        blockingTaskId?: string | null;
+        blockedBy?: string | null;
+        blockedByEnqueueToken?: number | null;
+        blockedByPriority?: ControlPlanePriority | null;
+        reason?: string | null;
+      },
+    ): Promise<void> {
+      await appendDebugLog(config, `${payload.eventName}:${eventSuffix}`, {
+        channel: payload.channel,
+        chatId: payload.chatId,
+        taskId: normalizeText(payload.taskId) || null,
+        sessionKey: payload.sessionKey,
+        priority: payload.priority,
+        schedulerDecision: options.schedulerDecision,
+        audienceKey: options.audienceKey ?? null,
+        enqueueToken: options.enqueueToken ?? null,
+        audienceSequence: options.audienceSequence ?? null,
+        latestPreemptingTokenByAudience: options.latestPreemptingTokenByAudience ?? null,
+        latestSupersedableTokenByAudience: options.latestSupersedableTokenByAudience ?? null,
+        latestSupersedableTokenByTask: options.latestSupersedableTokenByTask ?? null,
+        pendingTerminalEventByTask: options.pendingTerminalEventByTask ?? null,
+        blockingTaskId: normalizeText(options.blockingTaskId) || null,
+        blockedBy: options.blockedBy ?? null,
+        blockedByEnqueueToken: options.blockedByEnqueueToken ?? null,
+        blockedByPriority: options.blockedByPriority ?? null,
+        reason: options.reason ?? null,
+      });
+    }
+
+    async function appendControlPlaneSkipLog(
+      eventName: string,
+      options: {
+        channel?: string | null;
+        accountId?: string | null;
+        chatId?: string | null;
+        taskId?: string | null;
+        sessionKey?: string | null;
+        priority?: ControlPlanePriority | null;
+        audienceKey?: string | null;
+        schedulerDecision: "skipped";
+        reason?: string | null;
+      },
+    ): Promise<void> {
+      await appendDebugLog(config, `${eventName}:skipped`, {
+        channel: normalizeText(options.channel) || null,
+        chatId: normalizeText(options.chatId) || null,
+        taskId: normalizeText(options.taskId) || null,
+        sessionKey: normalizeSessionKey(options.sessionKey || ""),
+        priority: options.priority ?? null,
+        audienceKey:
+          options.audienceKey ??
+          (options.channel && options.chatId
+            ? buildControlPlaneAudienceKey(options.channel, options.accountId || "", options.chatId)
+            : null),
+        schedulerDecision: options.schedulerDecision,
+        reason: options.reason ?? null,
+      });
+    }
+
+    async function sendControlPlaneMessage(payload: ControlPlaneMessage): Promise<void> {
+      const normalizedTaskId = normalizeText(payload.taskId);
+      const terminalState = normalizedTaskId ? controlPlaneTerminalByTask.get(normalizedTaskId) : undefined;
+      if (shouldDropForTerminalControlPlaneState(payload.priority, terminalState)) {
+        await appendControlPlaneDropLog(payload, {
+          reason: "terminal-control-plane-state",
+          dropCategory: "terminal",
+          blockerScope: "task-terminal-committed",
+          blockingTaskId: normalizedTaskId,
+          blockedBy: terminalState?.eventName ?? null,
+          blockedByEnqueueToken: terminalState?.enqueueToken ?? null,
+          blockedByPriority: "p1-task-management",
+          blockedByTerminalPhase: "committed",
+          pendingTerminalEventByTask:
+            normalizedTaskId ? controlPlanePendingTerminalByTask.get(normalizedTaskId)?.eventName ?? null : null,
+        });
+        return;
+      }
+      const audienceKey = buildControlPlaneAudienceKey(payload.channel, payload.accountId, payload.chatId);
+      const nextSequence = (controlPlaneSequenceByAudience.get(audienceKey) ?? 0) + 1;
+      controlPlaneSequenceByAudience.set(audienceKey, nextSequence);
+      const enqueueToken = ++controlPlaneEnqueueToken;
+      if (isPreemptingControlPlanePriority(payload.priority)) {
+        controlPlaneLatestPreemptingTokenByAudience.set(audienceKey, enqueueToken);
+        controlPlaneLatestPreemptingMetaByAudience.set(audienceKey, {
+          enqueueToken,
+          eventName: payload.eventName,
+          priority: payload.priority,
+          taskId: normalizedTaskId || null,
+        });
+        for (const [pendingTaskId, receipt] of pendingReceipts.entries()) {
+          const pendingAudienceKey = buildControlPlaneAudienceKey(receipt.channel, receipt.accountId, receipt.chatId);
+          if (pendingAudienceKey !== audienceKey) {
+            continue;
+          }
+          if (receipt.timer) {
+            clearTimeout(receipt.timer);
+          }
+          pendingReceipts.delete(pendingTaskId);
+          await appendControlPlaneLaneLog(
+            {
+              ...payload,
+              taskId: pendingTaskId,
+              sessionKey: receipt.sessionKey,
+            },
+            "preempted-pending-followup",
+            {
+              schedulerDecision: "preempted-pending-followup",
+              audienceKey,
+              enqueueToken,
+              blockingTaskId: normalizedTaskId || null,
+              blockedBy: payload.eventName,
+              blockedByEnqueueToken: enqueueToken,
+              blockedByPriority: payload.priority,
+              latestPreemptingTokenByAudience: controlPlaneLatestPreemptingTokenByAudience.get(audienceKey) ?? null,
+              reason: "higher-priority-task-management-control-plane",
+            },
+          );
+        }
+      }
+      if (normalizedTaskId && isSupersedableControlPlanePriority(payload.priority)) {
+        controlPlaneLatestSupersedableTokenByTask.set(normalizedTaskId, enqueueToken);
+        controlPlaneLatestSupersedableMetaByTask.set(normalizedTaskId, {
+          enqueueToken,
+          eventName: payload.eventName,
+          priority: payload.priority,
+          taskId: normalizedTaskId,
+        });
+      }
+      if (isSupersedableControlPlanePriority(payload.priority)) {
+        controlPlaneLatestSupersedableTokenByAudience.set(audienceKey, enqueueToken);
+        controlPlaneLatestSupersedableMetaByAudience.set(audienceKey, {
+          enqueueToken,
+          eventName: payload.eventName,
+          priority: payload.priority,
+          taskId: normalizedTaskId || null,
+        });
+      }
+      if (normalizedTaskId && isTerminalControlPlanePriority(payload.priority)) {
+        controlPlanePendingTerminalByTask.set(normalizedTaskId, {
+          eventName: payload.eventName,
+          enqueueToken,
+          priority: payload.priority,
+          taskId: normalizedTaskId,
+          terminalPhase: "pending",
+        });
+        await appendDebugLog(config, `${payload.eventName}:terminal-pending-armed`, {
+          channel: payload.channel,
+          chatId: payload.chatId,
+          taskId: normalizedTaskId,
+          sessionKey: payload.sessionKey,
+          terminalPhase: "pending",
+          priority: payload.priority,
+          audienceKey,
+          enqueueToken,
+          pendingTerminalEventByTask: controlPlanePendingTerminalByTask.get(normalizedTaskId)?.eventName ?? null,
+        });
+      }
+      await appendControlPlaneLaneLog(payload, "lane-enqueued", {
+        schedulerDecision: "enqueued",
+        audienceKey,
+        enqueueToken,
+        audienceSequence: nextSequence,
+        latestPreemptingTokenByAudience: controlPlaneLatestPreemptingTokenByAudience.get(audienceKey) ?? null,
+        latestSupersedableTokenByAudience: controlPlaneLatestSupersedableTokenByAudience.get(audienceKey) ?? null,
+        latestSupersedableTokenByTask:
+          normalizedTaskId ? controlPlaneLatestSupersedableTokenByTask.get(normalizedTaskId) ?? null : null,
+        pendingTerminalEventByTask:
+          normalizedTaskId ? controlPlanePendingTerminalByTask.get(normalizedTaskId)?.eventName ?? null : null,
+      });
+      const priorLane = controlPlaneLaneByAudience.get(audienceKey) ?? Promise.resolve();
+      const nextLane = priorLane
+        .catch(() => {})
+        .then(async () => {
+          const latestTerminalState = normalizedTaskId ? controlPlaneTerminalByTask.get(normalizedTaskId) : undefined;
+          if (shouldDropForTerminalControlPlaneState(payload.priority, latestTerminalState)) {
+            await appendControlPlaneDropLog(payload, {
+              reason: "terminal-control-plane-state",
+              dropCategory: "terminal",
+              blockerScope: "task-terminal-committed",
+              blockingTaskId: normalizedTaskId,
+              terminalPhase: "committed",
+              blockedBy: latestTerminalState?.eventName ?? null,
+              blockedByEnqueueToken: latestTerminalState?.enqueueToken ?? null,
+              blockedByPriority: "p1-task-management",
+              blockedByTerminalPhase: "committed",
+              audienceKey,
+              enqueueToken,
+              pendingTerminalEventByTask:
+                normalizedTaskId ? controlPlanePendingTerminalByTask.get(normalizedTaskId)?.eventName ?? null : null,
+            });
+            return;
+          }
+          const pendingTerminalState = normalizedTaskId ? controlPlanePendingTerminalByTask.get(normalizedTaskId) : undefined;
+          if (
+            isSupersedableControlPlanePriority(payload.priority) &&
+            (controlPlaneLatestPreemptingTokenByAudience.get(audienceKey) ?? -1) > enqueueToken
+          ) {
+            const blockingPreemptingMeta = controlPlaneLatestPreemptingMetaByAudience.get(audienceKey);
+            await appendControlPlaneDropLog(payload, {
+              reason: "preempted-by-higher-priority-control-plane",
+              dropCategory: "preempted",
+              blockerScope: "audience-higher-priority",
+              blockingTaskId: blockingPreemptingMeta?.taskId ?? null,
+              blockedBy: blockingPreemptingMeta?.eventName ?? null,
+              blockedByEnqueueToken: blockingPreemptingMeta?.enqueueToken ?? null,
+              blockedByPriority: blockingPreemptingMeta?.priority ?? null,
+              audienceKey,
+              enqueueToken,
+              latestPreemptingTokenByAudience: controlPlaneLatestPreemptingTokenByAudience.get(audienceKey) ?? null,
+            });
+            return;
+          }
+          if (
+            isSupersedableControlPlanePriority(payload.priority) &&
+            (controlPlaneLatestSupersedableTokenByAudience.get(audienceKey) ?? -1) !== enqueueToken
+          ) {
+            const blockingSupersedableAudienceMeta = controlPlaneLatestSupersedableMetaByAudience.get(audienceKey);
+            await appendControlPlaneDropLog(payload, {
+              reason: "superseded-by-newer-control-plane-message-same-audience",
+              dropCategory: "superseded",
+              blockerScope: "audience-newer-message",
+              blockingTaskId: blockingSupersedableAudienceMeta?.taskId ?? null,
+              blockedBy: blockingSupersedableAudienceMeta?.eventName ?? null,
+              blockedByEnqueueToken: blockingSupersedableAudienceMeta?.enqueueToken ?? null,
+              blockedByPriority: blockingSupersedableAudienceMeta?.priority ?? null,
+              audienceKey,
+              enqueueToken,
+              latestPreemptingTokenByAudience: controlPlaneLatestPreemptingTokenByAudience.get(audienceKey) ?? null,
+              latestSupersedableTokenByAudience: controlPlaneLatestSupersedableTokenByAudience.get(audienceKey) ?? null,
+            });
+            return;
+          }
+          if (
+            normalizedTaskId &&
+            isSupersedableControlPlanePriority(payload.priority) &&
+            pendingTerminalState
+          ) {
+            await appendControlPlaneDropLog(payload, {
+              reason: "terminal-control-plane-pending",
+              dropCategory: "terminal",
+              blockerScope: "task-terminal-pending",
+              blockingTaskId: normalizedTaskId,
+              terminalPhase: "pending",
+              blockedBy: pendingTerminalState.eventName,
+              blockedByEnqueueToken: pendingTerminalState.enqueueToken,
+              blockedByPriority: "p1-task-management",
+              blockedByTerminalPhase: "pending",
+              audienceKey,
+              enqueueToken,
+            });
+            return;
+          }
+          if (
+            normalizedTaskId &&
+            isSupersedableControlPlanePriority(payload.priority) &&
+            controlPlaneLatestSupersedableTokenByTask.get(normalizedTaskId) !== enqueueToken
+          ) {
+            const blockingSupersedableTaskMeta = controlPlaneLatestSupersedableMetaByTask.get(normalizedTaskId);
+            await appendControlPlaneDropLog(payload, {
+              reason: "superseded-by-newer-control-plane-message",
+              dropCategory: "superseded",
+              blockerScope: "task-newer-message",
+              blockingTaskId: blockingSupersedableTaskMeta?.taskId ?? null,
+              blockedBy: blockingSupersedableTaskMeta?.eventName ?? null,
+              blockedByEnqueueToken: blockingSupersedableTaskMeta?.enqueueToken ?? null,
+              blockedByPriority: blockingSupersedableTaskMeta?.priority ?? null,
+              audienceKey,
+              enqueueToken,
+              latestSupersedableTokenByTask: controlPlaneLatestSupersedableTokenByTask.get(normalizedTaskId) ?? null,
+            });
+            return;
+          }
+          await appendControlPlaneLaneLog(payload, "lane-pass", {
+            schedulerDecision: "passed",
+            audienceKey,
+            enqueueToken,
+            audienceSequence: nextSequence,
+            latestPreemptingTokenByAudience: controlPlaneLatestPreemptingTokenByAudience.get(audienceKey) ?? null,
+            latestSupersedableTokenByAudience: controlPlaneLatestSupersedableTokenByAudience.get(audienceKey) ?? null,
+            latestSupersedableTokenByTask:
+              normalizedTaskId ? controlPlaneLatestSupersedableTokenByTask.get(normalizedTaskId) ?? null : null,
+          });
+          await deliverControlPlaneMessage(api, config, payload, {
+            audienceKey,
+            enqueueToken,
+            audienceSequence: nextSequence,
+          });
+          if (normalizedTaskId && isTerminalControlPlanePriority(payload.priority)) {
+            controlPlaneTerminalByTask.set(normalizedTaskId, {
+              eventName: payload.eventName,
+              ts: Date.now(),
+              enqueueToken,
+              priority: payload.priority,
+              taskId: normalizedTaskId,
+              terminalPhase: "committed",
+            });
+            await appendDebugLog(config, `${payload.eventName}:terminal-state-committed`, {
+              channel: payload.channel,
+              chatId: payload.chatId,
+              taskId: normalizedTaskId,
+              sessionKey: payload.sessionKey,
+              terminalPhase: "committed",
+              priority: payload.priority,
+              audienceKey,
+              enqueueToken,
+              blockedBy: payload.eventName,
+            });
+            controlPlanePendingTerminalByTask.delete(normalizedTaskId);
+          }
+        });
+      controlPlaneLaneByAudience.set(audienceKey, nextLane);
+      try {
+        await nextLane;
+      } finally {
+        if (controlPlaneLaneByAudience.get(audienceKey) === nextLane) {
+          controlPlaneLaneByAudience.delete(audienceKey);
+        }
+      }
     }
 
     async function isTaskMonitorEnabled(sessionKey: string): Promise<boolean> {
@@ -1158,6 +2162,12 @@ const taskSystemPlugin = {
 
     function clearSessionTaskArtifacts(sessionKey: string): void {
       const normalizedSessionKey = normalizeSessionKey(sessionKey);
+      const activeTaskBinding = activeTaskBindings.get(normalizedSessionKey);
+      if (activeTaskBinding?.taskId) {
+        controlPlaneTerminalByTask.delete(activeTaskBinding.taskId);
+        controlPlanePendingTerminalByTask.delete(activeTaskBinding.taskId);
+        controlPlaneLatestSupersedableTokenByTask.delete(activeTaskBinding.taskId);
+      }
       activeTaskBindings.delete(normalizedSessionKey);
       recentActivationBySession.delete(normalizedSessionKey);
       for (const [taskId, receipt] of pendingReceipts.entries()) {
@@ -1195,6 +2205,11 @@ const taskSystemPlugin = {
         content: normalizeText(event.content).slice(0, 240),
       });
       const taskMonitorCommand = parseTaskMonitorCommand(event.content);
+      const continuitySummaryCommand = parseContinuitySummaryCommand(event.content);
+      const tasksSummaryCommand = parseTasksSummaryCommand(event.content);
+      const channelName = event.channel ?? ctx.channelId ?? "unknown";
+      const accountId = ctx.accountId ?? "";
+      const chatId = ctx.conversationId ?? sessionKey;
       if (taskMonitorCommand) {
         const taskMonitorResult = await callHook(api, config, "taskmonitor-control", {
           session_key: sessionKey,
@@ -1205,75 +2220,197 @@ const taskSystemPlugin = {
         if (!enabled) {
           clearSessionTaskArtifacts(sessionKey);
         }
-        return {
-          handled: true,
-          text:
+        const managementMessage = buildHookBackedControlPlaneMessage(taskMonitorResult, {
+          channel: channelName,
+          accountId,
+          chatId,
+          sessionKey,
+          message:
             normalizeText(String(taskMonitorResult?.message || "")) ||
             "taskmonitor 状态已更新。",
+          eventName: "taskmonitor-control",
+          priority: "p1-task-management",
+        });
+        await sendControlPlaneMessage(managementMessage);
+        return {
+          handled: true,
         };
+      }
+      if (continuitySummaryCommand) {
+        const continuityResult = await callHook(api, config, "main-continuity", {
+          session_key: sessionKey,
+          compact: continuitySummaryCommand.compact,
+        });
+        const continuityMessage = buildHookBackedControlPlaneMessage(continuityResult, {
+          channel: channelName,
+          accountId,
+          chatId,
+          sessionKey,
+          message:
+            normalizeText(String(continuityResult?.control_plane_message?.text || "")) ||
+            "已收到状态查询请求，正在整理当前 task-system 状态。",
+          eventName: "continuity-summary",
+          priority: "p1-task-management",
+        });
+        await sendControlPlaneMessage(continuityMessage);
+        enqueueDebugLog(config, "before_dispatch:continuity-summary-sent", {
+          sessionKey,
+          channel: channelName,
+          compact: continuitySummaryCommand.compact,
+          primaryActionKind: continuityResult?.primary_action_kind ?? null,
+        });
+        return;
+      }
+      if (tasksSummaryCommand) {
+        const tasksSummaryResult = await callHook(api, config, "main-tasks-summary", {
+          session_key: sessionKey,
+          scope: tasksSummaryCommand.scope,
+        });
+        const tasksMessage = buildHookBackedControlPlaneMessage(tasksSummaryResult, {
+          channel: channelName,
+          accountId,
+          chatId,
+          sessionKey,
+          message:
+            normalizeText(String(tasksSummaryResult?.control_plane_message?.text || "")) ||
+            "已收到任务查询请求，正在整理当前会话任务状态。",
+          eventName: "main-tasks-summary",
+          priority: "p1-task-management",
+        });
+        await sendControlPlaneMessage(tasksMessage);
+        enqueueDebugLog(config, "before_dispatch:tasks-summary-sent", {
+          sessionKey,
+          channel: channelName,
+          taskCount: tasksSummaryResult?.task_count ?? null,
+          scope: tasksSummaryCommand.scope,
+        });
+        return;
       }
       if (!(await isTaskMonitorEnabled(sessionKey))) {
         enqueueDebugLog(config, "before_dispatch:taskmonitor-disabled", {
           agentId,
           sessionKey,
+          schedulerDecision: "skipped",
+          reason: "taskmonitor-disabled",
         });
         return;
       }
-      const registerResult = await callHook(api, config, "register", {
-        agent_id: agentId,
-        session_key: sessionKey,
-        channel: event.channel ?? ctx.channelId ?? "unknown",
-        account_id: ctx.accountId ?? "",
-        chat_id: ctx.conversationId ?? sessionKey,
-        user_id: event.senderId ?? ctx.senderId ?? "",
-        user_request: event.body || event.content,
-        observe_only: true,
+      const senderId = event.senderId ?? ctx.senderId ?? "";
+      const queueIdentity = buildQueueIdentity({
+        channel: channelName,
+        accountId,
+        conversationId: chatId,
+        senderId,
+        sessionKey,
+        isGroup: Boolean(event.isGroup),
       });
+      const queueIds = [chatId, senderId];
+      const preRegistered = consumePreRegisteredSnapshot(
+        queueIdentity,
+        queueIds,
+        [event.content, event.body].filter((entry): entry is string => typeof entry === "string"),
+        senderId,
+      );
+      const registerResult =
+        preRegistered?.registerResult ??
+        (await callHook(api, config, "register", {
+          agent_id: agentId,
+          session_key: sessionKey,
+          channel: channelName,
+          account_id: accountId,
+          chat_id: chatId,
+          user_id: senderId,
+          user_request: event.body || event.content,
+          observe_only: true,
+        }));
+      const registerDecision = resolveRegisterDecision(registerResult);
       enqueueDebugLog(config, "immediate-ack:decision", {
         sessionKey,
-        channel: event.channel ?? ctx.channelId ?? "unknown",
-        shouldRegisterTask: registerResult?.should_register_task ?? null,
-        classificationReason: registerResult?.classification_reason ?? null,
-        taskId: registerResult?.task_id ?? null,
+        channel: channelName,
+        queueKey: queueIdentity.queueKey,
+        shouldRegisterTask: registerDecision.should_register_task ?? null,
+        classificationReason: registerDecision.classification_reason ?? null,
+        taskId: registerDecision.task_id ?? null,
+        preRegistered: Boolean(preRegistered),
+        producerMode: preRegistered ? "receive-side-producer" : "dispatch-side-priority-only",
+        producerConsumerAligned: Boolean(preRegistered),
       });
-      if (typeof registerResult?.task_id === "string" && registerResult.task_id.trim()) {
+      if (typeof registerDecision.task_id === "string" && registerDecision.task_id.trim()) {
         activeTaskBindings.set(sessionKey, {
-          taskId: registerResult.task_id.trim(),
+          taskId: registerDecision.task_id.trim(),
         });
       }
-      const classificationReason = String(registerResult?.classification_reason || "").trim();
+      const classificationReason = String(registerDecision.classification_reason || "").trim();
       const isExistingActive = classificationReason === "existing-active-task";
       const isLongTask = classificationReason === "long-task" || classificationReason === "scheduled-continuation";
       const shouldSendShortTaskAck = isLongTask || config.sendImmediateAckForShortTasks;
       const shouldSendImmediateAck =
         config.sendImmediateAckOnRegister &&
-        Boolean(registerResult?.should_register_task) &&
+        Boolean(registerDecision.should_register_task) &&
         shouldSendShortTaskAck &&
         !isExistingActive;
       const immediateAckMessage = buildImmediateReceiptMessage(config, registerResult);
       const receiptTaskId =
-        typeof registerResult?.task_id === "string" && registerResult.task_id.trim()
-          ? registerResult.task_id.trim()
+        typeof registerDecision.task_id === "string" && registerDecision.task_id.trim()
+          ? registerDecision.task_id.trim()
           : "";
+      const queuedEarlyAckConsumed =
+        shouldSendImmediateAck &&
+        (Boolean(preRegistered?.earlyAckSent) || consumeQueuedEarlyAck(queueIdentity, queueIds));
 
-      if (shouldSendImmediateAck) {
-        if (isLongTask && typeof registerResult?.task_id === "string" && registerResult.task_id.trim()) {
-          await sendImmediateAck(api, config, {
-            channel: event.channel ?? ctx.channelId ?? "unknown",
-            accountId: ctx.accountId ?? "",
-            chatId: ctx.conversationId ?? sessionKey,
-            taskId: registerResult.task_id,
+      if (
+        config.sendImmediateAckOnRegister &&
+        Boolean(registerDecision.should_register_task) &&
+        shouldSendShortTaskAck &&
+        isExistingActive
+      ) {
+        await appendControlPlaneSkipLog("immediate-ack", {
+          channel: channelName,
+          accountId,
+          chatId,
+          taskId: registerDecision.task_id ?? null,
+          sessionKey,
+          priority: "p0-receive-ack",
+          schedulerDecision: "skipped",
+          reason: "existing-active-task",
+        });
+      }
+
+      if (queuedEarlyAckConsumed) {
+        await appendControlPlaneSkipLog("immediate-ack", {
+          channel: channelName,
+          accountId,
+          chatId,
+          taskId: registerDecision.task_id ?? null,
+          sessionKey,
+          priority: "p0-receive-ack",
+          schedulerDecision: "skipped",
+          reason: "queued-early-ack-already-sent",
+        });
+      }
+
+      if (shouldSendImmediateAck && !queuedEarlyAckConsumed) {
+        if (isLongTask && typeof registerDecision.task_id === "string" && registerDecision.task_id.trim()) {
+          await sendControlPlaneMessage({
+            eventName: "immediate-ack",
+            priority: "p0-receive-ack",
+            channel: channelName,
+            accountId,
+            chatId,
+            taskId: registerDecision.task_id,
             sessionKey,
             message: immediateAckMessage,
           });
         } else {
-          await sendStatusMessage(api, config, {
-            channel: event.channel ?? ctx.channelId ?? "unknown",
-            accountId: ctx.accountId ?? "",
-            chatId: ctx.conversationId ?? sessionKey,
+          await sendControlPlaneMessage({
+            channel: channelName,
+            accountId,
+            chatId,
             sessionKey,
             message: immediateAckMessage,
             eventName: "immediate-ack",
+            priority: "p0-receive-ack",
+            taskId: receiptTaskId || undefined,
           });
           if (!receiptTaskId) {
             return;
@@ -1293,22 +2430,31 @@ const taskSystemPlugin = {
                 task_id: current.taskId,
               });
               if (!followupCheck?.should_send) {
-                await appendDebugLog(config, "short-task-followup:skipped", {
+                await appendControlPlaneSkipLog("short-task-followup", {
+                  channel: current.channel,
+                  accountId: current.accountId,
+                  chatId: current.chatId,
                   taskId: current.taskId,
                   sessionKey: current.sessionKey,
+                  priority: "p2-progress-followup",
+                  schedulerDecision: "skipped",
                   reason: followupCheck?.reason ?? "unknown",
                 });
                 return;
               }
-              await sendStatusMessage(api, config, {
+              const hookControlPlaneMessage = extractHookControlPlaneMessage(followupCheck);
+              await sendControlPlaneMessage({
                 channel: current.channel,
                 accountId: current.accountId ?? "",
                 chatId: current.chatId,
                 sessionKey: current.sessionKey,
                 message:
+                  hookControlPlaneMessage?.message ||
                   normalizeText(String(followupCheck?.followup_message || "")) ||
                   config.shortTaskFollowupTemplate,
-                eventName: "short-task-followup",
+                eventName: hookControlPlaneMessage?.eventName || "short-task-followup",
+                priority: hookControlPlaneMessage?.priority || "p2-progress-followup",
+                taskId: hookControlPlaneMessage?.taskId || current.taskId,
               });
             })();
           }, config.shortTaskFollowupTimeoutMs);
@@ -1328,7 +2474,7 @@ const taskSystemPlugin = {
         enqueueDebugLog(config, "before_dispatch:continuation-handled", {
           agentId,
           sessionKey,
-          taskId: registerResult?.task_id ?? null,
+          taskId: registerDecision.task_id ?? null,
         });
         return {
           handled: true,
@@ -1345,6 +2491,8 @@ const taskSystemPlugin = {
         await appendDebugLog(config, "before_agent_start:internal-retry", {
           agentId: ctx.agentId || config.defaultAgentId,
           sessionKey: ctx.sessionKey || "",
+          schedulerDecision: "skipped",
+          reason: "internal-retry-prompt",
         });
         return;
       }
@@ -1352,6 +2500,8 @@ const taskSystemPlugin = {
         await appendDebugLog(config, "before_agent_start:continuation-wake", {
           agentId: ctx.agentId || config.defaultAgentId,
           sessionKey: ctx.sessionKey || "",
+          schedulerDecision: "skipped",
+          reason: "continuation-wake-prompt",
         });
         return;
       }
@@ -1360,6 +2510,8 @@ const taskSystemPlugin = {
           trigger: ctx.trigger,
           agentId: ctx.agentId || config.defaultAgentId,
           sessionKey: ctx.sessionKey || "",
+          schedulerDecision: "skipped",
+          reason: "unsupported-trigger",
         });
         return;
       }
@@ -1368,6 +2520,8 @@ const taskSystemPlugin = {
         await appendDebugLog(config, "before_agent_start:missing-session", {
           agentId: ctx.agentId || config.defaultAgentId,
           prompt: normalizeText(event.prompt).slice(0, 240),
+          schedulerDecision: "skipped",
+          reason: "missing-session",
         });
         return;
       }
@@ -1377,6 +2531,8 @@ const taskSystemPlugin = {
         await appendDebugLog(config, "before_agent_start:taskmonitor-disabled", {
           agentId,
           sessionKey: normalizedSessionKey,
+          schedulerDecision: "skipped",
+          reason: "taskmonitor-disabled",
         });
         return;
       }
@@ -1385,6 +2541,8 @@ const taskSystemPlugin = {
         sessionKey: normalizedSessionKey,
         trigger: ctx.trigger || "unknown",
         prompt: normalizeText(event.prompt).slice(0, 240),
+        schedulerDecision: "entered",
+        reason: "before-agent-start",
       });
       const activeTaskBinding = activeTaskBindings.get(normalizedSessionKey);
       const activationSignature = JSON.stringify({
@@ -1402,6 +2560,9 @@ const taskSystemPlugin = {
           agentId,
           sessionKey: normalizedSessionKey,
           taskId: activeTaskBinding?.taskId ?? null,
+          schedulerDecision: "skipped",
+          reason: "duplicate-activation",
+          trigger: ctx.trigger || "unknown",
         });
         return;
       }
@@ -1424,6 +2585,8 @@ const taskSystemPlugin = {
         await appendDebugLog(config, "before_prompt_build:continuation-wake", {
           agentId: ctx.agentId || config.defaultAgentId,
           sessionKey: ctx.sessionKey || "",
+          schedulerDecision: "skipped",
+          reason: "continuation-wake-prompt",
         });
         return;
       }
@@ -1432,6 +2595,8 @@ const taskSystemPlugin = {
         await appendDebugLog(config, "before_prompt_build:missing-session", {
           agentId: ctx.agentId || config.defaultAgentId,
           prompt: normalizeText(event.prompt).slice(0, 240),
+          schedulerDecision: "skipped",
+          reason: "missing-session",
         });
         return;
       }
@@ -1441,6 +2606,8 @@ const taskSystemPlugin = {
         sessionKey,
         trigger: ctx.trigger || "unknown",
         prompt: normalizeText(event.prompt).slice(0, 240),
+        schedulerDecision: "entered",
+        reason: "before-prompt-build",
       });
     });
 
@@ -1453,6 +2620,8 @@ const taskSystemPlugin = {
         sessionKey: ctx.sessionKey || "",
         trigger: ctx.trigger || "unknown",
         prompt: normalizeText(event.prompt).slice(0, 240),
+        schedulerDecision: "entered",
+        reason: "before-model-resolve",
       });
     });
 
@@ -1465,6 +2634,8 @@ const taskSystemPlugin = {
           await appendDebugLog(config, "message_sending:taskmonitor-disabled", {
             agentId: ctx.agentId || config.defaultAgentId,
             sessionKey: ctx.sessionKey || "",
+            schedulerDecision: "skipped",
+            reason: "taskmonitor-disabled",
           });
           return;
         }
@@ -1480,6 +2651,8 @@ const taskSystemPlugin = {
             agentId: resolvedAgentId,
             sessionKey: normalizedSessionKey,
             matchedReplyText: continuationFulfilled.matched_reply_text ?? null,
+            schedulerDecision: "skipped",
+            reason: "continuation-fulfilled",
           });
           return;
         }
@@ -1488,6 +2661,8 @@ const taskSystemPlugin = {
         await appendDebugLog(config, "message_sending:ignored", {
           sessionKey: ctx.sessionKey || buildSessionKey(ctx.channelId, ctx.conversationId),
           content: normalizeText(event.content).slice(0, 240),
+          schedulerDecision: "skipped",
+          reason: "progress-sync-filtered",
         });
         return;
       }
@@ -1497,6 +2672,8 @@ const taskSystemPlugin = {
         agentId,
         sessionKey,
         content: normalizeText(event.content).slice(0, 240),
+        schedulerDecision: "entered",
+        reason: "progress-sync",
       });
       const activeTaskBinding = activeTaskBindings.get(sessionKey);
       await callHook(api, config, "progress-active", {
@@ -1519,6 +2696,8 @@ const taskSystemPlugin = {
         await appendDebugLog(config, "llm_output:taskmonitor-disabled", {
           agentId: ctx.agentId || config.defaultAgentId,
           sessionKey,
+          schedulerDecision: "skipped",
+          reason: "taskmonitor-disabled",
         });
         return;
       }
@@ -1538,6 +2717,8 @@ const taskSystemPlugin = {
           sessionKey,
           matchedReplyText: continuationFulfilled.matched_reply_text ?? null,
           content: text.slice(0, 240),
+          schedulerDecision: "skipped",
+          reason: "continuation-fulfilled",
         });
         return;
       }
@@ -1546,6 +2727,8 @@ const taskSystemPlugin = {
           agentId,
           sessionKey,
           content: text.slice(0, 240),
+          schedulerDecision: "skipped",
+          reason: "progress-sync-filtered",
         });
         return;
       }
@@ -1553,6 +2736,8 @@ const taskSystemPlugin = {
         agentId,
         sessionKey,
         content: text.slice(0, 240),
+        schedulerDecision: "entered",
+        reason: "progress-sync",
       });
       const activeTaskBinding = activeTaskBindings.get(sessionKey);
       await callHook(api, config, "progress-active", {
@@ -1573,14 +2758,37 @@ const taskSystemPlugin = {
           agentId: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
           sessionKey: normalizedSessionKey,
           success: event.success,
+          schedulerDecision: "skipped",
+          reason: "taskmonitor-disabled",
         });
         clearSessionTaskArtifacts(normalizedSessionKey);
         return;
       }
       const activeTaskBinding = activeTaskBindings.get(normalizedSessionKey);
+      if (activeTaskBinding?.taskId) {
+        controlPlaneTerminalByTask.set(activeTaskBinding.taskId, {
+          eventName: event.success ? "agent-settled" : "agent-failed",
+          ts: Date.now(),
+        });
+        await appendDebugLog(config, "agent_end:terminal-state-armed", {
+          agentId: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
+          sessionKey: normalizedSessionKey,
+          taskId: activeTaskBinding.taskId,
+          terminalPhase: "armed",
+          terminalEventName: event.success ? "agent-settled" : "agent-failed",
+          success: event.success,
+        });
+      }
       const pendingReceipt = activeTaskBinding ? pendingReceipts.get(activeTaskBinding.taskId) : undefined;
       if (pendingReceipt?.timer) {
         clearTimeout(pendingReceipt.timer);
+        await appendDebugLog(config, "agent_end:pending-followup-cleared", {
+          agentId: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
+          sessionKey: normalizedSessionKey,
+          taskId: activeTaskBinding?.taskId ?? null,
+          terminalPhase: "armed",
+          reason: "terminal-agent-end",
+        });
       }
       if (activeTaskBinding) {
         pendingReceipts.delete(activeTaskBinding.taskId);
@@ -1591,6 +2799,13 @@ const taskSystemPlugin = {
         }
         if (receipt.timer) {
           clearTimeout(receipt.timer);
+          await appendDebugLog(config, "agent_end:pending-followup-cleared", {
+            agentId: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
+            sessionKey: normalizedSessionKey,
+            taskId,
+            terminalPhase: "armed",
+            reason: "terminal-agent-end-session-sweep",
+          });
         }
         pendingReceipts.delete(taskId);
       }
@@ -1599,8 +2814,10 @@ const taskSystemPlugin = {
         sessionKey: normalizedSessionKey,
         success: event.success,
         error: event.error ?? null,
+        schedulerDecision: "entered",
+        reason: "agent-end",
       });
-      await callHook(api, config, "finalize-active", {
+      const finalizeResult = await callHook(api, config, "finalize-active", {
         agent_id: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
         session_key: normalizedSessionKey,
         task_id: activeTaskBinding?.taskId,
@@ -1609,7 +2826,33 @@ const taskSystemPlugin = {
         result_summary: event.success ? summarizeAgentEnd(event) : undefined,
         error: event.error,
       });
+      const shouldDeliverFinalizeControlPlane =
+        Boolean(finalizeResult?.control_plane_message) &&
+        Boolean(activeTaskBinding?.taskId) &&
+        (!event.success || !hasVisibleAssistantOutput(event));
+      if (shouldDeliverFinalizeControlPlane) {
+        await sendControlPlaneMessage(
+          buildHookBackedControlPlaneMessage(finalizeResult, {
+            channel: ctx.channelId ?? "unknown",
+            accountId: ctx.accountId ?? "",
+            chatId: ctx.conversationId ?? normalizedSessionKey,
+            sessionKey: normalizedSessionKey,
+            taskId: activeTaskBinding?.taskId,
+            eventName: event.success ? "task-completed" : "task-failed",
+            priority: "p1-task-management",
+            message: event.success ? "当前任务已完成。" : "当前任务已失败。",
+          }),
+        );
+      }
       if (activeTaskBinding) {
+        await appendDebugLog(config, "agent_end:terminal-state-cleared", {
+          agentId: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
+          sessionKey: normalizedSessionKey,
+          taskId: activeTaskBinding.taskId,
+          terminalPhase: "cleared",
+          reason: "finalize-active-complete",
+        });
+        controlPlaneTerminalByTask.delete(activeTaskBinding.taskId);
         activeTaskBindings.delete(normalizedSessionKey);
       }
       recentActivationBySession.delete(normalizedSessionKey);
@@ -1626,12 +2869,16 @@ const taskSystemPlugin = {
           await appendDebugLog(config, "watchdog-auto-recover:startup-kickoff", {
             startupRecovery: true,
             attempt: "initial",
+            schedulerDecision: "entered",
+            reason: "startup-watchdog-recovery",
           });
           await processWatchdogRecovery(api, config, { startupRecovery: true });
           startupWatchdogRecoveryRetryTimer = setTimeout(() => {
             void appendDebugLog(config, "watchdog-auto-recover:startup-kickoff", {
               startupRecovery: true,
               attempt: "delayed-retry",
+              schedulerDecision: "entered",
+              reason: "startup-watchdog-recovery",
             });
             void processWatchdogRecovery(api, config, { startupRecovery: true });
           }, 10000);
@@ -1680,11 +2927,26 @@ const taskSystemPlugin = {
         }
         pendingReceipts.clear();
         activeTaskBindings.clear();
+        controlPlaneSequenceByAudience.clear();
+        controlPlaneLaneByAudience.clear();
+        controlPlaneLatestPreemptingTokenByAudience.clear();
+        controlPlaneLatestSupersedableTokenByAudience.clear();
+        controlPlaneTerminalByTask.clear();
+        controlPlanePendingTerminalByTask.clear();
+        controlPlaneLatestSupersedableTokenByTask.clear();
         taskMonitorEnabledBySession.clear();
         recentActivationBySession.clear();
       },
     });
 
+    enqueueDebugLog(config, "plugin:load:enabled", {
+      enabled: true,
+      runtimeRoot: config.runtimeRoot,
+      schedulerDecision: "entered",
+      reason: "plugin-register-complete",
+      logLevel: "info",
+      operatorVisible: true,
+    });
     api.logger.info(`[task-system] plugin loaded (root=${config.runtimeRoot})`);
   },
 };

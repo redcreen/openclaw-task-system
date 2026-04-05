@@ -33,6 +33,22 @@ class MainTaskDecision:
     continuation_plan: Optional[ContinuationPlan] = None
 
 
+def is_control_command_request(user_request: str) -> bool:
+    normalized = user_request.strip()
+    if not normalized.startswith("/"):
+        return False
+    parts = normalized.split(maxsplit=1)
+    command = parts[0]
+    remainder = parts[1].strip() if len(parts) > 1 else ""
+    if len(command) <= 1:
+        return False
+    # Treat bare slash commands and flag-style command invocations as transport/control
+    # requests, not user work that should enter the main task queue.
+    if not remainder:
+        return True
+    return remainder.startswith("-")
+
+
 def decide_main_task(
     context: MainTaskContext,
     *,
@@ -52,6 +68,13 @@ def decide_main_task(
             classification=TaskClassification(is_long_task=False, confidence="low", reasons=["agent-disabled"]),
             should_register=False,
             reason="agent-disabled",
+        )
+
+    if is_control_command_request(context.user_request):
+        return MainTaskDecision(
+            classification=TaskClassification(is_long_task=False, confidence="high", reasons=["control-command"]),
+            should_register=False,
+            reason="control-command",
         )
 
     continuation_plan = parse_delayed_reply_request(context.user_request)

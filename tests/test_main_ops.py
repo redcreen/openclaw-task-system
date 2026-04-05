@@ -132,8 +132,44 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- top_followup_session: none", rendered)
         self.assertIn("- action_hint: No immediate action needed.", rendered)
         self.assertIn("- action_hint_command: none", rendered)
+        self.assertIn("- producer_focus_channel: mixed", rendered)
+        self.assertIn("- producer_mode: mixed", rendered)
         self.assertIn("main_ops.py continuity --json", rendered)
         self.assertIn("## Runbook", rendered)
+
+    def test_get_main_producer_contract_summary_reports_channel_matrix(self) -> None:
+        summary = main_ops.get_main_producer_contract_summary(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(summary["schema"], "openclaw.task-system.producer-contract.v1")
+        self.assertEqual(summary["channel_count"], 3)
+        self.assertIn("feishu", summary["receive_side_producer_channels"])
+        self.assertIn("telegram", summary["dispatch_side_priority_only_channels"])
+        self.assertEqual(summary["producer_mode_counts"]["receive-side-producer"], 1)
+        self.assertEqual(summary["producer_mode_counts"]["dispatch-side-priority-only"], 2)
+        self.assertEqual(summary["session_message_semantics"]["steering_mode"], "same-session-steering")
+
+    def test_get_main_producer_contract_summary_can_focus_session_channel(self) -> None:
+        summary = main_ops.get_main_producer_contract_summary(
+            config_path=self._config_path(),
+            paths=self.paths,
+            session_key="agent:main:feishu:direct:ou_123",
+        )
+
+        self.assertEqual(summary["focus_channel"], "feishu")
+        self.assertEqual(summary["producer_mode"], "receive-side-producer")
+        self.assertEqual(summary["channel_count"], 1)
+        self.assertTrue(summary["contracts"][0]["pre_register_snapshot_supported"])
+
+    def test_render_main_producer_contract_reports_focus_channel(self) -> None:
+        rendered = main_ops.render_main_producer_contract(
+            config_path=self._config_path(),
+            paths=self.paths,
+            session_key="agent:main:feishu:direct:ou_123",
+        )
+
+        self.assertIn("# Producer Contract", rendered)
+        self.assertIn("- focus_channel: feishu", rendered)
+        self.assertIn("- producer_mode: receive-side-producer", rendered)
 
     def test_get_main_dashboard_summary_warns_when_continuity_risk_exists(self) -> None:
         task = self.store.register_task(
@@ -172,6 +208,7 @@ class MainOpsTests(unittest.TestCase):
             summary["auto_resume_command"],
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
         )
+        self.assertEqual(summary["producer_contract"]["producer_mode_counts"]["receive-side-producer"], 1)
         self.assertEqual(summary["primary_action_kind"], "apply-auto-resume")
         self.assertEqual(
             summary["primary_action_command"],
@@ -212,6 +249,7 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertIn("- session_filter: session:main:dashboard-focus", rendered)
         self.assertIn("- top_followup_session: none", rendered)
+        self.assertIn("- producer_focus_channel: telegram", rendered)
         self.assertIn("- action_hint: Review current lanes before changing queue behavior.", rendered)
         self.assertIn("- action_hint_command: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json", rendered)
         self.assertIn("main_ops.py continuity --session-key 'session:main:dashboard-focus'", rendered)
@@ -1556,6 +1594,8 @@ class MainOpsTests(unittest.TestCase):
         rendered = main_ops.render_main_triage(paths=self.paths)
 
         self.assertIn("# Main Ops Triage", rendered)
+        self.assertIn("- producer_focus_channel: mixed", rendered)
+        self.assertIn("- producer_mode: mixed", rendered)
         self.assertIn(task.task_id, rendered)
         self.assertIn("Persistent retryable failures detected", rendered)
         self.assertNotIn("repair --execute-retries --execution-context host", rendered)
@@ -1629,6 +1669,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["triage_status"], "warn")
         self.assertEqual(summary["blocked_main_task_count"], 1)
         self.assertEqual(summary["focus_session_key"], "session:main:triage-json")
+        self.assertEqual(summary["producer_contract"]["producer_mode_counts"]["receive-side-producer"], 1)
         self.assertTrue(summary["auto_resume_ready"])
         self.assertTrue(summary["auto_resume_safe_to_apply"])
         self.assertEqual(summary["auto_resume_blockers"], [])

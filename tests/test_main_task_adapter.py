@@ -53,6 +53,12 @@ class MainTaskAdapterTests(unittest.TestCase):
         self.assertEqual(decision.reason, "continuation-task")
         self.assertIsNotNone(decision.continuation_plan)
 
+    def test_decide_main_task_skips_bare_control_command(self) -> None:
+        context = self.build_context("/status")
+        decision = main_task_adapter.decide_main_task(context)
+        self.assertFalse(decision.should_register)
+        self.assertEqual(decision.reason, "control-command")
+
     def test_register_main_task_creates_running_task(self) -> None:
         context = self.build_context(
             "帮我整理配置并验证一下",

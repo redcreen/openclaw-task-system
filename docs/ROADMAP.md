@@ -331,12 +331,20 @@ Phase 2 退出条件：
 4. 把 producer 和 consumer contract 真正对齐
 5. 明确同一 session 中后续消息的 `steering / queueing / control-plane` 语义
 
-状态：部分完成
+状态：已完成
 
 已完成结果：
 
-- consumer 侧已经比较统一
-- producer 侧还没全 channel 正式接上
+- channel-neutral producer contract 已正式落成到代码与运维输出里
+- 已明确当前边界下的 channel 能力矩阵：
+  - `feishu`: `receive-side-producer`
+  - `telegram / webchat`: `dispatch-side-priority-only`
+- `dashboard / triage / producer` 已统一输出同一份 producer contract 真相
+- producer 与 consumer 已通过同一套 `queue identity / pre-register snapshot / early ack` 语义对齐
+- 同一 session 的 `steering / queueing / control-plane` 语义已固定成正式 contract：
+  - `same-session-steering`
+  - `agent-scoped-task-queue`
+  - `highest-priority-lane`
 
 这一阶段额外约束：
 
@@ -364,9 +372,9 @@ Phase 2 退出条件：
 
 当前默认优先级：
 
-1. 先做 Feishu
-2. 再补 Feishu 的真实/半真实验收
-3. 再看 Telegram 与其它 channel 的 contract 收口
+1. 先继续做 Feishu 的真实/半真实验收
+2. 再补 Telegram 与其它 channel 在当前 contract 下的能力评估
+3. 再看哪些 channel 可以继续逼近 receive-time producer
 
 ## 8. 当前进展总结
 
@@ -374,9 +382,9 @@ Phase 2 退出条件：
 
 1. 项目的主问题、边界、协议和路线已经清楚
 2. Phase 1 基本打底完成
-3. Phase 2 已完成大半，尤其是证据链和最小 scheduler 语义
-4. Phase 3 已有明显落地，但还不是最后收口
-5. Phase 4/5 仍是离北极星目标最远的部分
+3. Phase 2 已完成
+4. Phase 3 已完成
+5. Phase 4 已完成，Phase 5 是当前默认主线
 
 ## 9. 后续工作方式
 

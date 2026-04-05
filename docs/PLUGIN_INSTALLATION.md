@@ -2,7 +2,18 @@
 
 ## 1. 目标
 
-本文件说明如何在不修改 OpenClaw 主程序的前提下，把任务系统以插件方式接入。
+本文件说明如何在不修改 OpenClaw 主程序的前提下，把 `openclaw-task-system` 以插件方式接入。
+
+这里关注的是：
+
+- 如何安装
+- 如何配置
+- 如何做安装后验证
+
+这里不负责解释完整 roadmap 或架构设计；那两部分分别看：
+
+- `docs/ROADMAP.md`
+- `docs/ARCHITECTURE.md`
 
 ## 2. 前提
 
@@ -85,17 +96,23 @@ openclaw plugins install --link /Users/redcreen/.openclaw/workspace/openclaw-tas
 }
 ```
 
-## 6. 第一阶段插件行为
+## 6. 当前插件行为
 
-当前插件第一阶段会做这些事：
+当前插件已经不只是“第一阶段接入器”，而是 task-system 的主要 OpenClaw 扩展入口。
 
-- 在 `before_dispatch` 期间注册长任务候选
-- 对所有消息立刻回一条“已收到，开始处理”的轻提示
-- 对短任务，如果超时还没返回，再补一条“仍在处理中”
-- 对长任务，如果后续 30 秒内没有阶段进展，再由 watchdog 补提示
-- 在 `message_sending` 期间为当前活动任务回写进展
-- 在 `agent_end` 期间自动完成或失败收口
-- 在插件内部轮询 `send-instructions/`，把 `feishu` 通知直接投递回宿主会话
+它当前负责的能力包括：
+
+- 在 `before_dispatch` 期间接入 task register / pre-register / immediate ack 逻辑
+- 对短任务与长任务走统一的 control-plane 发送入口
+- 在 `message_sending` / `llm_output` 期间回写可见进展
+- 在 `agent_end` 期间做任务终态收口
+- 处理 short follow-up、continuation、host delivery、watchdog / continuity 等 runtime 结果
+- 维护最小 control-plane lane / scheduler，逐步把控制面消息从普通 reply 中分离
+
+需要明确的是：
+
+- “所有 channel 都已做到 receive-time `[wd]`”还没有完成
+- 当前更准确的状态是：plugin 已经把 dispatch 之后的控制面链路收得更稳、更统一，并在为后续 receive-time producer 做准备
 
 其中 `message_sending` 只会把“足够像阶段进展”的外发消息记成进展，避免把过短或占位性的回复误判成真实推进。
 
@@ -114,10 +131,17 @@ openclaw plugins install --link /Users/redcreen/.openclaw/workspace/openclaw-tas
 
 ## 8. 当前边界
 
-当前阶段还不要求：
+当前仍然成立的边界是：
 
-- 自动标记完成
-- 自动标记失败
-- 全量多 agent 生命周期接入
+- 不改 OpenClaw core
+- 不改宿主代码
+- 不改其它插件代码
+- 只通过现有扩展点和本项目自身 plugin/runtime 工作
 
-这些会在下一阶段继续补充。
+当前仍未完成的，不应在安装文档里误写成“已经具备”的能力包括：
+
+- 所有 channel 的 receive-time `[wd]`
+- 所有 channel 的统一 receive-side producer
+- 完整的多 channel control-plane 闭环
+
+这些属于 roadmap 与 architecture 持续推进内容，不属于本文件的安装结论。

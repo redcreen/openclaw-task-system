@@ -17,6 +17,11 @@ from instruction_executor import (
     retry_failed_instructions,
 )
 from main_task_adapter import block_main_task, fail_main_task, finish_main_task, resume_main_task
+from producer_contract import (
+    build_producer_contract_summary,
+    infer_channel_from_session_key,
+    render_producer_contract_summary,
+)
 from silence_monitor import scan_tasks
 from task_config import load_task_system_config
 from task_status import list_inflight_statuses, render_overview_markdown, render_status_markdown
@@ -30,6 +35,20 @@ def _resolve_paths(config_path: Optional[Path], *, paths: Optional[TaskPaths] = 
         return paths
     config = load_task_system_config(config_path=config_path)
     return config.build_paths() or default_paths()
+
+
+def _observed_channels_for_main(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+) -> list[str]:
+    return sorted(
+        {
+            str(status.get("channel") or "").strip().lower()
+            for status in list_inflight_statuses(config_path=config_path, paths=paths)
+            if str(status.get("agent_id") or "") == "main" and str(status.get("channel") or "").strip()
+        }
+    )
 
 
 def list_main_tasks(
@@ -1466,6 +1485,24 @@ def get_taskmonitor_overrides(
     }
 
 
+def get_main_producer_contract_summary(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
+    channel: Optional[str] = None,
+) -> dict[str, object]:
+    normalized_session_key = str(session_key or "").strip() or None
+    normalized_channel = str(channel or "").strip().lower() or None
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    observed_channels = _observed_channels_for_main(config_path=config_path, paths=resolved_paths)
+    return build_producer_contract_summary(
+        channel=normalized_channel or infer_channel_from_session_key(normalized_session_key),
+        session_key=normalized_session_key,
+        observed_channels=observed_channels,
+    )
+
+
 def _filter_queue_topology_by_session(
     summary: dict[str, object],
     *,
@@ -1543,6 +1580,8 @@ def render_main_dashboard(
                 f"- main_active_task_count: {summary['health']['main_active_task_count']}",
                 f"- main_blocked_task_count: {summary['health']['main_blocked_task_count']}",
                 f"- continuity_risk: auto={summary['continuity']['auto_resumable_task_count']} manual={summary['continuity']['manual_review_task_count']}",
+                f"- producer_focus_channel: {summary['producer_contract']['focus_channel'] or 'mixed'}",
+                f"- producer_mode: {summary['producer_contract']['producer_mode'] or 'mixed'}",
                 f"- auto_resume_ready: {summary['auto_resume_ready']}",
                 f"- auto_resume_safe_to_apply: {summary['auto_resume_safe_to_apply']}",
                 f"- auto_resume_command: {summary['auto_resume_command'] or 'none'}",
@@ -1575,6 +1614,7 @@ def render_main_dashboard(
             f"- queues: {compact_summary['queue_count']}",
             f"- lanes: {compact_summary['lane_agent_count']}",
             f"- continuity_risk: auto={compact_summary['continuity_auto_resumable_task_count']} manual={compact_summary['continuity_manual_review_task_count']}",
+            f"- producer: {compact_summary['producer_summary']}",
             f"- auto_resume: {compact_summary['auto_resume_summary']}",
             f"- top_followup_session: {compact_summary['top_followup_session_summary']}",
             f"- action_hint: {compact_summary['action_hint']}",
@@ -1594,6 +1634,8 @@ def render_main_dashboard(
         f"- lane_agent_count: {summary['lanes']['agent_count']}",
         f"- continuity_auto_resumable_task_count: {summary['continuity']['auto_resumable_task_count']}",
         f"- continuity_manual_review_task_count: {summary['continuity']['manual_review_task_count']}",
+        f"- producer_focus_channel: {summary['producer_contract']['focus_channel'] or 'mixed'}",
+        f"- producer_mode: {summary['producer_contract']['producer_mode'] or 'mixed'}",
         f"- auto_resume_ready: {summary['auto_resume_ready']}",
         f"- auto_resume_safe_to_apply: {summary['auto_resume_safe_to_apply']}",
         f"- auto_resume_command: {summary['auto_resume_command'] or 'none'}",
@@ -1630,6 +1672,11 @@ def get_main_dashboard_summary(
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(config_path, paths=paths)
     normalized_session_key = str(session_key or "").strip() or None
+    producer_contract = get_main_producer_contract_summary(
+        config_path=config_path,
+        paths=resolved_paths,
+        session_key=normalized_session_key,
+    )
     health = get_main_health_summary(config_path=config_path, paths=resolved_paths)
     queues = get_queue_topology_summary(config_path=config_path, paths=resolved_paths)
     lanes = get_queue_lanes_summary(config_path=config_path, paths=resolved_paths)
@@ -1700,6 +1747,11 @@ def get_main_dashboard_summary(
         "lane_agent_count": lanes["agent_count"],
         "continuity_auto_resumable_task_count": continuity["auto_resumable_task_count"],
         "continuity_manual_review_task_count": continuity["manual_review_task_count"],
+        "producer_summary": (
+            f"{producer_contract['focus_channel']}:{producer_contract['producer_mode']}"
+            if producer_contract.get("focus_channel")
+            else "mixed"
+        ),
         "auto_resume_summary": (
             "safe"
             if continuity.get("auto_resume_safe_to_apply")
@@ -1726,6 +1778,7 @@ def get_main_dashboard_summary(
     suggested_next_commands = (
         [
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health",
+            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py producer --json",
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json",
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json",
@@ -1733,6 +1786,7 @@ def get_main_dashboard_summary(
         ]
         if normalized_session_key is None
         else [
+            f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py producer --session-key '{normalized_session_key}' --json",
             f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key '{normalized_session_key}'",
             "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
             f"python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key '{normalized_session_key}' --action status --json",
@@ -1746,6 +1800,8 @@ def get_main_dashboard_summary(
         "main_blocked_task_count": health["main_blocked_task_count"],
         "continuity_auto_resumable_task_count": continuity["auto_resumable_task_count"],
         "continuity_manual_review_task_count": continuity["manual_review_task_count"],
+        "producer_focus_channel": producer_contract.get("focus_channel"),
+        "producer_mode": producer_contract.get("producer_mode"),
         "auto_resume_ready": bool(continuity.get("auto_resume_ready")),
         "auto_resume_safe_to_apply": bool(continuity.get("auto_resume_safe_to_apply")),
         "auto_resume_blockers": list(continuity.get("auto_resume_blockers", [])),
@@ -1829,6 +1885,7 @@ def get_main_dashboard_summary(
         "queues": queues,
         "lanes": lanes,
         "continuity": continuity,
+        "producer_contract": producer_contract,
         "top_followup_session": top_followup_session,
         "focus_session_key": top_followup_session["session_key"] if top_followup_session else None,
         "auto_resume_ready": bool(continuity.get("auto_resume_ready")),
@@ -2489,6 +2546,7 @@ def get_main_triage_summary(
 ) -> dict[str, object]:
     report = build_health_report(config_path=config_path, paths=paths)
     overview = report["overview"]
+    producer_contract = get_main_producer_contract_summary(config_path=config_path, paths=paths)
     blocked_main = [
         task for task in overview["active_tasks"] if task["agent_id"] == "main" and task["status"] == "blocked"
     ]
@@ -2613,6 +2671,9 @@ def get_main_triage_summary(
         "non_retryable_failed_instruction_count": failed_summary["non_retryable"],
         "unknown_failed_instruction_count": failed_summary["unknown"],
         "focus_session_key": focus_session_key,
+        "producer_contract": producer_contract,
+        "producer_focus_channel": producer_contract.get("focus_channel"),
+        "producer_mode": producer_contract.get("producer_mode"),
         "auto_resume_ready": bool(continuity.get("auto_resume_ready")),
         "auto_resume_safe_to_apply": bool(continuity.get("auto_resume_safe_to_apply")),
         "auto_resume_blockers": list(continuity.get("auto_resume_blockers", [])),
@@ -2649,6 +2710,8 @@ def render_main_triage(
         f"- non_retryable_failed_instruction_count: {summary['non_retryable_failed_instruction_count']}",
         f"- unknown_failed_instruction_count: {summary['unknown_failed_instruction_count']}",
         f"- focus_session_key: {summary.get('focus_session_key') or 'none'}",
+        f"- producer_focus_channel: {summary.get('producer_focus_channel') or 'mixed'}",
+        f"- producer_mode: {summary.get('producer_mode') or 'mixed'}",
         f"- auto_resume_ready: {summary.get('auto_resume_ready')}",
         f"- auto_resume_safe_to_apply: {summary.get('auto_resume_safe_to_apply')}",
         f"- auto_resume_command: {summary.get('auto_resume_command') or 'none'}",
@@ -2697,6 +2760,22 @@ def render_main_triage(
                 lines.append(f"  {command}")
 
     return "\n".join(lines) + "\n"
+
+
+def render_main_producer_contract(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
+    channel: Optional[str] = None,
+) -> str:
+    summary = get_main_producer_contract_summary(
+        config_path=config_path,
+        paths=paths,
+        session_key=session_key,
+        channel=channel,
+    )
+    return render_producer_contract_summary(summary)
 
 
 def repair_system(
@@ -3034,6 +3113,10 @@ def main() -> None:
     dashboard_parser.add_argument("--compact", action="store_true", help="Emit a shorter day-to-day dashboard view.")
     dashboard_parser.add_argument("--only-issues", action="store_true", help="Only show non-OK findings in the dashboard view.")
     dashboard_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
+    producer_parser = subparsers.add_parser("producer", help="Show the channel-neutral producer contract summary.")
+    producer_parser.add_argument("--session-key", default=None, help="Focus the producer contract on one session.")
+    producer_parser.add_argument("--channel", default=None, help="Override the focus channel.")
+    producer_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
 
     subparsers.add_parser("overview", help="Show task system overview.")
     lanes_parser = subparsers.add_parser("lanes", help="Show current queue/lane summary across agents.")
@@ -3244,6 +3327,31 @@ def main() -> None:
                 session_key=args.session_key,
                 compact=args.compact,
                 only_issues=args.only_issues,
+            ),
+            end="",
+        )
+        return
+    if args.command == "producer":
+        if args.json:
+            print(
+                json.dumps(
+                    get_main_producer_contract_summary(
+                        config_path=config_path,
+                        paths=paths,
+                        session_key=args.session_key,
+                        channel=args.channel,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+        print(
+            render_main_producer_contract(
+                config_path=config_path,
+                paths=paths,
+                session_key=args.session_key,
+                channel=args.channel,
             ),
             end="",
         )

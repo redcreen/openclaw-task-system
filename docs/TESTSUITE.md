@@ -235,6 +235,11 @@ Node plugin 测试现在按能力拆成了 4 组：
   - `gateway failure`
   - `control-plane send failure`
   - `plugin load enabled / disabled`
+- producer contract / pre-register 对齐
+  - `queue identity`
+  - `pre-register snapshot`
+  - `producerMode`
+  - channel capability matrix
 
 ## 6. 通过标准
 
@@ -263,6 +268,17 @@ Node plugin 测试现在按能力拆成了 4 组：
 - `/tasks`、`queues / lanes`、`dashboard / continuity / watchdog` 读取的是同一套用户状态投影
 - 统一状态同时具备稳定 code 与用户可见 label，而不是只靠中文文案比较
 - follow-up / `[wd]` 至少在核心 runtime 路径里优先基于统一状态 code 做判断
+
+### 6.1.3 对 Phase 4 的意义
+
+当完整自动化 testsuite 通过，并且以下能力都被自动化覆盖时，可以认为 `ROADMAP Phase 4` 满足退出条件：
+
+- producer contract 已作为正式代码输出，而不是只停留在文档描述
+- channel 能力矩阵已经明确区分：
+  - `receive-side-producer`
+  - `dispatch-side-priority-only`
+- `dashboard / triage / producer` 读取的是同一份 producer contract 真相
+- plugin 侧对 pre-register snapshot 的消费已经输出稳定的 `producerMode` 诊断
 
 ### 6.2 人工验收通过
 

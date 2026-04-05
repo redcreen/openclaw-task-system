@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -50,6 +50,9 @@ class BridgeDecision:
     queued_count: int = 0
     estimated_wait_seconds: Optional[int] = None
     continuation_due_at: Optional[str] = None
+
+    def to_payload(self) -> dict[str, object]:
+        return asdict(self)
 
 
 def _queue_sort_key(task: TaskState) -> tuple[int, str, str]:

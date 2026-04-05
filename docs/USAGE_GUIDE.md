@@ -2,16 +2,18 @@
 
 ## 1. 使用目标
 
-本系统面向两类使用者：
+本文件面向两类使用者：
 
 - 系统集成者：把任务系统接入 OpenClaw
 - 执行型 agent / 维护者：用任务系统管理长任务状态
 
+这里讲的是“当前系统怎么用”，不是“项目最早是怎么起步的”。
+
 ## 2. 基本使用方式
 
-### 2.1 长任务接入流程
+### 2.1 任务接入流程
 
-当某个 agent 判断一个请求属于长任务或多步骤任务时，应遵循以下流程：
+当某个请求进入 task-system 管理范围时，推荐遵循以下流程：
 
 1. 注册任务
 2. 返回启动回执
@@ -21,9 +23,9 @@
 
 ## 3. 角色视角使用说明
 
-### 3.1 对 main agent
+### 3.1 对 `main` agent
 
-`main` 是第一阶段优先接入对象。
+`main` 仍然是当前最核心的接入对象，也是多数运维入口默认围绕的 agent。
 
 建议用法：
 
@@ -38,9 +40,10 @@
 - `scripts/runtime/openclaw_hooks.py`
 - `scripts/runtime/task_status.py`
 
-主程序接入说明可参考：
+主入口文档可参考：
 
-- `docs/OPENCLAW_INTEGRATION_PLAN.md`
+- `docs/ROADMAP.md`
+- `docs/ARCHITECTURE.md`
 - `docs/PLUGIN_INSTALLATION.md`
 
 当前推荐方式不是改 OpenClaw 主程序，而是安装或链接插件：
@@ -69,7 +72,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py
 
 ## 4. 配置使用方式
 
-当前第一版已经支持配置驱动。
+当前系统已经支持配置驱动。
 
 建议放置正式配置文件：
 
@@ -117,10 +120,15 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py
 
 推荐的任务交互节奏是：
 
-- 所有消息首次进入时，先回一条“已收到，开始处理”
+- 所有消息首次进入时，尽量先回一条“已收到，开始处理”
 - 短任务如果在 `shortTaskFollowupTimeoutMs` 内还没结束，再补一条“仍在处理中”
 - 长任务如果 30 秒内没有新的阶段结果，再由 watchdog 自动补一条“仍在处理中”
 - 后续继续按真实阶段进展回写，直到 `done / failed / blocked`
+
+这里要注意：
+
+- 这是推荐交互目标，不等于“所有 channel 当前都已经做到 receive-time `[wd]`”
+- 当前更准确的能力边界请以 `docs/ROADMAP.md` 为准
 
 ## 5. 运维使用方式
 
@@ -135,7 +143,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py
 
 ### 5.1 外发执行器
 
-第一版真实外发通过 `instruction_executor.py` 完成。
+当前真实外发主要通过 `instruction_executor.py` 完成。
 
 默认行为是 dry-run，只生成 `dispatch-results`，不真的发送：
 
@@ -238,9 +246,9 @@ python3 workspace/openclaw-task-system/scripts/runtime/enqueue_test_instruction.
 python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py --execute
 ```
 
-## 6. 第一阶段推荐用法
+## 6. 推荐维护动作
 
-第一阶段不要求复杂配置，只要求：
+如果你是在当前项目状态下做维护，推荐优先做这些事：
 
 - 先接入 `main`
 - 先跑通最小闭环

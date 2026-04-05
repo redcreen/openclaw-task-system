@@ -46,6 +46,16 @@ class OpenClawBridgeTests(unittest.TestCase):
         self.assertEqual(decision.queue_position, 1)
         self.assertEqual(decision.ahead_count, 0)
 
+    def test_register_inbound_task_skips_bare_control_command(self) -> None:
+        ctx = self.make_context("/status")
+        decision = openclaw_bridge.register_inbound_task(ctx, paths=self.paths, observe_only=True)
+        self.assertFalse(decision.should_register_task)
+        self.assertIsNone(decision.task_id)
+        self.assertEqual(decision.classification_reason, "control-command")
+
+        store = task_state_module.TaskStore(paths=self.paths)
+        self.assertEqual(store.find_inflight_tasks(agent_id="main"), [])
+
     def test_register_inbound_task_reports_queue_position_for_observed_tasks(self) -> None:
         first = openclaw_bridge.register_inbound_task(
             self.make_context("第一个长任务", estimated_steps=4, needs_verification=True),
