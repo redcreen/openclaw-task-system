@@ -69,15 +69,15 @@ The automated testsuite is also fully green.
   - `docs/TESTSUITE.md`
   - `docs/USAGE_GUIDE.md`
   - `docs/PLUGIN_INSTALLATION.md`
-- [`docs/ROADMAP.md`](docs/ROADMAP.md): official roadmap
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): architecture and design model
-- [`docs/TESTSUITE.md`](docs/TESTSUITE.md): test layers and validation rules
-- [`docs/USAGE_GUIDE.md`](docs/USAGE_GUIDE.md): extended usage notes
-- [`docs/PLUGIN_INSTALLATION.md`](docs/PLUGIN_INSTALLATION.md): plugin installation details
-- [`docs/TODO.md`](docs/TODO.md): temporary notes only, not the mainline
-- [`plugin/`](plugin): OpenClaw plugin
-- [`scripts/runtime/`](scripts/runtime): runtime tools, truth sources, and CLI
-- [`config/`](config): example configs
+- [`docs/ROADMAP.md`](./docs/ROADMAP.md): official roadmap
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md): architecture and design model
+- [`docs/TESTSUITE.md`](./docs/TESTSUITE.md): test layers and validation rules
+- [`docs/USAGE_GUIDE.md`](./docs/USAGE_GUIDE.md): extended usage notes
+- [`docs/PLUGIN_INSTALLATION.md`](./docs/PLUGIN_INSTALLATION.md): plugin installation details
+- [`docs/TODO.md`](./docs/TODO.md): temporary notes only, not the mainline
+- [`plugin/`](./plugin): OpenClaw plugin
+- [`scripts/runtime/`](./scripts/runtime): runtime tools, truth sources, and CLI
+- [`config/`](./config): example configs
 
 ### installation
 
@@ -116,11 +116,11 @@ openclaw plugins install ./plugin
 
 Use:
 
-- [`config/task_system.json`](config/task_system.json)
+- [`config/task_system.json`](./config/task_system.json)
 
 or start from:
 
-- [`config/task_system.example.json`](config/task_system.example.json)
+- [`config/task_system.example.json`](./config/task_system.example.json)
 
 Example:
 
@@ -161,7 +161,7 @@ Example:
 
 Start from:
 
-- [`config/openclaw_plugin.example.json`](config/openclaw_plugin.example.json)
+- [`config/openclaw_plugin.example.json`](./config/openclaw_plugin.example.json)
 
 Example:
 
@@ -403,15 +403,15 @@ OpenClaw 天然更像消息驱动系统，但真实使用需要的是任务驱�
   - `docs/TESTSUITE.md`
   - `docs/USAGE_GUIDE.md`
   - `docs/PLUGIN_INSTALLATION.md`
-- [docs/ROADMAP.md](docs/ROADMAP.md)：正式 roadmap
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：架构设计
-- [docs/TESTSUITE.md](docs/TESTSUITE.md)：测试体系
-- [docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md)：扩展使用说明
-- [docs/PLUGIN_INSTALLATION.md](docs/PLUGIN_INSTALLATION.md)：插件安装说明
-- [docs/TODO.md](docs/TODO.md)：临时记录，不是正式主线
-- [plugin/](plugin)：OpenClaw 插件
-- [scripts/runtime/](scripts/runtime)：运行时、truth source 与 CLI
-- [config/](config)：配置样例
+- [docs/ROADMAP.md](./docs/ROADMAP.md)：正式 roadmap
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)：架构设计
+- [docs/TESTSUITE.md](./docs/TESTSUITE.md)：测试体系
+- [docs/USAGE_GUIDE.md](./docs/USAGE_GUIDE.md)：扩展使用说明
+- [docs/PLUGIN_INSTALLATION.md](./docs/PLUGIN_INSTALLATION.md)：插件安装说明
+- [docs/TODO.md](./docs/TODO.md)：临时记录，不是正式主线
+- [plugin/](./plugin)：OpenClaw 插件
+- [scripts/runtime/](./scripts/runtime)：运行时、truth source 与 CLI
+- [config/](./config)：配置样例
 
 ### 安装方式
 
@@ -450,11 +450,11 @@ openclaw plugins install ./plugin
 
 可以直接使用：
 
-- [config/task_system.json](config/task_system.json)
+- [config/task_system.json](./config/task_system.json)
 
 或者从样例开始：
 
-- [config/task_system.example.json](config/task_system.example.json)
+- [config/task_system.example.json](./config/task_system.example.json)
 
 示例：
 
@@ -495,7 +495,7 @@ openclaw plugins install ./plugin
 
 从这里开始：
 
-- [config/openclaw_plugin.example.json](config/openclaw_plugin.example.json)
+- [config/openclaw_plugin.example.json](./config/openclaw_plugin.example.json)
 
 示例：
 

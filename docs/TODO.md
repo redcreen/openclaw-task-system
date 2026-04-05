@@ -1,7 +1,7 @@
 # Temporary Notes
 
 > 最后更新：2026-04-05
-> 角色：这是临时记录文件，不是正式主线。默认按 [ROADMAP.md](ROADMAP.md) 推进；只有在明确要求“处理 TODO”时，才回读这里并整理回 roadmap。
+> 角色：这是临时记录文件，不是正式主线。默认按 [ROADMAP.md](./ROADMAP.md) 推进；只有在明确要求“处理 TODO”时，才回读这里并整理回 roadmap。
 
 ## 当前焦点
 

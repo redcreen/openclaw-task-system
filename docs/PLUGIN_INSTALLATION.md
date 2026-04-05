@@ -10,7 +10,7 @@
 项目背景、能力边界、路线图统一看：
 
 - [README.md](../README.md)
-- [ROADMAP.md](ROADMAP.md)
+- [ROADMAP.md](./ROADMAP.md)
 
 ## 1. 前提
 
@@ -142,4 +142,4 @@ python3 scripts/runtime/stable_acceptance.py --json
 正式边界与验收结论，以这两份文档为准：
 
 - [README.md](../README.md)
-- [ROADMAP.md](ROADMAP.md)
+- [ROADMAP.md](./ROADMAP.md)

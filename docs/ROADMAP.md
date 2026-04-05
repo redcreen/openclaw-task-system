@@ -109,7 +109,7 @@
 
 对外部项目的正式对比见：
 
-- [EXTERNAL_COMPARISON.md](EXTERNAL_COMPARISON.md)
+- [EXTERNAL_COMPARISON.md](./EXTERNAL_COMPARISON.md)
 
 目前确定要吸收进本 roadmap 的借鉴点有 4 个：
 
@@ -162,7 +162,7 @@
 
 正式说明见：
 
-- [TESTSUITE.md](TESTSUITE.md)
+- [TESTSUITE.md](./TESTSUITE.md)
 
 ### 6.2 协议与日志证据
 
