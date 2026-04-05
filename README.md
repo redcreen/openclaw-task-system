@@ -370,6 +370,23 @@ The current project already solves these core problems:
 - user-facing status is projected consistently across runtime views
 - producer contract and channel acceptance are formalized in code, not only in prose
 
+### similar systems and how this project differs
+
+This project was informed by several adjacent systems, but it is not trying to become any of them.
+
+| reference | what we borrowed | what we did not copy |
+| --- | --- | --- |
+| `humanlayer/agentcontrolplane` | control-plane should be a real layer | not turning this project into a distributed orchestrator |
+| `hzxbzp/llama-agents` | queue, worker, and control-plane should have clear boundaries | not optimizing for general multi-agent orchestration first |
+| `docker/cagent` | runtime modules should have explicit boundaries | not turning the project into a generic agent runtime product |
+| GitHub Copilot steering / queueing | steering, queueing, control-plane, and reply are different message types | not treating product docs as a complete runtime architecture |
+
+The practical conclusion is simple:
+
+- this project is OpenClaw-native
+- it is task-runtime first, not orchestrator first
+- it treats control-plane messages such as `[wd]`, follow-up, watchdog, and recovery as product features, not as side effects
+
 ### boundaries
 
 These boundaries are intentional:
@@ -767,6 +784,23 @@ python3 scripts/runtime/main_ops.py channel-acceptance --json
 - 关机期间错过的 delayed reply 到点后，启动可以补发
 - 用户侧与运维侧状态已经统一投影
 - producer contract 与 channel acceptance 已经正式落成到代码，不再只靠文档口头说明
+
+### 相近系统与差异
+
+这个项目不是凭空设计出来的，前面参考过几类相近系统，但目标并不是把它做成那些系统中的任何一个。
+
+| 参考对象 | 借鉴了什么 | 没有照搬什么 |
+| --- | --- | --- |
+| `humanlayer/agentcontrolplane` | control-plane 必须独立成层 | 不把项目带偏成分布式 orchestrator |
+| `hzxbzp/llama-agents` | queue、worker、control-plane 要有清晰边界 | 不先把重点放成通用多 agent 编排框架 |
+| `docker/cagent` | runtime 组件边界应该明确 | 不把项目做成通用 agent runtime 产品 |
+| GitHub Copilot steering / queueing | steering、queueing、control-plane、reply 是不同消息类型 | 不把产品文档当成完整 runtime 架构 |
+
+最后落到本项目上的结论很简单：
+
+- 这是一个 OpenClaw-native 的系统
+- 它首先是 task runtime，不是 orchestrator
+- `[wd]`、follow-up、watchdog、恢复这些控制面消息，本身就是正式产品能力，不是附属副作用
 
 ### 边界说明
 
