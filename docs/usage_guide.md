@@ -8,7 +8,7 @@
 项目是什么、为什么存在、主线状态是什么，统一看：
 
 - [README.md](../README.md)
-- [ROADMAP.md](./ROADMAP.md)
+- [roadmap.md](./roadmap.md)
 
 ## 1. 日常使用模型
 

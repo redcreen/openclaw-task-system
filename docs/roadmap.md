@@ -1,7 +1,7 @@
 # OpenClaw Task System Roadmap
 
 > 最后更新：2026-04-05
-> 角色：这是本项目的正式 roadmap。以后默认按这份 roadmap 推进；`docs/TODO.md` 只作为临时记录和新增事项收集。
+> 角色：这是本项目的正式 roadmap。以后默认按这份 roadmap 推进；`docs/todo.md` 只作为临时记录和新增事项收集。
 
 ## 1. 项目是做什么的
 
@@ -109,7 +109,7 @@
 
 对外部项目的正式对比见：
 
-- [EXTERNAL_COMPARISON.md](./EXTERNAL_COMPARISON.md)
+- [external_comparison.md](./external_comparison.md)
 
 目前确定要吸收进本 roadmap 的借鉴点有 4 个：
 
@@ -162,7 +162,7 @@
 
 正式说明见：
 
-- [TESTSUITE.md](./TESTSUITE.md)
+- [testsuite.md](./testsuite.md)
 
 ### 6.2 协议与日志证据
 
@@ -404,9 +404,9 @@ Phase 5 收口结论：
 从现在开始默认采用以下工作方式：
 
 - 正式主线以本文件为准
-- `docs/TODO.md` 只作为临时记录
+- `docs/todo.md` 只作为临时记录
 - 当明确要求“处理 TODO”时：
-  1. 读取 `docs/TODO.md`
+  1. 读取 `docs/todo.md`
   2. 提炼新增事项
   3. 合并回本 roadmap
   4. 再按 roadmap 顺序推进
@@ -421,7 +421,7 @@ Phase 5 收口结论：
 如果没有新的更高优先级指令，默认下一步是：
 
 - 保持完整 testsuite 与 channel acceptance matrix 持续全绿
-- 新增事项先进入 `docs/TODO.md`
+- 新增事项先进入 `docs/todo.md`
 - 等新的正式主线成熟后，再合并回下一版 roadmap
 
 ## 11. 主线完成后的候选方向

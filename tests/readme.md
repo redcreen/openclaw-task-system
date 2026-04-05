@@ -26,4 +26,4 @@
 
 正式 testsuite 说明见：
 
-- [docs/TESTSUITE.md](../docs/TESTSUITE.md)
+- [docs/testsuite.md](../docs/testsuite.md)

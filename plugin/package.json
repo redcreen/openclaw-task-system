@@ -17,9 +17,9 @@
     "src/**/*.ts",
     "scripts/runtime/**/*",
     "config/**/*.json",
-    "data/README.md",
+    "data/readme.md",
     "openclaw.plugin.json",
-    "README.md"
+    "readme.md"
   ],
   "peerDependencies": {
     "openclaw": "*"

@@ -6,7 +6,7 @@ __pycache__/
 data/
 workspace/
 plugin/data/*
-!plugin/data/README.md
+!plugin/data/readme.md
 node_modules/
 dist/
 build/

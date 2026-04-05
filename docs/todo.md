@@ -1,7 +1,7 @@
 # Temporary Notes
 
 > 最后更新：2026-04-05
-> 角色：这是临时记录文件，不是正式主线。默认按 [ROADMAP.md](./ROADMAP.md) 推进；只有在明确要求“处理 TODO”时，才回读这里并整理回 roadmap。
+> 角色：这是临时记录文件，不是正式主线。默认按 [roadmap.md](./roadmap.md) 推进；只有在明确要求“处理 TODO”时，才回读这里并整理回 roadmap。
 
 ## 当前焦点
 
@@ -22,8 +22,8 @@
 
 ## 最近进展
 
-- 删除了重复的 `docs/README.md`，根目录 `README.md` 作为唯一项目入口
-- 把临时记录从根目录迁到 `docs/TODO.md`
+- 删除了重复的 `docs/readme.md`，根目录 `README.md` 作为唯一项目入口
+- 把临时记录从根目录迁到 `docs/todo.md`
 - `continuation / host delivery / fulfilled shortcut / entered lifecycle` 已接进统一调度证据链
 - 文档口径已统一到：
   - 项目是 OpenClaw 上的“任务运行时 + 控制面”
