@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from channel_acceptance import build_channel_acceptance_summary, render_channel_acceptance_summary
 from delivery_reconcile import reconcile_delivery_artifacts
 from delivery_outage import acknowledge_outage, clear_outage
 from health_report import build_health_report
@@ -1503,6 +1504,24 @@ def get_main_producer_contract_summary(
     )
 
 
+def get_main_channel_acceptance_summary(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
+    channel: Optional[str] = None,
+) -> dict[str, object]:
+    normalized_session_key = str(session_key or "").strip() or None
+    normalized_channel = str(channel or "").strip().lower() or None
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    observed_channels = _observed_channels_for_main(config_path=config_path, paths=resolved_paths)
+    return build_channel_acceptance_summary(
+        channel=normalized_channel or infer_channel_from_session_key(normalized_session_key),
+        session_key=normalized_session_key,
+        observed_channels=observed_channels,
+    )
+
+
 def _filter_queue_topology_by_session(
     summary: dict[str, object],
     *,
@@ -1582,6 +1601,7 @@ def render_main_dashboard(
                 f"- continuity_risk: auto={summary['continuity']['auto_resumable_task_count']} manual={summary['continuity']['manual_review_task_count']}",
                 f"- producer_focus_channel: {summary['producer_contract']['focus_channel'] or 'mixed'}",
                 f"- producer_mode: {summary['producer_contract']['producer_mode'] or 'mixed'}",
+                f"- channel_acceptance_phase_status: {summary['channel_acceptance']['phase_status']}",
                 f"- auto_resume_ready: {summary['auto_resume_ready']}",
                 f"- auto_resume_safe_to_apply: {summary['auto_resume_safe_to_apply']}",
                 f"- auto_resume_command: {summary['auto_resume_command'] or 'none'}",
@@ -1615,6 +1635,7 @@ def render_main_dashboard(
             f"- lanes: {compact_summary['lane_agent_count']}",
             f"- continuity_risk: auto={compact_summary['continuity_auto_resumable_task_count']} manual={compact_summary['continuity_manual_review_task_count']}",
             f"- producer: {compact_summary['producer_summary']}",
+            f"- channel_acceptance: {compact_summary['channel_acceptance_summary']}",
             f"- auto_resume: {compact_summary['auto_resume_summary']}",
             f"- top_followup_session: {compact_summary['top_followup_session_summary']}",
             f"- action_hint: {compact_summary['action_hint']}",
@@ -1636,6 +1657,7 @@ def render_main_dashboard(
         f"- continuity_manual_review_task_count: {summary['continuity']['manual_review_task_count']}",
         f"- producer_focus_channel: {summary['producer_contract']['focus_channel'] or 'mixed'}",
         f"- producer_mode: {summary['producer_contract']['producer_mode'] or 'mixed'}",
+        f"- channel_acceptance_phase_status: {summary['channel_acceptance']['phase_status']}",
         f"- auto_resume_ready: {summary['auto_resume_ready']}",
         f"- auto_resume_safe_to_apply: {summary['auto_resume_safe_to_apply']}",
         f"- auto_resume_command: {summary['auto_resume_command'] or 'none'}",
@@ -1673,6 +1695,11 @@ def get_main_dashboard_summary(
     resolved_paths = _resolve_paths(config_path, paths=paths)
     normalized_session_key = str(session_key or "").strip() or None
     producer_contract = get_main_producer_contract_summary(
+        config_path=config_path,
+        paths=resolved_paths,
+        session_key=normalized_session_key,
+    )
+    channel_acceptance = get_main_channel_acceptance_summary(
         config_path=config_path,
         paths=resolved_paths,
         session_key=normalized_session_key,
@@ -1752,6 +1779,11 @@ def get_main_dashboard_summary(
             if producer_contract.get("focus_channel")
             else "mixed"
         ),
+        "channel_acceptance_summary": (
+            f"{channel_acceptance['focus_channel']}:{channel_acceptance['focus_rollout_status']}"
+            if channel_acceptance.get("focus_channel")
+            else channel_acceptance.get("phase_status", "unknown")
+        ),
         "auto_resume_summary": (
             "safe"
             if continuity.get("auto_resume_safe_to_apply")
@@ -1802,6 +1834,7 @@ def get_main_dashboard_summary(
         "continuity_manual_review_task_count": continuity["manual_review_task_count"],
         "producer_focus_channel": producer_contract.get("focus_channel"),
         "producer_mode": producer_contract.get("producer_mode"),
+        "channel_acceptance_phase_status": channel_acceptance.get("phase_status"),
         "auto_resume_ready": bool(continuity.get("auto_resume_ready")),
         "auto_resume_safe_to_apply": bool(continuity.get("auto_resume_safe_to_apply")),
         "auto_resume_blockers": list(continuity.get("auto_resume_blockers", [])),
@@ -1886,6 +1919,7 @@ def get_main_dashboard_summary(
         "lanes": lanes,
         "continuity": continuity,
         "producer_contract": producer_contract,
+        "channel_acceptance": channel_acceptance,
         "top_followup_session": top_followup_session,
         "focus_session_key": top_followup_session["session_key"] if top_followup_session else None,
         "auto_resume_ready": bool(continuity.get("auto_resume_ready")),
@@ -2547,6 +2581,7 @@ def get_main_triage_summary(
     report = build_health_report(config_path=config_path, paths=paths)
     overview = report["overview"]
     producer_contract = get_main_producer_contract_summary(config_path=config_path, paths=paths)
+    channel_acceptance = get_main_channel_acceptance_summary(config_path=config_path, paths=paths)
     blocked_main = [
         task for task in overview["active_tasks"] if task["agent_id"] == "main" and task["status"] == "blocked"
     ]
@@ -2672,8 +2707,10 @@ def get_main_triage_summary(
         "unknown_failed_instruction_count": failed_summary["unknown"],
         "focus_session_key": focus_session_key,
         "producer_contract": producer_contract,
+        "channel_acceptance": channel_acceptance,
         "producer_focus_channel": producer_contract.get("focus_channel"),
         "producer_mode": producer_contract.get("producer_mode"),
+        "channel_acceptance_phase_status": channel_acceptance.get("phase_status"),
         "auto_resume_ready": bool(continuity.get("auto_resume_ready")),
         "auto_resume_safe_to_apply": bool(continuity.get("auto_resume_safe_to_apply")),
         "auto_resume_blockers": list(continuity.get("auto_resume_blockers", [])),
@@ -2712,6 +2749,7 @@ def render_main_triage(
         f"- focus_session_key: {summary.get('focus_session_key') or 'none'}",
         f"- producer_focus_channel: {summary.get('producer_focus_channel') or 'mixed'}",
         f"- producer_mode: {summary.get('producer_mode') or 'mixed'}",
+        f"- channel_acceptance_phase_status: {summary.get('channel_acceptance_phase_status') or 'unknown'}",
         f"- auto_resume_ready: {summary.get('auto_resume_ready')}",
         f"- auto_resume_safe_to_apply: {summary.get('auto_resume_safe_to_apply')}",
         f"- auto_resume_command: {summary.get('auto_resume_command') or 'none'}",
@@ -2776,6 +2814,22 @@ def render_main_producer_contract(
         channel=channel,
     )
     return render_producer_contract_summary(summary)
+
+
+def render_main_channel_acceptance(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
+    channel: Optional[str] = None,
+) -> str:
+    summary = get_main_channel_acceptance_summary(
+        config_path=config_path,
+        paths=paths,
+        session_key=session_key,
+        channel=channel,
+    )
+    return render_channel_acceptance_summary(summary)
 
 
 def repair_system(
@@ -3117,6 +3171,13 @@ def main() -> None:
     producer_parser.add_argument("--session-key", default=None, help="Focus the producer contract on one session.")
     producer_parser.add_argument("--channel", default=None, help="Override the focus channel.")
     producer_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
+    channel_acceptance_parser = subparsers.add_parser(
+        "channel-acceptance",
+        help="Show the per-channel rollout and acceptance summary.",
+    )
+    channel_acceptance_parser.add_argument("--session-key", default=None, help="Focus the channel acceptance summary on one session.")
+    channel_acceptance_parser.add_argument("--channel", default=None, help="Override the focus channel.")
+    channel_acceptance_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
 
     subparsers.add_parser("overview", help="Show task system overview.")
     lanes_parser = subparsers.add_parser("lanes", help="Show current queue/lane summary across agents.")
@@ -3348,6 +3409,31 @@ def main() -> None:
             return
         print(
             render_main_producer_contract(
+                config_path=config_path,
+                paths=paths,
+                session_key=args.session_key,
+                channel=args.channel,
+            ),
+            end="",
+        )
+        return
+    if args.command == "channel-acceptance":
+        if args.json:
+            print(
+                json.dumps(
+                    get_main_channel_acceptance_summary(
+                        config_path=config_path,
+                        paths=paths,
+                        session_key=args.session_key,
+                        channel=args.channel,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+        print(
+            render_main_channel_acceptance(
                 config_path=config_path,
                 paths=paths,
                 session_key=args.session_key,

@@ -368,13 +368,25 @@ Phase 2 退出条件：
 4. 做真实/半真实通道验收
 5. 复盘各 channel 是否已经满足“control-plane 独立成层”的借鉴原则
 
-状态：未完成
+状态：已完成
 
-当前默认优先级：
+已完成结果：
 
-1. 先继续做 Feishu 的真实/半真实验收
-2. 再补 Telegram 与其它 channel 在当前 contract 下的能力评估
-3. 再看哪些 channel 可以继续逼近 receive-time producer
+- channel rollout / acceptance 已正式落成到代码与 acceptance 脚本里
+- 已明确当前支持 channel 的正式验收结论：
+  - `feishu`: 已按 `receive-side-producer` contract 落地并验收
+  - `telegram / webchat`: 已按 `dispatch-side-priority-only` contract 落地并验收
+- `channel-acceptance` 真相源已经与 producer contract 对齐，不再只靠文档口头说明
+- `stable_acceptance` 已纳入 `channel-acceptance` 步骤，完整自动化 testsuite 会持续验证该矩阵没有退化
+- 各 channel 的当前边界也已显式写入 acceptance 输出：
+  - 哪些 channel 满足 receive-side contract
+  - 哪些 channel 是 bounded dispatch-side contract
+
+Phase 5 收口结论：
+
+- “按 channel 落地” 已经不再只是 roadmap 意图，而是代码里的正式 truth source
+- “真实验收” 在当前边界下已转化成稳定的 channel acceptance matrix + stable acceptance 脚本
+- 后续如果还要继续提升，只属于未来 roadmap 的能力增强，不再阻塞当前主线收口
 
 ## 8. 当前进展总结
 
@@ -384,7 +396,8 @@ Phase 2 退出条件：
 2. Phase 1 基本打底完成
 3. Phase 2 已完成
 4. Phase 3 已完成
-5. Phase 4 已完成，Phase 5 是当前默认主线
+5. Phase 4 已完成
+6. Phase 5 已完成
 
 ## 9. 后续工作方式
 
@@ -407,6 +420,6 @@ Phase 2 退出条件：
 
 如果没有新的更高优先级指令，默认下一步是：
 
-- 继续 `Phase 2 / Step 7`
-- 把剩余 runner / startup / lifecycle 裸日志出口继续收进统一 scheduler 证据链
-- 然后再评估是否切到 Phase 3 的收口，还是继续推进 Phase 4 的 producer contract
+- 保持完整 testsuite 与 channel acceptance matrix 持续全绿
+- 新增事项先进入 `docs/TODO.md`
+- 等新的正式主线成熟后，再合并回下一版 roadmap

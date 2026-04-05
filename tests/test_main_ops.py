@@ -171,6 +171,26 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- focus_channel: feishu", rendered)
         self.assertIn("- producer_mode: receive-side-producer", rendered)
 
+    def test_get_main_channel_acceptance_summary_reports_phase_complete(self) -> None:
+        summary = main_ops.get_main_channel_acceptance_summary(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(summary["schema"], "openclaw.task-system.channel-acceptance.v1")
+        self.assertEqual(summary["phase_status"], "complete")
+        self.assertTrue(summary["phase_complete"])
+        self.assertIn("feishu", summary["validated_channels"])
+        self.assertIn("telegram", summary["bounded_channels"])
+
+    def test_render_main_channel_acceptance_reports_focus_channel(self) -> None:
+        rendered = main_ops.render_main_channel_acceptance(
+            config_path=self._config_path(),
+            paths=self.paths,
+            session_key="agent:main:feishu:direct:ou_123",
+        )
+
+        self.assertIn("# Channel Acceptance", rendered)
+        self.assertIn("- focus_channel: feishu", rendered)
+        self.assertIn("- phase_status: complete", rendered)
+
     def test_get_main_dashboard_summary_warns_when_continuity_risk_exists(self) -> None:
         task = self.store.register_task(
             agent_id="main",

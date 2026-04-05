@@ -196,12 +196,14 @@ Python 目录在：
 - [test_plugin_doctor.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_plugin_doctor.py)
 - [test_plugin_smoke.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_plugin_smoke.py)
 - [test_main_acceptance.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_main_acceptance.py)
+- [test_channel_acceptance.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_channel_acceptance.py)
 - [test_stable_acceptance.py](/Users/redcreen/.openclaw/workspace/openclaw-task-system/tests/test_stable_acceptance.py)
 
 覆盖内容：
 
 - 插件结构
 - 冒烟路径
+- channel rollout / acceptance 真相源
 - 稳定性与 acceptance 脚本
 
 ## 5. Node plugin 测试分组
@@ -279,6 +281,15 @@ Node plugin 测试现在按能力拆成了 4 组：
   - `dispatch-side-priority-only`
 - `dashboard / triage / producer` 读取的是同一份 producer contract 真相
 - plugin 侧对 pre-register snapshot 的消费已经输出稳定的 `producerMode` 诊断
+
+### 6.1.4 对 Phase 5 的意义
+
+当完整自动化 testsuite 通过，并且以下能力都被自动化覆盖时，可以认为 `ROADMAP Phase 5` 满足退出条件：
+
+- channel rollout / acceptance 已作为正式代码输出，而不是只停留在 roadmap 叙述
+- `feishu` 与 `telegram / webchat` 的当前 contract 边界已经明确落成到 acceptance matrix
+- `stable_acceptance` 已纳入 `channel-acceptance` 步骤
+- 当前支持 channel 是否满足现有 contract，可以通过结构化 acceptance 输出稳定判断
 
 ### 6.2 人工验收通过
 

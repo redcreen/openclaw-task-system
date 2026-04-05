@@ -19,6 +19,7 @@ class StableAcceptanceTests(unittest.TestCase):
                 "plugin-doctor-checks",
                 "plugin-smoke",
                 "main-acceptance",
+                "channel-acceptance",
                 "retry-failed-instructions",
                 "health-report-clean",
             ],

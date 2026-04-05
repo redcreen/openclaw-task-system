@@ -80,3 +80,16 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --
 
 - 把 control-plane lane / scheduler 收紧成稳定、可解释、可验证的机制
 - 为后续逐 channel 逼近 receive-time `[wd]` 和统一 control-plane 做准备
+
+当前正式阶段进度：
+
+- `Phase 2`：已完成
+- `Phase 3`：已完成
+- `Phase 4`：已完成
+- `Phase 5`：已完成
+
+目前按代码、testsuite 和文档都已经正式落成的包括：
+
+- 统一 producer contract
+- 统一 channel acceptance matrix
+- `stable_acceptance` 持续验证 channel rollout / acceptance 不退化
