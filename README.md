@@ -88,29 +88,6 @@ User first sees:
 
 Later, the user gets the final answer.
 
-### before / after
-
-| before | after |
-| --- | --- |
-| a user is not sure whether the request was accepted | the user sees `[wd]` immediately |
-| long tasks feel like fragile chat behavior | long tasks are managed as tasks |
-| restart or silence makes state unclear | recovery and continuity become system behavior |
-| users and operators inspect different places and see different truths | both sides read one task truth source |
-
-### who this is for
-
-This project is a good fit if:
-
-- you use OpenClaw for work that takes longer than one quick reply
-- you want queueing, restart recovery, delayed replies, and task status as product features
-- you want users and operators to see the same task truth
-
-It is probably not for you if:
-
-- you only need plain chat replies
-- you do not care about task lifecycle
-- you want a general-purpose multi-agent orchestrator rather than an OpenClaw-native task runtime
-
 ### what it does
 
 Current shipped capabilities include:
@@ -136,21 +113,6 @@ The current mainline roadmap is complete.
 - Phase 5: complete
 
 The automated testsuite is also fully green.
-
-### what users will actually see
-
-In normal use, the expected user-visible flow is:
-
-1. a message is accepted into task management
-2. the user sees an immediate `[wd]`
-3. the task is queued or activated
-4. follow-up or progress can appear if the task runs long enough
-5. the task finishes as `done`, `failed`, `blocked`, `paused`, or recovered
-
-This is the key shift:
-
-- before: OpenClaw mainly exposed message flow
-- after: OpenClaw exposes message flow plus task flow
 
 ### repository layout
 
@@ -527,29 +489,6 @@ python3 scripts/runtime/main_ops.py dashboard --json
 
 之后再收到正式结果。
 
-### before / after 对比
-
-| 之前 | 现在 |
-| --- | --- |
-| 用户不确定系统是否真的接住了请求 | 用户会立刻看到 `[wd]` |
-| 长任务像几段零散聊天回复 | 长任务作为正式 task 被跟踪 |
-| 一旦重启或沉默，状态容易说不清 | continuity 和恢复成为系统能力 |
-| 用户和运维看到的是不同入口、不同真相 | 双方读取同一份任务真相源 |
-
-### 适合谁
-
-如果你符合下面这些情况，这个项目就很适合：
-
-- 你用 OpenClaw 处理的不只是秒回消息，而是会持续一段时间的任务
-- 你希望 `[wd]`、排队、恢复、状态同步成为正式产品能力
-- 你同时在多个 channel 上使用 OpenClaw，希望任务语义保持一致
-
-如果你只需要下面这些，这个项目可能就不是重点：
-
-- 只要简单聊天回复，不关心任务生命周期
-- 不关心重启恢复、延迟任务、运维状态视图
-- 你想要的是通用多 agent orchestrator，而不是 OpenClaw 原生 task runtime
-
 ### 当前能力
 
 当前已经落成的能力包括：
@@ -575,21 +514,6 @@ python3 scripts/runtime/main_ops.py dashboard --json
 - Phase 5：完成
 
 完整自动化 testsuite 也已经全绿。
-
-### 用户实际会看到什么
-
-正常用户视角下，预期流程是：
-
-1. 消息进入 task system 管理范围
-2. 用户先看到一条 `[wd]`
-3. 任务进入排队或激活
-4. 如果任务较长，可能收到 follow-up 或进展同步
-5. 最后以 `done / failed / blocked / paused / recovered` 等终态收口
-
-这也是这个项目最核心的变化：
-
-- 之前：OpenClaw 主要暴露消息流
-- 现在：OpenClaw 同时暴露消息流 + 任务流
 
 ### 仓库结构
 
