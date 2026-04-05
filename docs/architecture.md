@@ -22,24 +22,24 @@
 
 ```mermaid
 flowchart TD
-    U[用户消息]
+    U["用户消息"]
 
-    subgraph intake[接入层]
-        R[channel receive / plugin hook]
-        P[producer]
+    subgraph intake["接入层"]
+        R["channel receive · plugin hook"]
+        P["producer"]
     end
 
-    subgraph runtime[任务运行时]
-        T[task truth source]
+    subgraph runtime["任务运行时"]
+        T["task truth source"]
     end
 
-    subgraph lanes[输出分层]
-        C[control-plane lane]
-        A[reply lane]
+    subgraph lanes["输出分层"]
+        C["control-plane lane"]
+        A["reply lane"]
     end
 
-    subgraph projection[状态投影]
-        V[projection layer]
+    subgraph projection["状态投影"]
+        V["projection layer"]
     end
 
     U --> R --> P --> T
@@ -144,8 +144,8 @@ projection layer 负责把 truth source 投影给不同入口：
 
 ```mermaid
 flowchart TD
-    M[message received]
-    G{"channel 是否具备<br/>receive-side producer"}
+    M["message received"]
+    G{"channel 是否具备 receive-side producer"}
     PR["pre-register · early control-plane"]
     DP["dispatch-side priority path"]
     TT["task truth source"]
