@@ -222,30 +222,30 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["action_hint"], "Apply the watchdog auto-resume plan now.")
         self.assertEqual(
             summary["action_hint_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
         )
         self.assertEqual(
             summary["auto_resume_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
         )
         self.assertEqual(summary["producer_contract"]["producer_mode_counts"]["receive-side-producer"], 1)
         self.assertEqual(summary["primary_action_kind"], "apply-auto-resume")
         self.assertEqual(
             summary["primary_action_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
         )
         self.assertEqual(summary["runbook_status"], "warn")
         self.assertTrue(summary["requires_action"])
         self.assertEqual(
             summary["suggested_next_commands"][0],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
         )
         self.assertEqual(summary["primary_action"]["kind"], "apply-auto-resume")
         self.assertEqual(summary["primary_action"]["session_key"], "session:main:dashboard-risk")
         self.assertEqual(summary["runbook"]["primary_action"]["kind"], "apply-auto-resume")
         self.assertEqual(
             summary["runbook"]["commands"][0],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
         )
         self.assertEqual(summary["health"]["main_blocked_task_count"], 1)
         self.assertEqual(summary["queues"]["queue_count"], 0)
@@ -271,7 +271,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- top_followup_session: none", rendered)
         self.assertIn("- producer_focus_channel: telegram", rendered)
         self.assertIn("- action_hint: Review current lanes before changing queue behavior.", rendered)
-        self.assertIn("- action_hint_command: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json", rendered)
+        self.assertIn("- action_hint_command: python3 scripts/runtime/main_ops.py lanes --json", rendered)
         self.assertIn("main_ops.py continuity --session-key 'session:main:dashboard-focus'", rendered)
         self.assertIn("taskmonitor --session-key 'session:main:dashboard-focus' --action status --json", rendered)
 
@@ -332,13 +332,13 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- auto_resume_ready: True", rendered)
         self.assertIn("- auto_resume_safe_to_apply: True", rendered)
         self.assertIn(
-            "- auto_resume_command: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            "- auto_resume_command: python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
             rendered,
         )
         self.assertIn("- top_followup_session: session:main:issues-only", rendered)
         self.assertIn("- action_hint: Apply the watchdog auto-resume plan now.", rendered)
         self.assertIn(
-            "- action_hint_command: python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            "- action_hint_command: python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
             rendered,
         )
         self.assertIn("## Runbook", rendered)
@@ -387,7 +387,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["action_hint"], "Review current lanes before changing queue behavior.")
         self.assertEqual(
             summary["action_hint_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+            "python3 scripts/runtime/main_ops.py lanes --json",
         )
         self.assertEqual(summary["primary_action"]["kind"], "review-lanes")
 
@@ -463,7 +463,7 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertEqual(
             summary["action_hint_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py taskmonitor --session-key 'session:main:dashboard-taskmonitor-off' --action on",
+            "python3 scripts/runtime/main_ops.py taskmonitor --session-key 'session:main:dashboard-taskmonitor-off' --action on",
         )
         self.assertEqual(summary["primary_action"]["kind"], "enable-taskmonitor")
 
@@ -554,11 +554,11 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["runbook"]["primary_action"]["kind"], "apply-auto-resume")
         self.assertEqual(
             summary["auto_resume_preview_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run",
+            "python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run",
         )
         self.assertEqual(
             summary["auto_resume_apply_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked",
+            "python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked",
         )
         self.assertTrue(summary["control_plane_message"]["metadata"]["auto_resume_ready"])
         self.assertEqual(summary["control_plane_message"]["metadata"]["primary_action_kind"], "apply-auto-resume")
@@ -667,7 +667,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["primary_action_kind"], "followup-session")
         self.assertEqual(
             summary["primary_action_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus-json'",
+            "python3 scripts/runtime/main_ops.py continuity --session-key 'session:main:focus-json'",
         )
         self.assertEqual(summary["runbook_status"], "warn")
         self.assertTrue(summary["requires_action"])
@@ -677,7 +677,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["execution_plan"]["execution_recommendation"], "parallel-safe")
         self.assertIn("Inspect continuity and lanes output again after any resume action.", summary["execution_plan"]["steps"])
         self.assertIn(
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus-json'",
+            "python3 scripts/runtime/main_ops.py continuity --session-key 'session:main:focus-json'",
             summary["suggested_next_commands"],
         )
 
@@ -698,7 +698,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["primary_action_kind"], "apply-auto-resume")
         self.assertEqual(
             summary["primary_action_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
         )
         self.assertEqual(summary["primary_action"]["kind"], "apply-auto-resume")
         self.assertEqual(summary["runbook"]["primary_action"]["kind"], "apply-auto-resume")
@@ -738,7 +738,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["primary_action_kind"], "preview-auto-resume")
         self.assertEqual(
             summary["primary_action_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run",
+            "python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run",
         )
         self.assertEqual(summary["primary_action"]["kind"], "preview-auto-resume")
         self.assertEqual(summary["runbook"]["primary_action"]["kind"], "preview-auto-resume")
@@ -813,13 +813,13 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertEqual(
             result["post_resume_summary"]["closure_hint_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
+            "python3 scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
         )
         self.assertEqual(result["focus_session_key"], "session:main:blocked:one")
         self.assertEqual(result["primary_action_kind"], "followup-session")
         self.assertEqual(
             result["primary_action_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
+            "python3 scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
         )
         self.assertEqual(result["runbook_status"], "needs-followup")
         self.assertTrue(result["requires_action"])
@@ -851,7 +851,7 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["running"], 1)
         self.assertIn(
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
+            "python3 scripts/runtime/main_ops.py continuity --session-key 'session:main:blocked:one'",
             result["suggested_next_commands"],
         )
         resumed_first = self.store.load_task(first.task_id)
@@ -903,7 +903,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["primary_action_kind"], "followup-session")
         self.assertEqual(
             result["primary_action_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus'",
+            "python3 scripts/runtime/main_ops.py continuity --session-key 'session:main:focus'",
         )
         self.assertEqual(result["runbook_status"], "needs-followup")
         self.assertTrue(result["requires_action"])
@@ -930,7 +930,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["post_resume_summary"]["top_followup_session"]["session_key"], "session:main:focus")
         self.assertEqual(result["post_resume_summary"]["sessions"][0]["status_counts"]["running"], 1)
         self.assertIn(
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:focus'",
+            "python3 scripts/runtime/main_ops.py continuity --session-key 'session:main:focus'",
             result["suggested_next_commands"],
         )
         resumed_first = self.store.load_task(first.task_id)
@@ -994,7 +994,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["primary_action_kind"], "followup-session")
         self.assertEqual(
             result["primary_action_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:running'",
+            "python3 scripts/runtime/main_ops.py continuity --session-key 'session:main:running'",
         )
         self.assertEqual(result["runbook_status"], "needs-followup")
         self.assertTrue(result["requires_action"])
@@ -1058,7 +1058,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["primary_action_kind"], "review-lanes")
         self.assertEqual(
             result["primary_action_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+            "python3 scripts/runtime/main_ops.py lanes --json",
         )
         self.assertEqual(result["runbook_status"], "settled")
         self.assertFalse(result["requires_action"])
@@ -1076,7 +1076,7 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertEqual(
             result["post_resume_summary"]["closure_hint_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json",
+            "python3 scripts/runtime/main_ops.py lanes --json",
         )
         self.assertEqual(result["primary_action"]["kind"], "review-lanes")
         self.assertEqual(result["runbook"]["status"], "settled")
@@ -1148,7 +1148,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["closure_hint"], "Preview watchdog auto-resume candidates first.")
         self.assertEqual(
             result["closure_hint_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run",
+            "python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run",
         )
         self.assertIsNone(result["next_followup_summary"])
         self.assertTrue(result["auto_resume_ready"])
@@ -1182,7 +1182,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(result["closure_hint"], "Follow up session session:main:auto-apply next.")
         self.assertEqual(
             result["closure_hint_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --session-key 'session:main:auto-apply'",
+            "python3 scripts/runtime/main_ops.py continuity --session-key 'session:main:auto-apply'",
         )
         self.assertTrue(result["safe_to_apply"])
         self.assertTrue(result["auto_resume_ready"])
@@ -1695,19 +1695,19 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["auto_resume_blockers"], [])
         self.assertEqual(
             summary["auto_resume_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
         )
         self.assertEqual(summary["primary_action_kind"], "apply-auto-resume")
         self.assertEqual(
             summary["primary_action_command"],
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
         )
         self.assertEqual(summary["runbook_status"], "warn")
         self.assertTrue(summary["requires_action"])
         self.assertEqual(summary["primary_action"]["kind"], "apply-auto-resume")
         self.assertEqual(summary["runbook"]["primary_action"]["kind"], "apply-auto-resume")
         self.assertIn(
-            "python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
             summary["suggested_next_commands"],
         )
 

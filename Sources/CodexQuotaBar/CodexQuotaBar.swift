@@ -59,7 +59,7 @@ private final class QuotaFetcher {
 
     init(
         commandPath: String = ProcessInfo.processInfo.environment["CODEX_QUOTA_OPENCLAW_PATH"]
-            ?? "/Users/redcreen/.local/bin/openclaw",
+            ?? "openclaw",
         workspaceURL: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".openclaw")
     ) {
         self.commandPath = commandPath

@@ -9,34 +9,34 @@
 
 项目背景、能力边界、路线图统一看：
 
-- [README.md](/Users/redcreen/Project/openclaw-task-system/README.md)
-- [ROADMAP.md](/Users/redcreen/Project/openclaw-task-system/docs/ROADMAP.md)
+- [README.md](../README.md)
+- [ROADMAP.md](ROADMAP.md)
 
 ## 1. 前提
 
 以下内容应存在：
 
-- [plugin/](/Users/redcreen/Project/openclaw-task-system/plugin)
-- [scripts/runtime/openclaw_hooks.py](/Users/redcreen/Project/openclaw-task-system/scripts/runtime/openclaw_hooks.py)
-- [config/task_system.json](/Users/redcreen/Project/openclaw-task-system/config/task_system.json)
+- [plugin/](../plugin)
+- [scripts/runtime/openclaw_hooks.py](../scripts/runtime/openclaw_hooks.py)
+- [config/task_system.json](../config/task_system.json)
 
 如果还没有正式配置，可以从样例开始：
 
-- [config/task_system.example.json](/Users/redcreen/Project/openclaw-task-system/config/task_system.example.json)
-- [config/openclaw_plugin.example.json](/Users/redcreen/Project/openclaw-task-system/config/openclaw_plugin.example.json)
+- [config/task_system.example.json](../config/task_system.example.json)
+- [config/openclaw_plugin.example.json](../config/openclaw_plugin.example.json)
 
 ## 2. 安装前检查
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py
+python3 scripts/runtime/plugin_doctor.py
+python3 scripts/runtime/plugin_smoke.py
 ```
 
 机器可读输出：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py --json
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py --json
+python3 scripts/runtime/plugin_doctor.py --json
+python3 scripts/runtime/plugin_smoke.py --json
 ```
 
 ## 3. 正式安装插件
@@ -44,7 +44,7 @@ python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py --json
 推荐直接用正式安装方式：
 
 ```bash
-openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
+openclaw plugins install ./plugin
 ```
 
 ## 4. OpenClaw 插件配置
@@ -61,9 +61,6 @@ openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
           "enabled": true,
           "taskMessagePrefix": "[wd] ",
           "pythonBin": "python3",
-          "runtimeRoot": "/Users/redcreen/Project/openclaw-task-system",
-          "configPath": "/Users/redcreen/Project/openclaw-task-system/config/task_system.json",
-          "debugLogPath": "/Users/redcreen/Project/openclaw-task-system/data/plugin-debug.log",
           "defaultAgentId": "main",
           "registerOnBeforeDispatch": true,
           "sendImmediateAckOnRegister": true,
@@ -87,9 +84,11 @@ openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
 ### 核心配置项
 
 - `runtimeRoot`
-  - 本仓库绝对路径
+  - 可选。默认就是插件安装目录
 - `configPath`
-  - task system runtime 配置路径
+  - 可选。默认是 `<runtimeRoot>/config/task_system.json`
+- `debugLogPath`
+  - 可选。默认是 `<runtimeRoot>/data/plugin-debug.log`
 - `defaultAgentId`
   - 默认接入 agent，通常是 `main`
 - `sendImmediateAckOnRegister`
@@ -123,8 +122,8 @@ openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
 示例：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --json
-python3 workspace/openclaw-task-system/scripts/runtime/stable_acceptance.py --json
+python3 scripts/runtime/main_ops.py dashboard --json
+python3 scripts/runtime/stable_acceptance.py --json
 ```
 
 ## 6. 插件当前边界
@@ -142,5 +141,5 @@ python3 workspace/openclaw-task-system/scripts/runtime/stable_acceptance.py --js
 
 正式边界与验收结论，以这两份文档为准：
 
-- [README.md](/Users/redcreen/Project/openclaw-task-system/README.md)
-- [ROADMAP.md](/Users/redcreen/Project/openclaw-task-system/docs/ROADMAP.md)
+- [README.md](../README.md)
+- [ROADMAP.md](ROADMAP.md)

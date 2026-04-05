@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { dirname, basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 const INTERNAL_STARTUP_RESUME_MARKER = "[[TASK-SYSTEM-STARTUP-RESUME]]";
@@ -36,8 +37,18 @@ type TaskSystemPluginConfig = {
   watchdogRecoveryPollMs?: number;
 };
 
+const INSTALLED_PLUGIN_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+
+function resolveBundledPath(...parts: string[]): string {
+  return join(INSTALLED_PLUGIN_ROOT, ...parts);
+}
+
 function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
   const value = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const runtimeRoot =
+    typeof value.runtimeRoot === "string" && value.runtimeRoot.trim()
+      ? value.runtimeRoot.trim()
+      : INSTALLED_PLUGIN_ROOT;
   return {
     enabled: value.enabled !== false,
     taskMessagePrefix:
@@ -47,17 +58,17 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
     openclawBin:
       typeof value.openclawBin === "string" && value.openclawBin.trim()
         ? value.openclawBin.trim()
-        : "/Users/redcreen/.local/bin/openclaw",
+        : process.env.OPENCLAW_BIN?.trim() || "openclaw",
     pythonBin: typeof value.pythonBin === "string" && value.pythonBin.trim() ? value.pythonBin.trim() : "python3",
-    runtimeRoot:
-      typeof value.runtimeRoot === "string" && value.runtimeRoot.trim()
-        ? value.runtimeRoot.trim()
-        : `${process.env.HOME ?? ""}/Project/openclaw-task-system`,
-    configPath: typeof value.configPath === "string" ? value.configPath.trim() : "",
+    runtimeRoot,
+    configPath:
+      typeof value.configPath === "string" && value.configPath.trim()
+        ? value.configPath.trim()
+        : join(runtimeRoot, "config", "task_system.json"),
     debugLogPath:
       typeof value.debugLogPath === "string" && value.debugLogPath.trim()
         ? value.debugLogPath.trim()
-        : "",
+        : join(runtimeRoot, "data", "plugin-debug.log"),
     defaultAgentId:
       typeof value.defaultAgentId === "string" && value.defaultAgentId.trim()
         ? value.defaultAgentId.trim()

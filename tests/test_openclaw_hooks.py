@@ -75,7 +75,7 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(decision["queue_position"], result["queue_position"])
 
     def test_openclaw_hooks_cli_accepts_stdin_payload(self) -> None:
-        script = Path("/Users/redcreen/Project/openclaw-task-system/scripts/runtime/openclaw_hooks.py")
+        script = Path(__file__).resolve().parents[1] / "scripts" / "runtime" / "openclaw_hooks.py"
         payload = {
             "agent_id": "main",
             "session_key": "session:stdin",

@@ -7,8 +7,8 @@
 
 项目是什么、为什么存在、主线状态是什么，统一看：
 
-- [README.md](/Users/redcreen/Project/openclaw-task-system/README.md)
-- [ROADMAP.md](/Users/redcreen/Project/openclaw-task-system/docs/ROADMAP.md)
+- [README.md](../README.md)
+- [ROADMAP.md](ROADMAP.md)
 
 ## 1. 日常使用模型
 
@@ -33,11 +33,11 @@
 ### 2.1 健康与总览
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage --json
+python3 scripts/runtime/main_ops.py health
+python3 scripts/runtime/main_ops.py dashboard
+python3 scripts/runtime/main_ops.py dashboard --json
+python3 scripts/runtime/main_ops.py triage
+python3 scripts/runtime/main_ops.py triage --json
 ```
 
 适合回答：
@@ -49,10 +49,10 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage --json
 ### 2.2 队列与 lane
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json
+python3 scripts/runtime/main_ops.py queues
+python3 scripts/runtime/main_ops.py queues --json
+python3 scripts/runtime/main_ops.py lanes
+python3 scripts/runtime/main_ops.py lanes --json
 ```
 
 适合回答：
@@ -64,10 +64,10 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json
 ### 2.3 continuity 与恢复
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe --dry-run --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run
+python3 scripts/runtime/main_ops.py continuity
+python3 scripts/runtime/main_ops.py continuity --json
+python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe --dry-run --json
+python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run
 ```
 
 适合回答：
@@ -79,8 +79,8 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --
 ### 2.4 producer 与 channel contract
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py producer --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py channel-acceptance --json
+python3 scripts/runtime/main_ops.py producer --json
+python3 scripts/runtime/main_ops.py channel-acceptance --json
 ```
 
 适合回答：
@@ -92,12 +92,12 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py channel-accep
 ### 2.5 任务控制
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py list
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py show <task_id>
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py cancel --task-id <task_id>
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py stop
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py stop-all
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py purge --session-key '<session_key>'
+python3 scripts/runtime/main_ops.py list
+python3 scripts/runtime/main_ops.py show <task_id>
+python3 scripts/runtime/main_ops.py cancel --task-id <task_id>
+python3 scripts/runtime/main_ops.py stop
+python3 scripts/runtime/main_ops.py stop-all
+python3 scripts/runtime/main_ops.py purge --session-key '<session_key>'
 ```
 
 适合回答：
@@ -113,19 +113,19 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py purge --sessi
 默认 dry-run：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py
+python3 scripts/runtime/instruction_executor.py
 ```
 
 真实执行：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py --execute
+python3 scripts/runtime/instruction_executor.py --execute
 ```
 
 标记真实宿主上下文：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py --execute --execution-context host
+python3 scripts/runtime/instruction_executor.py --execute --execution-context host
 ```
 
 当前通过 `openclaw message send` 路径可直接执行的通道，以本机 CLI 实际支持列表为准。  
@@ -136,25 +136,25 @@ python3 workspace/openclaw-task-system/scripts/runtime/instruction_executor.py -
 只验证 watchdog 产物，不做真实外发：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/watchdog_cycle.py workspace/openclaw-task-system/config/task_system.json --no-execute
+python3 scripts/runtime/watchdog_cycle.py config/task_system.json --no-execute
 ```
 
 标记宿主上下文：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/watchdog_cycle.py workspace/openclaw-task-system/config/task_system.json --execution-context host
+python3 scripts/runtime/watchdog_cycle.py config/task_system.json --execution-context host
 ```
 
 ### 3.3 生成测试指令
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/enqueue_test_instruction.py --channel telegram --chat-id @example --message "task system test"
+python3 scripts/runtime/enqueue_test_instruction.py --channel telegram --chat-id @example --message "task system test"
 ```
 
 带账号：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/enqueue_test_instruction.py --channel slack --account-id workspace-bot --chat-id "#ops" --message "task system test"
+python3 scripts/runtime/enqueue_test_instruction.py --channel slack --account-id workspace-bot --chat-id "#ops" --message "task system test"
 ```
 
 ## 4. 推荐维护顺序
@@ -172,19 +172,19 @@ python3 workspace/openclaw-task-system/scripts/runtime/enqueue_test_instruction.
 完整自动化回归：
 
 ```bash
-bash workspace/openclaw-task-system/scripts/run_tests.sh
+bash scripts/run_tests.sh
 ```
 
 稳定验收：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/stable_acceptance.py
-python3 workspace/openclaw-task-system/scripts/runtime/stable_acceptance.py --json
+python3 scripts/runtime/stable_acceptance.py
+python3 scripts/runtime/stable_acceptance.py --json
 ```
 
 插件自检：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py
+python3 scripts/runtime/plugin_doctor.py
+python3 scripts/runtime/plugin_smoke.py
 ```

@@ -15,15 +15,15 @@
     },
     "runtimeRoot": {
       "label": "Runtime Root",
-      "help": "Absolute path to the openclaw-task-system project root."
+      "help": "Optional runtime bundle root. Defaults to the installed plugin directory."
     },
     "configPath": {
       "label": "Config Path",
-      "help": "Optional path to task_system.json used by the runtime hooks."
+      "help": "Optional path to task_system.json. Defaults to <runtimeRoot>/config/task_system.json."
     },
     "debugLogPath": {
       "label": "Debug Log Path",
-      "help": "Optional file path for plugin hook trace logs during integration debugging."
+      "help": "Optional file path for plugin hook trace logs. Defaults to <runtimeRoot>/data/plugin-debug.log."
     },
     "registerOnBeforeDispatch": {
       "label": "Register On Dispatch",

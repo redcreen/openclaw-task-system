@@ -62,15 +62,15 @@ The automated testsuite is also fully green.
 
 ### Repository Layout
 
-- [`docs/ROADMAP.md`](/Users/redcreen/Project/openclaw-task-system/docs/ROADMAP.md): official roadmap
-- [`docs/ARCHITECTURE.md`](/Users/redcreen/Project/openclaw-task-system/docs/ARCHITECTURE.md): architecture and design model
-- [`docs/TESTSUITE.md`](/Users/redcreen/Project/openclaw-task-system/docs/TESTSUITE.md): test layers and validation rules
-- [`docs/USAGE_GUIDE.md`](/Users/redcreen/Project/openclaw-task-system/docs/USAGE_GUIDE.md): extended usage notes
-- [`docs/PLUGIN_INSTALLATION.md`](/Users/redcreen/Project/openclaw-task-system/docs/PLUGIN_INSTALLATION.md): plugin installation details
-- [`docs/TODO.md`](/Users/redcreen/Project/openclaw-task-system/docs/TODO.md): temporary notes only, not the mainline
-- [`plugin/`](/Users/redcreen/Project/openclaw-task-system/plugin): OpenClaw plugin
-- [`scripts/runtime/`](/Users/redcreen/Project/openclaw-task-system/scripts/runtime): runtime tools, truth sources, and CLI
-- [`config/`](/Users/redcreen/Project/openclaw-task-system/config): example configs
+- [`docs/ROADMAP.md`](docs/ROADMAP.md): official roadmap
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): architecture and design model
+- [`docs/TESTSUITE.md`](docs/TESTSUITE.md): test layers and validation rules
+- [`docs/USAGE_GUIDE.md`](docs/USAGE_GUIDE.md): extended usage notes
+- [`docs/PLUGIN_INSTALLATION.md`](docs/PLUGIN_INSTALLATION.md): plugin installation details
+- [`docs/TODO.md`](docs/TODO.md): temporary notes only, not the mainline
+- [`plugin/`](plugin): OpenClaw plugin
+- [`scripts/runtime/`](scripts/runtime): runtime tools, truth sources, and CLI
+- [`config/`](config): example configs
 
 ### Installation
 
@@ -78,30 +78,29 @@ The automated testsuite is also fully green.
 
 - OpenClaw installed locally
 - Python 3 available as `python3`
-- this repository available locally under a stable path such as `/Users/redcreen/Project/openclaw-task-system`
-
+- 
 #### 1. Validate the plugin and runtime
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py
+python3 scripts/runtime/plugin_doctor.py
+python3 scripts/runtime/plugin_smoke.py
 ```
 
 #### 2. Install the plugin
 
 ```bash
-openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
+openclaw plugins install ./plugin
 ```
 
 #### 3. Prepare runtime config
 
 Use:
 
-- [`config/task_system.json`](/Users/redcreen/Project/openclaw-task-system/config/task_system.json)
+- [`config/task_system.json`](config/task_system.json)
 
 or start from:
 
-- [`config/task_system.example.json`](/Users/redcreen/Project/openclaw-task-system/config/task_system.example.json)
+- [`config/task_system.example.json`](config/task_system.example.json)
 
 Example:
 
@@ -129,7 +128,7 @@ Example:
     },
     "delivery": {
       "mode": "session-aware",
-      "openclawBin": "/Users/redcreen/.local/bin/openclaw",
+      "openclawBin": "openclaw",
       "autoExecuteInstructions": true,
       "retryFailedInstructions": false,
       "executionContext": "local"
@@ -142,7 +141,7 @@ Example:
 
 Start from:
 
-- [`config/openclaw_plugin.example.json`](/Users/redcreen/Project/openclaw-task-system/config/openclaw_plugin.example.json)
+- [`config/openclaw_plugin.example.json`](config/openclaw_plugin.example.json)
 
 Example:
 
@@ -156,9 +155,6 @@ Example:
           "enabled": true,
           "taskMessagePrefix": "[wd] ",
           "pythonBin": "python3",
-          "runtimeRoot": "/Users/redcreen/Project/openclaw-task-system",
-          "configPath": "/Users/redcreen/Project/openclaw-task-system/config/task_system.json",
-          "debugLogPath": "/Users/redcreen/Project/openclaw-task-system/data/plugin-debug.log",
           "defaultAgentId": "main",
           "registerOnBeforeDispatch": true,
           "sendImmediateAckOnRegister": true,
@@ -175,6 +171,9 @@ Example:
   }
 }
 ```
+
+The plugin can now use its bundled runtime/config by default. You only need to override
+`runtimeRoot`, `configPath`, or `debugLogPath` when you want a non-default layout.
 
 ### How To Use
 
@@ -193,47 +192,47 @@ When a request enters task management, the expected flow is:
 Health and summary:
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage --json
+python3 scripts/runtime/main_ops.py health
+python3 scripts/runtime/main_ops.py dashboard
+python3 scripts/runtime/main_ops.py dashboard --json
+python3 scripts/runtime/main_ops.py triage
+python3 scripts/runtime/main_ops.py triage --json
 ```
 
 Queue and lane views:
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json
+python3 scripts/runtime/main_ops.py queues
+python3 scripts/runtime/main_ops.py queues --json
+python3 scripts/runtime/main_ops.py lanes
+python3 scripts/runtime/main_ops.py lanes --json
 ```
 
 Continuity and recovery:
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe --dry-run --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run
+python3 scripts/runtime/main_ops.py continuity
+python3 scripts/runtime/main_ops.py continuity --json
+python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe --dry-run --json
+python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run
 ```
 
 Producer and channel contract:
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py producer --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py channel-acceptance --json
+python3 scripts/runtime/main_ops.py producer --json
+python3 scripts/runtime/main_ops.py channel-acceptance --json
 ```
 
 Task control:
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py list
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py show <task_id>
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py cancel --task-id <task_id>
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py stop
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py stop-all
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py purge --session-key '<session_key>'
+python3 scripts/runtime/main_ops.py list
+python3 scripts/runtime/main_ops.py show <task_id>
+python3 scripts/runtime/main_ops.py cancel --task-id <task_id>
+python3 scripts/runtime/main_ops.py stop
+python3 scripts/runtime/main_ops.py stop-all
+python3 scripts/runtime/main_ops.py purge --session-key '<session_key>'
 ```
 
 ### Channel Status
@@ -254,17 +253,17 @@ This means:
 Run the full automated testsuite:
 
 ```bash
-bash workspace/openclaw-task-system/scripts/run_tests.sh
+bash scripts/run_tests.sh
 ```
 
 Useful targeted checks:
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py --json
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py --json
-python3 workspace/openclaw-task-system/scripts/runtime/stable_acceptance.py --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py channel-acceptance --json
+python3 scripts/runtime/plugin_doctor.py --json
+python3 scripts/runtime/plugin_smoke.py --json
+python3 scripts/runtime/stable_acceptance.py --json
+python3 scripts/runtime/main_ops.py dashboard --json
+python3 scripts/runtime/main_ops.py channel-acceptance --json
 ```
 
 ### Problems Already Solved
@@ -358,15 +357,15 @@ OpenClaw 天然更像消息驱动系统，但真实使用需要的是任务驱�
 
 ### 仓库结构
 
-- [docs/ROADMAP.md](/Users/redcreen/Project/openclaw-task-system/docs/ROADMAP.md)：正式 roadmap
-- [docs/ARCHITECTURE.md](/Users/redcreen/Project/openclaw-task-system/docs/ARCHITECTURE.md)：架构设计
-- [docs/TESTSUITE.md](/Users/redcreen/Project/openclaw-task-system/docs/TESTSUITE.md)：测试体系
-- [docs/USAGE_GUIDE.md](/Users/redcreen/Project/openclaw-task-system/docs/USAGE_GUIDE.md)：扩展使用说明
-- [docs/PLUGIN_INSTALLATION.md](/Users/redcreen/Project/openclaw-task-system/docs/PLUGIN_INSTALLATION.md)：插件安装说明
-- [docs/TODO.md](/Users/redcreen/Project/openclaw-task-system/docs/TODO.md)：临时记录，不是正式主线
-- [plugin/](/Users/redcreen/Project/openclaw-task-system/plugin)：OpenClaw 插件
-- [scripts/runtime/](/Users/redcreen/Project/openclaw-task-system/scripts/runtime)：运行时、truth source 与 CLI
-- [config/](/Users/redcreen/Project/openclaw-task-system/config)：配置样例
+- [docs/ROADMAP.md](docs/ROADMAP.md)：正式 roadmap
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)：架构设计
+- [docs/TESTSUITE.md](docs/TESTSUITE.md)：测试体系
+- [docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md)：扩展使用说明
+- [docs/PLUGIN_INSTALLATION.md](docs/PLUGIN_INSTALLATION.md)：插件安装说明
+- [docs/TODO.md](docs/TODO.md)：临时记录，不是正式主线
+- [plugin/](plugin)：OpenClaw 插件
+- [scripts/runtime/](scripts/runtime)：运行时、truth source 与 CLI
+- [config/](config)：配置样例
 
 ### 安装方式
 
@@ -379,25 +378,25 @@ OpenClaw 天然更像消息驱动系统，但真实使用需要的是任务驱�
 #### 1. 安装前自检
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py
+python3 scripts/runtime/plugin_doctor.py
+python3 scripts/runtime/plugin_smoke.py
 ```
 
 #### 2. 正式安装插件
 
 ```bash
-openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
+openclaw plugins install ./plugin
 ```
 
 #### 3. 准备 runtime 配置
 
 可以直接使用：
 
-- [config/task_system.json](/Users/redcreen/Project/openclaw-task-system/config/task_system.json)
+- [config/task_system.json](config/task_system.json)
 
 或者从样例开始：
 
-- [config/task_system.example.json](/Users/redcreen/Project/openclaw-task-system/config/task_system.example.json)
+- [config/task_system.example.json](config/task_system.example.json)
 
 示例：
 
@@ -425,7 +424,7 @@ openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
     },
     "delivery": {
       "mode": "session-aware",
-      "openclawBin": "/Users/redcreen/.local/bin/openclaw",
+      "openclawBin": "openclaw",
       "autoExecuteInstructions": true,
       "retryFailedInstructions": false,
       "executionContext": "local"
@@ -438,7 +437,7 @@ openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
 
 从这里开始：
 
-- [config/openclaw_plugin.example.json](/Users/redcreen/Project/openclaw-task-system/config/openclaw_plugin.example.json)
+- [config/openclaw_plugin.example.json](config/openclaw_plugin.example.json)
 
 示例：
 
@@ -452,9 +451,6 @@ openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
           "enabled": true,
           "taskMessagePrefix": "[wd] ",
           "pythonBin": "python3",
-          "runtimeRoot": "/Users/redcreen/Project/openclaw-task-system",
-          "configPath": "/Users/redcreen/Project/openclaw-task-system/config/task_system.json",
-          "debugLogPath": "/Users/redcreen/Project/openclaw-task-system/data/plugin-debug.log",
           "defaultAgentId": "main",
           "registerOnBeforeDispatch": true,
           "sendImmediateAckOnRegister": true,
@@ -489,47 +485,47 @@ openclaw plugins install /Users/redcreen/Project/openclaw-task-system/plugin
 健康与总览：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py health
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py triage --json
+python3 scripts/runtime/main_ops.py health
+python3 scripts/runtime/main_ops.py dashboard
+python3 scripts/runtime/main_ops.py dashboard --json
+python3 scripts/runtime/main_ops.py triage
+python3 scripts/runtime/main_ops.py triage --json
 ```
 
 队列与 lane：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py queues --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py lanes --json
+python3 scripts/runtime/main_ops.py queues
+python3 scripts/runtime/main_ops.py queues --json
+python3 scripts/runtime/main_ops.py lanes
+python3 scripts/runtime/main_ops.py lanes --json
 ```
 
 continuity 与恢复：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --auto-resume-if-safe --dry-run --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run
+python3 scripts/runtime/main_ops.py continuity
+python3 scripts/runtime/main_ops.py continuity --json
+python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe --dry-run --json
+python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run
 ```
 
 producer 与 channel contract：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py producer --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py channel-acceptance --json
+python3 scripts/runtime/main_ops.py producer --json
+python3 scripts/runtime/main_ops.py channel-acceptance --json
 ```
 
 任务控制：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py list
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py show <task_id>
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py cancel --task-id <task_id>
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py stop
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py stop-all
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py purge --session-key '<session_key>'
+python3 scripts/runtime/main_ops.py list
+python3 scripts/runtime/main_ops.py show <task_id>
+python3 scripts/runtime/main_ops.py cancel --task-id <task_id>
+python3 scripts/runtime/main_ops.py stop
+python3 scripts/runtime/main_ops.py stop-all
+python3 scripts/runtime/main_ops.py purge --session-key '<session_key>'
 ```
 
 ### Channel 当前状态
@@ -550,17 +546,17 @@ python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py purge --sessi
 运行完整自动化 testsuite：
 
 ```bash
-bash workspace/openclaw-task-system/scripts/run_tests.sh
+bash scripts/run_tests.sh
 ```
 
 常用定向检查：
 
 ```bash
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_doctor.py --json
-python3 workspace/openclaw-task-system/scripts/runtime/plugin_smoke.py --json
-python3 workspace/openclaw-task-system/scripts/runtime/stable_acceptance.py --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py dashboard --json
-python3 workspace/openclaw-task-system/scripts/runtime/main_ops.py channel-acceptance --json
+python3 scripts/runtime/plugin_doctor.py --json
+python3 scripts/runtime/plugin_smoke.py --json
+python3 scripts/runtime/stable_acceptance.py --json
+python3 scripts/runtime/main_ops.py dashboard --json
+python3 scripts/runtime/main_ops.py channel-acceptance --json
 ```
 
 ### 已经解决的核心问题
