@@ -1946,11 +1946,11 @@ const taskSystemPlugin = {
           (await callHook(api, config, "create-followup-plan", {
             source_task_id: normalizeText(payload.source_task_id),
             session_key: normalizeText(payload.session_key),
-            due_at: normalizeText(payload.followup_due_at),
-            reply_text: normalizeText(payload.followup_message),
+            followup_due_at: normalizeText(payload.followup_due_at),
+            followup_message: normalizeText(payload.followup_message),
             original_time_expression: normalizeText(payload.original_time_expression),
             lead_request: normalizeText(payload.lead_request),
-            kind: "delayed-reply",
+            followup_kind: "delayed-reply",
           })) ?? { ok: false, error: "create-followup-plan-failed" };
         return buildToolTextResult(result);
       },

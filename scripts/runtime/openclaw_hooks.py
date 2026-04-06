@@ -220,9 +220,9 @@ def create_followup_plan_from_payload(
     except FileNotFoundError:
         return {"accepted": False, "reason": "source-task-not-found"}
 
-    followup_kind = str(payload.get("followup_kind") or "delayed-reply").strip()
-    followup_due_at = str(payload.get("followup_due_at") or "").strip()
-    followup_message = str(payload.get("followup_message") or "").strip()
+    followup_kind = str(payload.get("followup_kind") or payload.get("kind") or "delayed-reply").strip()
+    followup_due_at = str(payload.get("followup_due_at") or payload.get("due_at") or "").strip()
+    followup_message = str(payload.get("followup_message") or payload.get("reply_text") or "").strip()
     if not followup_due_at:
         return {"accepted": False, "reason": "missing-followup-due-at"}
     if not followup_message:

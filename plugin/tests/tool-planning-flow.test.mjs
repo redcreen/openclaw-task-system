@@ -6,6 +6,7 @@ import {
   createApi,
   createFakeRuntimeRoot,
   readDebugEvents,
+  readHookCalls,
   readHookCommands,
   resetGlobalState,
 } from "./helpers/task-system-plugin-test-helpers.mjs";
@@ -107,6 +108,11 @@ test("registered planning tools call runtime hooks", async () => {
       "schedule-followup-from-plan",
       "finalize-planned-followup",
     ]);
+    const calls = await readHookCalls(callsPath);
+    const createCall = calls.find((entry) => entry.command === "create-followup-plan");
+    assert.equal(createCall?.payload?.followup_due_at, "2026-04-06T12:05:00+08:00");
+    assert.equal(createCall?.payload?.followup_message, "5分钟后我回来同步结果");
+    assert.equal(createCall?.payload?.followup_kind, "delayed-reply");
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }

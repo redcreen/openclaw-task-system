@@ -73,6 +73,23 @@ class TaskPlanningToolsTests(unittest.TestCase):
         self.assertEqual(plan["status"], "planned")
         self.assertEqual(plan["followup_message"], "5 分钟后继续告诉你天气结果")
 
+    def test_create_followup_plan_accepts_legacy_due_at_and_reply_text_aliases(self) -> None:
+        registration = self._register_running_source_task()
+        source_task_id = str(registration["task_id"])
+
+        created = openclaw_hooks.create_followup_plan_from_payload(
+            {
+                "source_task_id": source_task_id,
+                "kind": "delayed-reply",
+                "due_at": "2026-04-06T11:30:00+08:00",
+                "reply_text": "5 分钟后继续告诉你天气结果",
+            },
+            config_path=self.config_path,
+        )
+
+        self.assertTrue(created["accepted"])
+        self.assertEqual(created["runtime_contract"]["followup_due_at"], "2026-04-06T11:30:00+08:00")
+
     def test_schedule_followup_from_plan_materializes_paused_task(self) -> None:
         registration = self._register_running_source_task()
         source_task_id = str(registration["task_id"])

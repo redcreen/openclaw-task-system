@@ -441,6 +441,22 @@ export async function readHookCommands(callsPath) {
   }
 }
 
+export async function readHookCalls(callsPath) {
+  try {
+    const raw = await readFile(callsPath, "utf8");
+    return raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
 export function resetGlobalState() {
   globalThis[EARLY_ACK_STATE_KEY] = new Map();
   globalThis[PRE_REGISTER_STATE_KEY] = new Map();
