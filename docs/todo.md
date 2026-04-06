@@ -67,3 +67,15 @@
     - `[wd] 已安排妥当：2分钟后同步明天天气。`
     - `[wd] 已安排妥当：35分钟后提醒你查火车票。`
     - 调度确认消息必须包含人类可读的 follow-up 摘要。
+
+- 提供更简单的 task CLI 查询入口。
+  - 当前问题：
+    - 运维上要查 task / queue / continuity，仍然主要依赖 `python3 scripts/runtime/main_ops.py ...`。
+    - 对已经在用 `openclaw` CLI 的人来说，这条路径不够直觉，也不够短。
+  - 目标方向：
+    - 提供更直接、更短的查询入口，至少覆盖：
+      - 查当前 task 列表
+      - 查单个 task 详情
+      - 查当前 session 的 continuity / queue / lane
+    - 优先考虑让“怎么查 task”变成一套低记忆负担的固定命令，而不是要求维护者记住多组脚本参数。
+    - 如果短期内还不能做成宿主原生命令，也至少补一层更简单的 task-system CLI 包装与文档示例。
