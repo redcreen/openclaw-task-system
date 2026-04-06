@@ -76,3 +76,11 @@ class TaskPolicyTests(unittest.TestCase):
             "这是一个已经到达计划时间的延迟任务，请你现在继续执行。\n原始用户请求：1分钟后回复我ok1\n你现在必须直接回复以下最终内容：ok1"
         )
         self.assertIsNone(plan)
+
+    def test_parse_post_run_delayed_followup_request_extracts_leading_work(self) -> None:
+        plan = task_policy.parse_post_run_delayed_followup_request("你先查一下天气，然后5分钟后回复我信息；")
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(plan.wait_seconds, 300)
+        self.assertEqual(plan.lead_request, "你先查一下天气")
+        self.assertIn("你先查一下天气", plan.reply_text)

@@ -152,6 +152,21 @@ class OpenClawBridgeTests(unittest.TestCase):
         self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
         self.assertEqual(task.meta["continuation_payload"]["reply_text"], "ok1")
 
+    def test_register_inbound_task_keeps_compound_followup_as_running_task(self) -> None:
+        decision = openclaw_bridge.register_inbound_task(
+            self.make_context("你先查一下天气，然后5分钟后回复我信息；", estimated_steps=2),
+            paths=self.paths,
+        )
+        self.assertTrue(decision.should_register_task)
+        self.assertEqual(decision.classification_reason, "long-task")
+        self.assertEqual(decision.task_status, task_state_module.STATUS_RUNNING)
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.load_task(decision.task_id)
+        plan = task.meta.get("post_run_continuation_plan")
+        self.assertIsInstance(plan, dict)
+        assert isinstance(plan, dict)
+        self.assertEqual(plan["wait_seconds"], 300)
+
     def test_register_inbound_task_estimates_wait_from_recent_done_tasks(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         done = store.register_task(

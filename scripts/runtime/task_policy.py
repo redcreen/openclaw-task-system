@@ -40,6 +40,7 @@ class ContinuationPlan:
     due_at: str
     wait_seconds: int
     reply_text: str
+    lead_request: str | None = None
 
 
 PRIMARY_DELAYED_REPLY_PATTERN = re.compile(
@@ -51,6 +52,19 @@ FALLBACK_DELAYED_REPLY_PATTERN = re.compile(
     r"(?P<delay>\d+)\s*(?P<unit>分钟|分|秒)(?:钟)?\s*(?:后)?\s*"
     r"(?P<verb>回复(?:我)?|回(?:我)?|提醒(?:我)?|告诉(?:我)?)"
     r"(?P<message>.+?)\s*$"
+)
+TRAILING_SEQUENCE_PATTERN = re.compile(r"(?:[\s,，;；。.!！?？]+|然后|之后|再|并且|并在|接着|随后)+$")
+GENERIC_FOLLOWUP_TARGETS = frozenset(
+    {
+        "我",
+        "我一下",
+        "我一声",
+        "我信息",
+        "信息",
+        "消息",
+        "一下",
+        "一声",
+    }
 )
 
 
@@ -65,6 +79,27 @@ def _normalize_request_text(user_request: str) -> str:
 def _is_tolerable_delay_leadin(prefix: str) -> bool:
     cleaned = re.sub(r"[\s\-—–_·•、，,。.:：;；()（）\[\]【】'\"“”‘’]+", "", prefix)
     return len(cleaned) <= 2
+
+
+def _parse_wait_seconds(delay: int, unit: str) -> int:
+    if unit.startswith("分"):
+        return delay * 60
+    return delay
+
+
+def _strip_trailing_sequence(prefix: str) -> str:
+    return TRAILING_SEQUENCE_PATTERN.sub("", prefix).strip()
+
+
+def _build_post_run_followup_text(lead_request: str, raw_message: str) -> str:
+    normalized_target = _normalize_request_text(raw_message)
+    normalized_target = normalized_target.strip("，,。.!！?？;；:：\"'“”‘’()（）[]【】 ")
+    if normalized_target and normalized_target not in GENERIC_FOLLOWUP_TARGETS:
+        return normalized_target
+    compact_lead = _normalize_request_text(lead_request)
+    if len(compact_lead) > 36:
+        compact_lead = f"{compact_lead[:33]}..."
+    return f"按约定提醒：关于「{compact_lead}」，我现在回来继续跟进。"
 
 
 def parse_delayed_reply_request(
@@ -84,15 +119,12 @@ def parse_delayed_reply_request(
     if matched is None:
         return None
 
-    delay = int(matched.group("delay"))
     message = matched.group("message").strip()
     if not message:
         return None
+    delay = int(matched.group("delay"))
     unit = matched.group("unit")
-    if unit.startswith("分"):
-        wait_seconds = delay * 60
-    else:
-        wait_seconds = delay
+    wait_seconds = _parse_wait_seconds(delay, unit)
     base = now_dt or datetime.now(timezone.utc).astimezone()
     due_at = (base + timedelta(seconds=wait_seconds)).isoformat()
     return ContinuationPlan(
@@ -100,6 +132,38 @@ def parse_delayed_reply_request(
         due_at=due_at,
         wait_seconds=wait_seconds,
         reply_text=message,
+    )
+
+
+def parse_post_run_delayed_followup_request(
+    user_request: str,
+    *,
+    now_dt: datetime | None = None,
+) -> ContinuationPlan | None:
+    normalized = _normalize_request_text(user_request)
+    if not normalized:
+        return None
+
+    matched = FALLBACK_DELAYED_REPLY_PATTERN.search(normalized)
+    if matched is None:
+        return None
+
+    prefix = _strip_trailing_sequence(normalized[: matched.start()])
+    if not prefix or _is_tolerable_delay_leadin(prefix):
+        return None
+
+    message = str(matched.group("message") or "").strip()
+    delay = int(matched.group("delay"))
+    unit = str(matched.group("unit") or "")
+    wait_seconds = _parse_wait_seconds(delay, unit)
+    base = now_dt or datetime.now(timezone.utc).astimezone()
+    due_at = (base + timedelta(seconds=wait_seconds)).isoformat()
+    return ContinuationPlan(
+        kind="delayed-reply",
+        due_at=due_at,
+        wait_seconds=wait_seconds,
+        reply_text=_build_post_run_followup_text(prefix, message),
+        lead_request=prefix,
     )
 
 

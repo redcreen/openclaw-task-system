@@ -1021,6 +1021,40 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertTrue(finalized["updated"])
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
 
+    def test_finalize_active_materializes_post_run_delayed_followup(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:compound-followup",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:compound-followup",
+                "user_request": "你先查一下天气，然后5分钟后回复我信息；",
+                "estimated_steps": 2,
+            }
+        )
+        assert registration["task_id"] is not None
+        finalized = openclaw_hooks.finalize_active_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:compound-followup",
+                "task_id": registration["task_id"],
+                "success": True,
+                "has_visible_output": True,
+                "result_summary": "天气接口本轮没有返回内容，我 5 分钟后再回来跟进。",
+            }
+        )
+        self.assertTrue(finalized["updated"])
+        self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
+        self.assertIn("post_run_continuation_task_id", finalized["task"]["meta"])
+
+        store = task_state_module.TaskStore(paths=self.paths)
+        followup_task = store.load_task(finalized["task"]["meta"]["post_run_continuation_task_id"])
+        self.assertEqual(followup_task.status, task_state_module.STATUS_PAUSED)
+        self.assertEqual(followup_task.meta["continuation_kind"], "delayed-reply")
+        self.assertEqual(followup_task.meta["parent_task_id"], registration["task_id"])
+        self.assertIn("你先查一下天气", followup_task.meta["continuation_payload"]["reply_text"])
+
     def test_fulfill_due_continuation_matches_due_reply_and_archives_task(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         observed = store.observe_task(

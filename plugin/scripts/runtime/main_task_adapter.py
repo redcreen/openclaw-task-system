@@ -4,7 +4,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from task_policy import ContinuationPlan, TaskClassification, classify_main_task, parse_delayed_reply_request
+from task_policy import (
+    ContinuationPlan,
+    TaskClassification,
+    classify_main_task,
+    parse_delayed_reply_request,
+    parse_post_run_delayed_followup_request,
+)
 from task_config import TaskSystemConfig, load_task_system_config
 from task_state import TaskPaths, TaskState, TaskStore, default_paths
 
@@ -31,6 +37,7 @@ class MainTaskDecision:
     should_register: bool
     reason: str
     continuation_plan: Optional[ContinuationPlan] = None
+    post_run_continuation_plan: Optional[ContinuationPlan] = None
 
 
 def is_control_command_request(user_request: str) -> bool:
@@ -86,6 +93,19 @@ def decide_main_task(
             continuation_plan=continuation_plan,
         )
 
+    post_run_continuation_plan = parse_post_run_delayed_followup_request(context.user_request)
+    if post_run_continuation_plan is not None:
+        return MainTaskDecision(
+            classification=TaskClassification(
+                is_long_task=True,
+                confidence="high",
+                reasons=["post-run-delayed-followup"],
+            ),
+            should_register=True,
+            reason="long-task",
+            post_run_continuation_plan=post_run_continuation_plan,
+        )
+
     policy = agent_config.classification
     classification = classify_main_task(
         context.user_request,
@@ -135,6 +155,19 @@ def register_main_task(
           "involves_delegation": context.involves_delegation,
           "requires_external_wait": context.requires_external_wait,
           "needs_verification": context.needs_verification,
+          **(
+              {
+                  "post_run_continuation_plan": {
+                      "kind": decision.post_run_continuation_plan.kind,
+                      "due_at": decision.post_run_continuation_plan.due_at,
+                      "wait_seconds": decision.post_run_continuation_plan.wait_seconds,
+                      "reply_text": decision.post_run_continuation_plan.reply_text,
+                      "lead_request": decision.post_run_continuation_plan.lead_request,
+                  }
+              }
+              if decision.post_run_continuation_plan is not None
+              else {}
+          ),
         },
     )
     if decision.continuation_plan is not None:

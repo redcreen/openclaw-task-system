@@ -682,7 +682,43 @@ def finalize_active_from_payload(
                 },
             )
             return {"updated": False, "reason": "awaiting-visible-output", "task": touched.to_dict()}
-        return completed_active_from_payload(
+        post_run_plan = active.meta.get("post_run_continuation_plan")
+        scheduled_followup_task_id = None
+        if isinstance(post_run_plan, dict):
+            followup_kind = str(post_run_plan.get("kind") or "").strip()
+            followup_due_at = str(post_run_plan.get("due_at") or "").strip()
+            followup_reply_text = str(post_run_plan.get("reply_text") or "").strip()
+            followup_wait_seconds = int(post_run_plan.get("wait_seconds") or 0)
+            if followup_kind and followup_due_at and followup_reply_text and followup_wait_seconds > 0:
+                followup_task = store.observe_task(
+                    agent_id=active.agent_id,
+                    session_key=active.session_key,
+                    channel=active.channel,
+                    account_id=active.account_id,
+                    chat_id=active.chat_id,
+                    user_id=active.user_id,
+                    task_label=f"follow-up: {active.task_label}"[:80],
+                    meta={
+                        "source": "main-post-run-followup",
+                        "original_user_request": str(active.meta.get("original_user_request") or active.task_label or ""),
+                        "parent_task_id": active.task_id,
+                        "lead_request": str(post_run_plan.get("lead_request") or "").strip() or None,
+                    },
+                )
+                scheduled = store.schedule_continuation(
+                    followup_task.task_id,
+                    continuation_kind=followup_kind,
+                    due_at=followup_due_at,
+                    payload={
+                        "reply_text": followup_reply_text,
+                        "wait_seconds": followup_wait_seconds,
+                        "original_user_request": str(active.meta.get("original_user_request") or active.task_label or ""),
+                        "parent_task_id": active.task_id,
+                    },
+                    reason="scheduled post-run continuation wait",
+                )
+                scheduled_followup_task_id = scheduled.task_id
+        completed = completed_active_from_payload(
             {
                 "agent_id": payload["agent_id"],
                 "session_key": payload["session_key"],
@@ -691,6 +727,12 @@ def finalize_active_from_payload(
             },
             config_path=config_path,
         )
+        if scheduled_followup_task_id and completed.get("updated") and isinstance(completed.get("task"), dict):
+            task_payload = completed["task"]
+            meta = task_payload.get("meta")
+            if isinstance(meta, dict):
+                meta["post_run_continuation_task_id"] = scheduled_followup_task_id
+        return completed
     reason = str(payload.get("reason") or payload.get("error") or "agent run failed")
     return failed_active_from_payload(
         {

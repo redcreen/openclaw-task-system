@@ -53,6 +53,14 @@ class MainTaskAdapterTests(unittest.TestCase):
         self.assertEqual(decision.reason, "continuation-task")
         self.assertIsNotNone(decision.continuation_plan)
 
+    def test_decide_main_task_keeps_immediate_work_and_extracts_post_run_followup(self) -> None:
+        context = self.build_context("你先查一下天气，然后5分钟后回复我信息；")
+        decision = main_task_adapter.decide_main_task(context)
+        self.assertTrue(decision.should_register)
+        self.assertEqual(decision.reason, "long-task")
+        self.assertIsNone(decision.continuation_plan)
+        self.assertIsNotNone(decision.post_run_continuation_plan)
+
     def test_decide_main_task_skips_bare_control_command(self) -> None:
         context = self.build_context("/status")
         decision = main_task_adapter.decide_main_task(context)
@@ -165,3 +173,15 @@ class MainTaskAdapterTests(unittest.TestCase):
         self.assertEqual(task.status, task_state_module.STATUS_PAUSED)
         self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
         self.assertEqual(task.meta["continuation_payload"]["reply_text"], "333")
+
+    def test_compound_request_stores_post_run_continuation_plan_on_running_task(self) -> None:
+        task = main_task_adapter.register_main_task(
+            self.build_context("你先查一下天气，然后5分钟后回复我信息；", estimated_steps=2),
+            paths=self.paths,
+        )
+        self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
+        plan = task.meta.get("post_run_continuation_plan")
+        self.assertIsInstance(plan, dict)
+        assert isinstance(plan, dict)
+        self.assertEqual(plan["wait_seconds"], 300)
+        self.assertEqual(plan["lead_request"], "你先查一下天气")
