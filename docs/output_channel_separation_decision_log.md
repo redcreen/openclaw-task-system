@@ -58,6 +58,8 @@ The minimum implementation chosen for this phase is:
 3. if no such block exists, runtime suppresses user-facing content instead of guessing
 4. scheduling confirmation remains a separate `[wd]` control-plane message
 5. delayed follow-up content still replies to the original message and does not carry `[wd]`
+6. runtime must never leak the literal `<task_user_content>` markers to the user
+7. once a promise guard is armed, the structured-content gate must survive reload and truth-source rehydration
 
 ### additional product constraints confirmed in live review
 
@@ -143,6 +145,8 @@ tool-assisted planning 引入了一个结构性问题：
 3. 如果没有这个内容块，runtime 选择抑制用户可见内容，而不是继续猜
 4. 排程成功/失败确认仍然单独走 `[wd]`
 5. 到点 follow-up 内容继续回复原消息，且不带 `[wd]`
+6. runtime 不能把字面量 `<task_user_content>` 标签泄漏给用户
+7. 一旦 promise guard 已 armed，structured-content gate 必须能跨 reload / rehydrate 持续生效
 
 ### 在 live review 中进一步确认的产品约束
 

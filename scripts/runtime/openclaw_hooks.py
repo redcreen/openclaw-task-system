@@ -290,11 +290,17 @@ def attach_promise_guard_from_payload(
         return {"armed": False, "reason": "source-task-not-found"}
 
     guard_id = str(payload.get("guard_id") or "").strip() or f"guard_{uuid4().hex}"
+    promise_summary = str(payload.get("promise_summary") or "").strip()
+    followup_due_at = str(payload.get("followup_due_at") or "").strip()
     source_task.meta["planning_promise_guard"] = {
         "guard_id": guard_id,
         "promise_type": str(payload.get("promise_type") or "delayed-followup"),
         "expected_by_finalize": bool(payload.get("expected_by_finalize", True)),
         "status": "armed",
+        "promise_summary": promise_summary or None,
+        "followup_due_at": followup_due_at or None,
+        "require_structured_user_content": True,
+        "main_user_content_mode": "none",
         "armed_at": now_iso(),
     }
     saved = store.save_task(source_task)
@@ -302,6 +308,10 @@ def attach_promise_guard_from_payload(
         "armed": True,
         "guard_id": guard_id,
         "source_task_id": saved.task_id,
+        "promise_summary": promise_summary or None,
+        "followup_due_at": followup_due_at or None,
+        "require_structured_user_content": True,
+        "main_user_content_mode": "none",
     }
 
 
@@ -793,10 +803,34 @@ def resolve_active_task_from_payload(
     runtime_config = load_task_system_config(config_path=config_path)
     store = TaskStore(paths=runtime_config.build_paths())
     task = _resolve_target_task(store, payload)
+    if task is None:
+        return {
+            "task_id": None,
+            "found": False,
+            "status": None,
+        }
+    tool_followup_plan = task.meta.get("tool_followup_plan")
+    promise_guard = task.meta.get("planning_promise_guard")
+    require_structured_user_content = False
+    main_user_content_mode = None
+    if isinstance(tool_followup_plan, dict):
+        require_structured_user_content = True
+        main_user_content_mode = str(tool_followup_plan.get("main_user_content_mode") or "none")
+    elif isinstance(promise_guard, dict):
+        require_structured_user_content = bool(promise_guard.get("require_structured_user_content", True))
+        main_user_content_mode = str(promise_guard.get("main_user_content_mode") or "none")
     return {
-        "task_id": task.task_id if task else None,
-        "found": task is not None,
-        "status": task.status if task else None,
+        "task_id": task.task_id,
+        "found": True,
+        "status": task.status,
+        "task": task.to_dict(),
+        "channel": task.channel,
+        "account_id": task.account_id,
+        "chat_id": task.chat_id,
+        "reply_to_id": str(task.meta.get("source_reply_to_id") or "").strip() or None,
+        "thread_id": str(task.meta.get("source_thread_id") or "").strip() or None,
+        "require_structured_user_content": require_structured_user_content,
+        "main_user_content_mode": main_user_content_mode,
     }
 
 

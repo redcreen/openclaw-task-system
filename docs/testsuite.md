@@ -1,6 +1,6 @@
 # Test Suite
 
-> 最后更新：2026-04-05
+> 最后更新：2026-04-06
 > 角色：这是本项目的正式测试手册。它定义自动化 testsuite 跑什么、保证什么，以及哪些属于人工验收。
 
 ## 1. 测试目标
@@ -193,6 +193,8 @@ python3 scripts/runtime/plugin_smoke.py --json
 - terminal / preempt / supersede
 - `sent / skipped / dropped / error / adapter-unavailable`
 - continuation / host delivery / fulfilled shortcut
+- raw `<task_user_content>` marker suppression
+- promise-guard rehydrate after reload
 - lifecycle `entered / ignored / skipped`
 - scheduler diagnostics 字段
 - runner 字段：

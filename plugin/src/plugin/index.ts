@@ -859,12 +859,13 @@ const TASK_USER_CONTENT_CLOSE = "</task_user_content>";
 type StructuredUserContentResult = {
   text: string;
   hadBlock: boolean;
+  hadRawMarker: boolean;
 };
 
 function extractStructuredUserContent(text: string): StructuredUserContentResult {
   const raw = typeof text === "string" ? text : "";
   if (!raw) {
-    return { text: "", hadBlock: false };
+    return { text: "", hadBlock: false, hadRawMarker: false };
   }
   const pieces: string[] = [];
   let cursor = 0;
@@ -887,18 +888,22 @@ function extractStructuredUserContent(text: string): StructuredUserContentResult
   return {
     text: pieces.join("\n").trim(),
     hadBlock: pieces.length > 0,
+    hadRawMarker: raw.includes(TASK_USER_CONTENT_OPEN) || raw.includes(TASK_USER_CONTENT_CLOSE),
   };
 }
 
 function resolveUserFacingContent(text: string, options?: { requireStructured?: boolean }): StructuredUserContentResult {
   const structured = extractStructuredUserContent(text);
   if (structured.hadBlock) {
-    return structured;
+    return { ...structured, hadRawMarker: false };
+  }
+  if (structured.hadRawMarker) {
+    return { text: "", hadBlock: false, hadRawMarker: true };
   }
   if (options?.requireStructured) {
-    return { text: "", hadBlock: false };
+    return { text: "", hadBlock: false, hadRawMarker: false };
   }
-  return { text: normalizeText(text), hadBlock: false };
+  return { text: normalizeText(text), hadBlock: false, hadRawMarker: false };
 }
 
 function buildPlanningRuntimeContext(params: {
@@ -2082,6 +2087,48 @@ function summarizeAgentEnd(
   return event.success
     ? `agent run completed in ${event.durationMs ?? 0}ms`
     : `agent run failed after ${event.durationMs ?? 0}ms`;
+}
+
+function buildUserContentGateResult(params: {
+  content: string;
+  requireStructuredUserContent?: boolean;
+  mainUserContentMode?: "none" | "immediate-summary" | "full-answer";
+}): {
+  text: string;
+  action: "pass" | "extract" | "suppress";
+  reason: "main-user-content-mode-none" | "task-user-content-block" | "missing-task-user-content-block" | "raw-task-user-content-marker";
+} {
+  const resolved = resolveUserFacingContent(params.content, {
+    requireStructured: Boolean(params.requireStructuredUserContent),
+  });
+  const mainUserContentMode = normalizeMainUserContentMode(params.mainUserContentMode);
+  if (Boolean(params.requireStructuredUserContent) && mainUserContentMode === "none") {
+    return {
+      text: "",
+      action: "suppress",
+      reason: "main-user-content-mode-none",
+    };
+  }
+  if (resolved.hadRawMarker) {
+    return {
+      text: "",
+      action: "suppress",
+      reason: "raw-task-user-content-marker",
+    };
+  }
+  const normalizedInput = normalizeText(params.content);
+  if (resolved.text !== normalizedInput) {
+    return {
+      text: resolved.text,
+      action: resolved.text ? "extract" : "suppress",
+      reason: resolved.hadBlock ? "task-user-content-block" : "missing-task-user-content-block",
+    };
+  }
+  return {
+    text: resolved.text,
+    action: "pass",
+    reason: resolved.hadBlock ? "task-user-content-block" : "missing-task-user-content-block",
+  };
 }
 
 function hasVisibleAssistantOutput(
@@ -3363,28 +3410,29 @@ const taskSystemPlugin = {
           accountId: ctx.accountId,
           chatId: ctx.conversationId,
         })) || undefined;
-      const mainUserContentMode = normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode);
-      const resolvedContent = resolveUserFacingContent(event.content, {
-        requireStructured: Boolean(activeTaskBinding?.requireStructuredUserContent),
+      const gate = buildUserContentGateResult({
+        content: event.content,
+        requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+        mainUserContentMode: normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode),
       });
-      if (Boolean(activeTaskBinding?.requireStructuredUserContent) && mainUserContentMode === "none") {
+      if (gate.action === "suppress") {
         if (normalizeText(event.content)) {
           event.content = "";
           await appendDebugLog(config, "message_sending:user-content-suppressed", {
             agentId: ctx.agentId || config.defaultAgentId,
             sessionKey,
             schedulerDecision: "suppressed",
-            reason: "main-user-content-mode-none",
+            reason: gate.reason,
           });
         }
-      } else if (resolvedContent.text !== normalizeText(event.content)) {
-        event.content = resolvedContent.text;
+      } else if (gate.action === "extract") {
+        event.content = gate.text;
         await appendDebugLog(config, "message_sending:user-content-extracted", {
           agentId: ctx.agentId || config.defaultAgentId,
           sessionKey,
-          schedulerDecision: resolvedContent.hadBlock ? "structured" : "suppressed",
-          reason: resolvedContent.hadBlock ? "task-user-content-block" : "missing-task-user-content-block",
-          content: resolvedContent.text.slice(0, 240),
+          schedulerDecision: "structured",
+          reason: gate.reason,
+          content: gate.text.slice(0, 240),
         });
       }
       if (ctx.sessionKey?.trim()) {
@@ -3464,19 +3512,21 @@ const taskSystemPlugin = {
           accountId: ctx.accountId,
           chatId: ctx.conversationId,
         })) || undefined;
-      const mainUserContentMode = normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode);
-      if (Boolean(activeTaskBinding?.requireStructuredUserContent) && mainUserContentMode === "none") {
+      const gate = buildUserContentGateResult({
+        content: (event.assistantTexts || []).join("\n"),
+        requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+        mainUserContentMode: normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode),
+      });
+      if (gate.action === "suppress") {
         await appendDebugLog(config, "llm_output:user-content-suppressed", {
           agentId: ctx.agentId || config.defaultAgentId,
           sessionKey,
           schedulerDecision: "suppressed",
-          reason: "main-user-content-mode-none",
+          reason: gate.reason,
         });
         return;
       }
-      const text = resolveUserFacingContent((event.assistantTexts || []).join("\n"), {
-        requireStructured: Boolean(activeTaskBinding?.requireStructuredUserContent),
-      }).text;
+      const text = gate.text;
       if (!text) {
         return;
       }

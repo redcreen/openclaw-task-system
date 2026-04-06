@@ -517,6 +517,56 @@ test("message_sending suppresses immediate business content after binding is rec
   }
 });
 
+test("message_sending suppresses raw task_user_content markers even without a structured binding", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot({
+    resolveActiveResponse: {
+      found: true,
+      task_id: "task-123",
+      status: "running",
+      channel: "feishu",
+      account_id: "acct-1",
+      chat_id: "chat-1",
+      reply_to_id: "om_source_message",
+      thread_id: "thread_source_message",
+      require_structured_user_content: false,
+      main_user_content_mode: null,
+      task: {
+        task_id: "task-123",
+        channel: "feishu",
+        account_id: "acct-1",
+        chat_id: "chat-1",
+      },
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    const event = {
+      content: "<task_user_content>目的地按宁波算，明天天气大致 14°C~21°C。",
+    };
+    await plugin.messageSending(event, {
+      sessionKey: "agent:main:feishu:acct-1:user-1",
+      channelId: "feishu",
+      conversationId: "chat-1",
+      accountId: "acct-1",
+      senderId: "user-1",
+      agentId: "main",
+    });
+
+    assert.equal(event.content, "");
+    const calls = await readHookCalls(callsPath);
+    const progressCall = calls.find((entry) => entry.command === "progress-active");
+    assert.equal(progressCall, undefined);
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    const suppressed = debugEvents.find((entry) => entry.event === "message_sending:user-content-suppressed");
+    assert.equal(suppressed?.payload?.reason, "raw-task-user-content-marker");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("message_sending suppresses unstructured content after planning tools are used", async () => {
   resetGlobalState();
   const { runtimeRoot, callsPath } = await createFakeRuntimeRoot();
@@ -576,8 +626,8 @@ test("message_sending suppresses unstructured content after planning tools are u
     const progressCall = calls.find((entry) => entry.command === "progress-active");
     assert.equal(progressCall, undefined);
     const debugEvents = await readDebugEvents(runtimeRoot);
-    const extracted = debugEvents.find((entry) => entry.event === "message_sending:user-content-extracted");
-    assert.equal(extracted?.payload?.reason, "missing-task-user-content-block");
+    const suppressed = debugEvents.find((entry) => entry.event === "message_sending:user-content-suppressed");
+    assert.equal(suppressed?.payload?.reason, "missing-task-user-content-block");
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }

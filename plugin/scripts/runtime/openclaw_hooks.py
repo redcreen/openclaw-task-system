@@ -290,11 +290,17 @@ def attach_promise_guard_from_payload(
         return {"armed": False, "reason": "source-task-not-found"}
 
     guard_id = str(payload.get("guard_id") or "").strip() or f"guard_{uuid4().hex}"
+    promise_summary = str(payload.get("promise_summary") or "").strip()
+    followup_due_at = str(payload.get("followup_due_at") or "").strip()
     source_task.meta["planning_promise_guard"] = {
         "guard_id": guard_id,
         "promise_type": str(payload.get("promise_type") or "delayed-followup"),
         "expected_by_finalize": bool(payload.get("expected_by_finalize", True)),
         "status": "armed",
+        "promise_summary": promise_summary or None,
+        "followup_due_at": followup_due_at or None,
+        "require_structured_user_content": True,
+        "main_user_content_mode": "none",
         "armed_at": now_iso(),
     }
     saved = store.save_task(source_task)
@@ -302,6 +308,10 @@ def attach_promise_guard_from_payload(
         "armed": True,
         "guard_id": guard_id,
         "source_task_id": saved.task_id,
+        "promise_summary": promise_summary or None,
+        "followup_due_at": followup_due_at or None,
+        "require_structured_user_content": True,
+        "main_user_content_mode": "none",
     }
 
 
@@ -801,12 +811,14 @@ def resolve_active_task_from_payload(
         }
     tool_followup_plan = task.meta.get("tool_followup_plan")
     promise_guard = task.meta.get("planning_promise_guard")
-    require_structured_user_content = isinstance(tool_followup_plan, dict) or isinstance(promise_guard, dict)
+    require_structured_user_content = False
     main_user_content_mode = None
     if isinstance(tool_followup_plan, dict):
+        require_structured_user_content = True
         main_user_content_mode = str(tool_followup_plan.get("main_user_content_mode") or "none")
     elif isinstance(promise_guard, dict):
-        main_user_content_mode = "none"
+        require_structured_user_content = bool(promise_guard.get("require_structured_user_content", True))
+        main_user_content_mode = str(promise_guard.get("main_user_content_mode") or "none")
     return {
         "task_id": task.task_id,
         "found": True,

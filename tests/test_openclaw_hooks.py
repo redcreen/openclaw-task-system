@@ -589,6 +589,43 @@ class OpenClawHooksTests(unittest.TestCase):
         )
         self.assertTrue(updated["updated"])
 
+    def test_resolve_active_exposes_structured_gate_from_promise_guard(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:promise-gate",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:promise-gate",
+                "user_request": "2分钟后提醒我查天气",
+                "estimated_steps": 2,
+            }
+        )
+        task_id = registration["task_id"]
+        assert task_id is not None
+
+        guarded = openclaw_hooks.attach_promise_guard_from_payload(
+            {
+                "source_task_id": task_id,
+                "promise_summary": "2分钟后同步天气结果",
+                "followup_due_at": "2026-04-06T19:07:33+08:00",
+            }
+        )
+        self.assertTrue(guarded["armed"])
+        self.assertTrue(guarded["require_structured_user_content"])
+        self.assertEqual(guarded["main_user_content_mode"], "none")
+
+        resolved = openclaw_hooks.resolve_active_task_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:promise-gate",
+                "task_id": task_id,
+            }
+        )
+        self.assertTrue(resolved["found"])
+        self.assertTrue(resolved["require_structured_user_content"])
+        self.assertEqual(resolved["main_user_content_mode"], "none")
+
     def test_finalize_active_marks_done_on_success(self) -> None:
         registration = openclaw_hooks.register_from_payload(
             {
