@@ -134,7 +134,7 @@ class OpenClawBridgeTests(unittest.TestCase):
         self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
         self.assertEqual(task.chat_id, "oc_test_chat")
 
-    def test_register_inbound_task_schedules_delayed_reply_continuation(self) -> None:
+    def test_register_inbound_task_no_longer_auto_schedules_delayed_reply(self) -> None:
         decision = openclaw_bridge.register_inbound_task(
             self.make_context("1分钟后回复我ok1"),
             paths=self.paths,
@@ -142,30 +142,26 @@ class OpenClawBridgeTests(unittest.TestCase):
         )
         self.assertTrue(decision.should_register_task)
         self.assertIsNotNone(decision.task_id)
-        self.assertEqual(decision.classification_reason, "continuation-task")
-        self.assertEqual(decision.task_status, task_state_module.STATUS_PAUSED)
-        self.assertIsNotNone(decision.continuation_due_at)
+        self.assertEqual(decision.classification_reason, "observed-task")
+        self.assertEqual(decision.task_status, task_state_module.STATUS_RECEIVED)
+        self.assertIsNone(decision.continuation_due_at)
 
         store = task_state_module.TaskStore(paths=self.paths)
         task = store.load_task(decision.task_id)
-        self.assertEqual(task.status, task_state_module.STATUS_PAUSED)
-        self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
-        self.assertEqual(task.meta["continuation_payload"]["reply_text"], "ok1")
+        self.assertEqual(task.status, task_state_module.STATUS_RECEIVED)
+        self.assertNotIn("continuation_kind", task.meta)
 
-    def test_register_inbound_task_keeps_compound_followup_as_running_task(self) -> None:
+    def test_register_inbound_task_no_longer_extracts_compound_followup(self) -> None:
         decision = openclaw_bridge.register_inbound_task(
             self.make_context("你先查一下天气，然后5分钟后回复我信息；", estimated_steps=2),
             paths=self.paths,
         )
         self.assertTrue(decision.should_register_task)
-        self.assertEqual(decision.classification_reason, "long-task")
+        self.assertEqual(decision.classification_reason, "observed-task")
         self.assertEqual(decision.task_status, task_state_module.STATUS_RUNNING)
         store = task_state_module.TaskStore(paths=self.paths)
         task = store.load_task(decision.task_id)
-        plan = task.meta.get("post_run_continuation_plan")
-        self.assertIsInstance(plan, dict)
-        assert isinstance(plan, dict)
-        self.assertEqual(plan["wait_seconds"], 300)
+        self.assertNotIn("post_run_continuation_plan", task.meta)
 
     def test_register_inbound_task_estimates_wait_from_recent_done_tasks(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
@@ -390,7 +386,7 @@ class OpenClawBridgeTests(unittest.TestCase):
         self.assertEqual(second.classification_reason, "scheduled-continuation")
         self.assertEqual(second.task_status, task_state_module.STATUS_PAUSED)
 
-    def test_register_inbound_task_creates_new_delayed_reply_when_future_continuation_exists(self) -> None:
+    def test_register_inbound_task_reuses_existing_future_continuation(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         task = store.observe_task(
             agent_id="main",
@@ -416,9 +412,6 @@ class OpenClawBridgeTests(unittest.TestCase):
             observe_only=True,
         )
         assert second.task_id is not None
-        self.assertNotEqual(second.task_id, first.task_id)
-        self.assertEqual(second.classification_reason, "continuation-task")
+        self.assertEqual(second.task_id, first.task_id)
+        self.assertEqual(second.classification_reason, "scheduled-continuation")
         self.assertEqual(second.task_status, task_state_module.STATUS_PAUSED)
-
-        registered = store.load_task(second.task_id)
-        self.assertEqual(registered.meta["continuation_payload"]["reply_text"], "222")

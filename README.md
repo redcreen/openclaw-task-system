@@ -55,6 +55,9 @@ Its job is to:
 - keep users informed when work is still running
 - explain restart, recovery, timeout, or failure truthfully
 
+In the current OpenClaw architecture, even simple requests normally still go through the original agent / LLM path.
+This plugin is meant to supervise that path, not replace it.
+
 ### what you will see after installing it
 
 After installation, the normal user-visible flow becomes:
@@ -258,6 +261,11 @@ Example:
           "minReasonCount": 2,
           "estimatedStepsThreshold": 3
         },
+        "planning": {
+          "enabled": true,
+          "mode": "tool-first-after-first-ack",
+          "systemPromptContract": "You are the normal request executor. task-system runtime is the supervisor and the owner of the task truth source. ..."
+        },
         "silenceMonitor": {
           "enabled": true,
           "silentTimeoutSeconds": 30,
@@ -275,6 +283,19 @@ Example:
   }
 }
 ```
+
+`agents.main.planning.systemPromptContract` is user-editable. This is the prompt contract
+that tells the LLM:
+
+- the first `[wd]` is runtime-owned
+- the fixed 30-second progress message is runtime-owned
+- fallback and recovery control-plane messages are runtime-owned
+- all other future-action planning should default to task-system tools
+
+If you want to review or customize that contract, edit:
+
+- [`config/task_system.json`](./config/task_system.json)
+- or [`config/task_system.example.json`](./config/task_system.example.json)
 
 #### 4. configure the plugin entry in OpenClaw
 
@@ -536,6 +557,9 @@ OpenClaw Task System 是给 OpenClaw 补上的一层正式 task runtime。
 - 在用户空等时持续给出有价值的信息
 - 在重启、恢复、超时、异常时，如实解释发生了什么
 
+在当前 OpenClaw 架构下，即使是简单请求，通常也还是会进入原来的 agent / LLM 路径。
+这个插件的职责，是监督这条路径，而不是替代它。
+
 一句话说，它让 OpenClaw 更像“能正式接活并把活做完的系统”，而不只是“偶尔能完成工作的聊天流”。
 
 ### 装上后用户会看到什么
@@ -739,6 +763,11 @@ python3 scripts/runtime/configure_openclaw_plugin.py --write
           "minReasonCount": 2,
           "estimatedStepsThreshold": 3
         },
+        "planning": {
+          "enabled": true,
+          "mode": "tool-first-after-first-ack",
+          "systemPromptContract": "You are the normal request executor. task-system runtime is the supervisor and the owner of the task truth source. ..."
+        },
         "silenceMonitor": {
           "enabled": true,
           "silentTimeoutSeconds": 30,
@@ -756,6 +785,18 @@ python3 scripts/runtime/configure_openclaw_plugin.py --write
   }
 }
 ```
+
+`agents.main.planning.systemPromptContract` 现在是**用户可修改**的配置项。它用来明确告诉 LLM：
+
+- 第一条 `[wd]` 归 runtime
+- 固定的 30 秒进度消息归 runtime
+- fallback / recovery 控制面文案归 runtime
+- 其他 future-action planning 默认走 task-system tools
+
+如果你要 review 或改写这段合同，直接编辑：
+
+- [config/task_system.json](./config/task_system.json)
+- 或 [config/task_system.example.json](./config/task_system.example.json)
 
 #### 4. 配置 OpenClaw 插件入口
 

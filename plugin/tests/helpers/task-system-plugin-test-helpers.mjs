@@ -168,6 +168,28 @@ export async function createFakeRuntimeRoot(options = {}) {
   const claimDueContinuationsResponse = options.claimDueContinuationsResponse ?? { tasks: [] };
   const fulfillDueContinuationResponse = options.fulfillDueContinuationResponse ?? { updated: false };
   const watchdogAutoRecoverResponse = options.watchdogAutoRecoverResponse ?? {};
+  const createFollowupPlanResponse = options.createFollowupPlanResponse ?? {
+    ok: true,
+    plan_id: "plan-123",
+    source_task_id: "task-123",
+    due_at: "2026-04-06T12:00:00+08:00",
+    kind: "delayed-reply",
+  };
+  const attachPromiseGuardResponse = options.attachPromiseGuardResponse ?? {
+    ok: true,
+    status: "armed",
+    source_task_id: "task-123",
+  };
+  const scheduleFollowupFromPlanResponse = options.scheduleFollowupFromPlanResponse ?? {
+    ok: true,
+    followup_task_id: "task-followup-123",
+    task_status: "paused",
+  };
+  const finalizePlannedFollowupResponse = options.finalizePlannedFollowupResponse ?? {
+    ok: true,
+    status: "linked",
+    followup_task_id: "task-followup-123",
+  };
   const gatewayCallResponses = options.gatewayCallResponses ?? {};
   const gatewayCallFailures = options.gatewayCallFailures ?? {};
   const hookFailureCommands = Array.isArray(options.hookFailureCommands) ? options.hookFailureCommands : [];
@@ -182,6 +204,10 @@ export async function createFakeRuntimeRoot(options = {}) {
   const serializedClaimDueContinuationsResponse = JSON.stringify(JSON.stringify(claimDueContinuationsResponse));
   const serializedFulfillDueContinuationResponse = JSON.stringify(JSON.stringify(fulfillDueContinuationResponse));
   const serializedWatchdogAutoRecoverResponse = JSON.stringify(JSON.stringify(watchdogAutoRecoverResponse));
+  const serializedCreateFollowupPlanResponse = JSON.stringify(JSON.stringify(createFollowupPlanResponse));
+  const serializedAttachPromiseGuardResponse = JSON.stringify(JSON.stringify(attachPromiseGuardResponse));
+  const serializedScheduleFollowupFromPlanResponse = JSON.stringify(JSON.stringify(scheduleFollowupFromPlanResponse));
+  const serializedFinalizePlannedFollowupResponse = JSON.stringify(JSON.stringify(finalizePlannedFollowupResponse));
   const serializedGatewayCallResponses = JSON.stringify(JSON.stringify(gatewayCallResponses));
   const serializedGatewayCallFailures = JSON.stringify(JSON.stringify(gatewayCallFailures));
   const serializedHookFailureCommands = JSON.stringify(JSON.stringify(hookFailureCommands));
@@ -220,6 +246,14 @@ elif command == "fulfill-due-continuation":
     print(json.dumps(json.loads(${serializedFulfillDueContinuationResponse}), ensure_ascii=False))
 elif command == "watchdog-auto-recover":
     print(json.dumps(json.loads(${serializedWatchdogAutoRecoverResponse}), ensure_ascii=False))
+elif command == "create-followup-plan":
+    print(json.dumps(json.loads(${serializedCreateFollowupPlanResponse}), ensure_ascii=False))
+elif command == "attach-promise-guard":
+    print(json.dumps(json.loads(${serializedAttachPromiseGuardResponse}), ensure_ascii=False))
+elif command == "schedule-followup-from-plan":
+    print(json.dumps(json.loads(${serializedScheduleFollowupFromPlanResponse}), ensure_ascii=False))
+elif command == "finalize-planned-followup":
+    print(json.dumps(json.loads(${serializedFinalizePlannedFollowupResponse}), ensure_ascii=False))
 elif command == "register":
     responses = json.loads(${serializedRegisterResponses})
     if isinstance(responses, list) and responses:
@@ -276,6 +310,7 @@ print(json.dumps(response, ensure_ascii=False))
 export function createApi(runtimeRoot, sentMessages, pluginConfigOverrides = {}) {
   const handlers = new Map();
   const services = [];
+  const registeredTools = new Map();
   const outboundSendDelayMs = Number.isFinite(pluginConfigOverrides.outboundSendDelayMs)
     ? Number(pluginConfigOverrides.outboundSendDelayMs)
     : 0;
@@ -326,6 +361,9 @@ export function createApi(runtimeRoot, sentMessages, pluginConfigOverrides = {})
     on(eventName, handler) {
       handlers.set(eventName, handler);
     },
+    registerTool(tool) {
+      registeredTools.set(tool.name, tool);
+    },
     registerService(service) {
       services.push(service);
     },
@@ -340,6 +378,7 @@ export function createApi(runtimeRoot, sentMessages, pluginConfigOverrides = {})
     messageSending: handlers.get("message_sending"),
     llmOutput: handlers.get("llm_output"),
     agentEnd: handlers.get("agent_end"),
+    registeredTools,
     start: async () => {
       for (const service of services) {
         if (typeof service.start === "function") {

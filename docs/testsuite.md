@@ -247,3 +247,94 @@ python3 scripts/runtime/plugin_smoke.py --json
 - 真实运行态命令不是自动化必绿项，因为它们依赖现场状态
 - Node plugin 测试已经按能力拆分，但 helper 仍集中在 `plugin/tests/helpers/`
 - “全 channel receive-time `[wd]`” 不是当前 testsuite 承诺的结论；它属于后续 roadmap 增强方向
+
+## 8. Phase 6 最小 starter suite
+
+针对 `llm_tool_task_planning` 这条新线，建议不要一上来把整套 testsuite 做大，而是先跑通一个最小闭环。
+
+### 8.1 最小验证目标
+
+最小 starter suite 只回答 5 个问题：
+
+1. tool-created follow-up plan 能否写入 truth source
+2. plan 能否物化成真实 paused follow-up task
+3. finalize 能否抓住 `promise-without-task`
+4. overdue follow-up 能否仍被执行并留下稳定证据
+5. 首条 `[wd]`、30 秒 follow-up、fallback / recovery 是否仍保持 runtime-owned
+
+### 8.2 建议第一批自动化测试
+
+#### Python 最小集
+
+优先从 runtime truth source 和 finalize contract 开始：
+
+- [test_openclaw_hooks.py](../tests/test_openclaw_hooks.py)
+  - plan register / materialize / overdue execution
+- [test_main_task_adapter.py](../tests/test_main_task_adapter.py)
+  - promise guard / finalize anomaly
+- [test_task_policy.py](../tests/test_task_policy.py)
+  - follow-up plan contract / `followup_due_at`
+
+建议新增的最小文件：
+
+- `tests/test_task_planning_tools.py`
+  - 覆盖：
+    - `ts_create_followup_plan`
+    - `ts_schedule_followup_from_plan`
+    - `ts_attach_promise_guard`
+
+#### Node plugin 最小集
+
+优先验证控制面职责没有被这条新线破坏：
+
+- [plugin/tests/pre-register-and-ack.test.mjs](../plugin/tests/pre-register-and-ack.test.mjs)
+  - 首条 `[wd]` 仍为 runtime-owned
+- [plugin/tests/control-plane-lane.test.mjs](../plugin/tests/control-plane-lane.test.mjs)
+  - 30 秒 follow-up / fallback 不被 tool path 抢走
+
+建议新增的最小文件：
+
+- `plugin/tests/tool-planning-flow.test.mjs`
+  - 覆盖：
+    - post-ack 默认进入 tool-assisted planning
+    - fixed runtime-owned control-plane messages 仍走原控制面路径
+
+### 8.3 最小跑法
+
+在实现早期，建议先只跑这个最小集合：
+
+```bash
+python3 -m unittest \
+  tests.test_openclaw_hooks \
+  tests.test_main_task_adapter \
+  tests.test_task_policy \
+  tests.test_task_planning_tools
+
+node --test \
+  plugin/tests/pre-register-and-ack.test.mjs \
+  plugin/tests/control-plane-lane.test.mjs \
+  plugin/tests/tool-planning-flow.test.mjs
+```
+
+目标不是一开始就替代完整 testsuite，而是：
+
+- 先把最小 contract 跑绿
+- 再把 coverage 逐步并回全量入口
+
+### 8.4 扩展顺序
+
+最小 starter suite 跑通后，再按这个顺序扩展：
+
+1. 扩 promise-without-task anomaly 投影
+2. 扩 overdue follow-up 与恢复路径
+3. 扩 dashboard / triage / continuity 证据链
+4. 扩更多 channel 或不同 agent 的 planning path
+
+### 8.5 不该一开始就做的事
+
+为了控制成本，Phase 6 最小测试阶段不要一开始就做：
+
+- 全 channel rollout 测试
+- 大而全的 LLM prompt 组合验收
+- 把所有 follow-up / progress 文案都工具化
+- 用复杂集成测试替代掉最小 contract 测试

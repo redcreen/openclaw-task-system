@@ -4,13 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from task_policy import (
-    ContinuationPlan,
-    TaskClassification,
-    classify_main_task,
-    parse_delayed_reply_request,
-    parse_post_run_delayed_followup_request,
-)
+from task_policy import TaskClassification, classify_main_task
 from task_config import TaskSystemConfig, load_task_system_config
 from task_state import TaskPaths, TaskState, TaskStore, default_paths
 
@@ -36,8 +30,6 @@ class MainTaskDecision:
     classification: TaskClassification
     should_register: bool
     reason: str
-    continuation_plan: Optional[ContinuationPlan] = None
-    post_run_continuation_plan: Optional[ContinuationPlan] = None
 
 
 def is_control_command_request(user_request: str) -> bool:
@@ -84,28 +76,6 @@ def decide_main_task(
             reason="control-command",
         )
 
-    continuation_plan = parse_delayed_reply_request(context.user_request)
-    if continuation_plan is not None:
-        return MainTaskDecision(
-            classification=TaskClassification(is_long_task=True, confidence="high", reasons=["delayed-reply"]),
-            should_register=True,
-            reason="continuation-task",
-            continuation_plan=continuation_plan,
-        )
-
-    post_run_continuation_plan = parse_post_run_delayed_followup_request(context.user_request)
-    if post_run_continuation_plan is not None:
-        return MainTaskDecision(
-            classification=TaskClassification(
-                is_long_task=True,
-                confidence="high",
-                reasons=["post-run-delayed-followup"],
-            ),
-            should_register=True,
-            reason="long-task",
-            post_run_continuation_plan=post_run_continuation_plan,
-        )
-
     policy = agent_config.classification
     classification = classify_main_task(
         context.user_request,
@@ -125,7 +95,6 @@ def decide_main_task(
         classification=classification,
         should_register=should_register,
         reason=reason,
-        continuation_plan=None,
     )
 
 
@@ -155,33 +124,8 @@ def register_main_task(
           "involves_delegation": context.involves_delegation,
           "requires_external_wait": context.requires_external_wait,
           "needs_verification": context.needs_verification,
-          **(
-              {
-                  "post_run_continuation_plan": {
-                      "kind": decision.post_run_continuation_plan.kind,
-                      "due_at": decision.post_run_continuation_plan.due_at,
-                      "wait_seconds": decision.post_run_continuation_plan.wait_seconds,
-                      "reply_text": decision.post_run_continuation_plan.reply_text,
-                      "lead_request": decision.post_run_continuation_plan.lead_request,
-                  }
-              }
-              if decision.post_run_continuation_plan is not None
-              else {}
-          ),
         },
     )
-    if decision.continuation_plan is not None:
-        return store.schedule_continuation(
-            task.task_id,
-            continuation_kind=decision.continuation_plan.kind,
-            due_at=decision.continuation_plan.due_at,
-            payload={
-                "reply_text": decision.continuation_plan.reply_text,
-                "wait_seconds": decision.continuation_plan.wait_seconds,
-                "original_user_request": context.user_request,
-            },
-            reason="scheduled continuation wait",
-        )
     if runtime_config.agent_config(context.agent_id).auto_start and not observe_only:
         return store.claim_execution_slot(task.task_id)
     return task

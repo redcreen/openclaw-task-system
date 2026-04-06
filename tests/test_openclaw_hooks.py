@@ -1021,7 +1021,7 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertTrue(finalized["updated"])
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
 
-    def test_finalize_active_materializes_post_run_delayed_followup(self) -> None:
+    def test_finalize_active_does_not_materialize_legacy_post_run_followup(self) -> None:
         registration = openclaw_hooks.register_from_payload(
             {
                 "agent_id": "main",
@@ -1046,14 +1046,7 @@ class OpenClawHooksTests(unittest.TestCase):
         )
         self.assertTrue(finalized["updated"])
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
-        self.assertIn("post_run_continuation_task_id", finalized["task"]["meta"])
-
-        store = task_state_module.TaskStore(paths=self.paths)
-        followup_task = store.load_task(finalized["task"]["meta"]["post_run_continuation_task_id"])
-        self.assertEqual(followup_task.status, task_state_module.STATUS_PAUSED)
-        self.assertEqual(followup_task.meta["continuation_kind"], "delayed-reply")
-        self.assertEqual(followup_task.meta["parent_task_id"], registration["task_id"])
-        self.assertIn("你先查一下天气", followup_task.meta["continuation_payload"]["reply_text"])
+        self.assertNotIn("post_run_continuation_task_id", finalized["task"]["meta"])
 
     def test_fulfill_due_continuation_matches_due_reply_and_archives_task(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)

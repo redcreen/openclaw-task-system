@@ -37,6 +37,29 @@ type TaskSystemPluginConfig = {
   watchdogRecoveryPollMs?: number;
 };
 
+type PlanningRuntimeConfig = {
+  enabled: boolean;
+  mode: string;
+  systemPromptContract: string;
+};
+
+const DEFAULT_PLANNING_SYSTEM_PROMPT = `You are the normal request executor. task-system runtime is the supervisor and the owner of the task truth source.
+
+Hard rules:
+- Do not generate the first [wd]. That is owned by runtime.
+- Do not generate the fixed 30-second progress message. That is owned by runtime.
+- Do not generate fallback or recovery control-plane text unless runtime explicitly delegates that action.
+- For every future promise, delayed follow-up, reminder, or dependent continuation, use task-system tools by default.
+- Never say that you will come back later unless runtime has accepted a real scheduled follow-up.
+- If task-system tool scheduling fails, times out, or is skipped, say that explicitly to the user.
+- If the request is ambiguous, ask a clarification question instead of inventing a delayed task.
+
+Decision policy:
+- normal immediate work: stay on the normal agent path
+- fixed control-plane messages: leave to runtime
+- all other future-action planning: tool-first
+`;
+
 const INSTALLED_PLUGIN_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 function resolveBundledPath(...parts: string[]): string {
@@ -113,6 +136,47 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
         ? Math.max(1000, Math.trunc(value.watchdogRecoveryPollMs))
         : 30000,
   };
+}
+
+function parsePlanningRuntimeConfig(raw: unknown): PlanningRuntimeConfig {
+  const root =
+    raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const taskSystem =
+    root.taskSystem && typeof root.taskSystem === "object" && !Array.isArray(root.taskSystem)
+      ? (root.taskSystem as Record<string, unknown>)
+      : {};
+  const agents =
+    taskSystem.agents && typeof taskSystem.agents === "object" && !Array.isArray(taskSystem.agents)
+      ? (taskSystem.agents as Record<string, unknown>)
+      : {};
+  const main =
+    agents.main && typeof agents.main === "object" && !Array.isArray(agents.main)
+      ? (agents.main as Record<string, unknown>)
+      : {};
+  const planning =
+    main.planning && typeof main.planning === "object" && !Array.isArray(main.planning)
+      ? (main.planning as Record<string, unknown>)
+      : {};
+  return {
+    enabled: planning.enabled !== false,
+    mode:
+      typeof planning.mode === "string" && planning.mode.trim()
+        ? planning.mode.trim()
+        : "tool-first-after-first-ack",
+    systemPromptContract:
+      typeof planning.systemPromptContract === "string" && planning.systemPromptContract.trim()
+        ? planning.systemPromptContract.trim()
+        : DEFAULT_PLANNING_SYSTEM_PROMPT.trim(),
+  };
+}
+
+async function loadPlanningRuntimeConfig(config: Required<TaskSystemPluginConfig>): Promise<PlanningRuntimeConfig> {
+  try {
+    const raw = JSON.parse(await readFile(config.configPath, "utf8")) as unknown;
+    return parsePlanningRuntimeConfig(raw);
+  } catch {
+    return parsePlanningRuntimeConfig({});
+  }
 }
 
 function withTaskPrefix(config: Required<TaskSystemPluginConfig>, message: string): string {
@@ -782,6 +846,39 @@ function normalizeText(value: unknown): string {
     return String(value).replace(/\s+/g, " ").trim();
   }
   return value.replace(/\s+/g, " ").trim();
+}
+
+function buildPlanningRuntimeContext(params: {
+  sessionKey: string;
+  taskId: string | null;
+  mode: string;
+}): string {
+  const taskId = normalizeText(params.taskId);
+  return [
+    "task-system planning runtime context:",
+    `- current_session_key: ${params.sessionKey}`,
+    `- current_task_id: ${taskId || "unknown"}`,
+    `- planning_mode: ${params.mode}`,
+    "- if you need a future follow-up, use task-system tools in this order:",
+    "  1. ts_attach_promise_guard",
+    "  2. ts_create_followup_plan",
+    "  3. ts_schedule_followup_from_plan",
+    "  4. ts_finalize_planned_followup",
+    "- use followup_due_at as an absolute RFC3339 time",
+    "- if scheduling is overdue, still schedule and tell the user it is being recovered",
+    "- never promise a future reply without a successful task-system tool result",
+  ].join("\n");
+}
+
+function buildToolTextResult(payload: Record<string, unknown>): { content: Array<{ type: "text"; text: string }> } {
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(payload, null, 2),
+      },
+    ],
+  };
 }
 
 function canSendDirectStatusMessage(channel: string, chatId: string): boolean {
@@ -1773,6 +1870,13 @@ const taskSystemPlugin = {
   },
   register(api: OpenClawPluginApi) {
     const config = normalizeConfig(api.pluginConfig);
+    let planningConfigPromise: Promise<PlanningRuntimeConfig> | null = null;
+    const getPlanningConfig = async (): Promise<PlanningRuntimeConfig> => {
+      if (!planningConfigPromise) {
+        planningConfigPromise = loadPlanningRuntimeConfig(config);
+      }
+      return planningConfigPromise;
+    };
     let hostDeliveryTimer: ReturnType<typeof setInterval> | null = null;
     let continuationTimer: ReturnType<typeof setInterval> | null = null;
     let watchdogRecoveryTimer: ReturnType<typeof setInterval> | null = null;
@@ -1792,6 +1896,114 @@ const taskSystemPlugin = {
     const controlPlaneLatestSupersedableTokenByTask = new Map<string, number>();
     const controlPlaneLatestSupersedableMetaByTask = new Map<string, ControlPlaneBlockerMeta>();
     let controlPlaneEnqueueToken = 0;
+    api.registerTool({
+      name: "ts_attach_promise_guard",
+      description:
+        "Arm a task-system guard before making a delayed or future-action promise to the user.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          source_task_id: { type: "string" },
+          session_key: { type: "string" },
+          promise_summary: { type: "string" },
+          followup_due_at: { type: "string" },
+        },
+        required: ["source_task_id", "session_key"],
+      },
+      async execute(_id, params) {
+        const payload = params as Record<string, unknown>;
+        const result =
+          (await callHook(api, config, "attach-promise-guard", {
+            source_task_id: normalizeText(payload.source_task_id),
+            session_key: normalizeText(payload.session_key),
+            promise_summary: normalizeText(payload.promise_summary),
+            followup_due_at: normalizeText(payload.followup_due_at),
+          })) ?? { ok: false, error: "attach-promise-guard-failed" };
+        return buildToolTextResult(result);
+      },
+    });
+    api.registerTool({
+      name: "ts_create_followup_plan",
+      description:
+        "Create a task-system follow-up plan for a future action using an absolute due time.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          source_task_id: { type: "string" },
+          session_key: { type: "string" },
+          followup_due_at: { type: "string" },
+          followup_message: { type: "string" },
+          original_time_expression: { type: "string" },
+          lead_request: { type: "string" },
+        },
+        required: ["source_task_id", "session_key", "followup_due_at", "followup_message"],
+      },
+      async execute(_id, params) {
+        const payload = params as Record<string, unknown>;
+        const result =
+          (await callHook(api, config, "create-followup-plan", {
+            source_task_id: normalizeText(payload.source_task_id),
+            session_key: normalizeText(payload.session_key),
+            due_at: normalizeText(payload.followup_due_at),
+            reply_text: normalizeText(payload.followup_message),
+            original_time_expression: normalizeText(payload.original_time_expression),
+            lead_request: normalizeText(payload.lead_request),
+            kind: "delayed-reply",
+          })) ?? { ok: false, error: "create-followup-plan-failed" };
+        return buildToolTextResult(result);
+      },
+    });
+    api.registerTool({
+      name: "ts_schedule_followup_from_plan",
+      description: "Materialize a previously created follow-up plan into a paused task-system continuation task.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          source_task_id: { type: "string" },
+          session_key: { type: "string" },
+          plan_id: { type: "string" },
+        },
+        required: ["source_task_id", "session_key", "plan_id"],
+      },
+      async execute(_id, params) {
+        const payload = params as Record<string, unknown>;
+        const result =
+          (await callHook(api, config, "schedule-followup-from-plan", {
+            source_task_id: normalizeText(payload.source_task_id),
+            session_key: normalizeText(payload.session_key),
+            plan_id: normalizeText(payload.plan_id),
+          })) ?? { ok: false, error: "schedule-followup-from-plan-failed" };
+        return buildToolTextResult(result);
+      },
+    });
+    api.registerTool({
+      name: "ts_finalize_planned_followup",
+      description:
+        "Link a materialized follow-up task back to its source task so task-system can supervise it through completion.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          source_task_id: { type: "string" },
+          session_key: { type: "string" },
+          plan_id: { type: "string" },
+        },
+        required: ["source_task_id", "session_key", "plan_id"],
+      },
+      async execute(_id, params) {
+        const payload = params as Record<string, unknown>;
+        const result =
+          (await callHook(api, config, "finalize-planned-followup", {
+            source_task_id: normalizeText(payload.source_task_id),
+            session_key: normalizeText(payload.session_key),
+            plan_id: normalizeText(payload.plan_id),
+          })) ?? { ok: false, error: "finalize-planned-followup-failed" };
+        return buildToolTextResult(result);
+      },
+    });
     if (!config.enabled) {
       enqueueDebugLog(config, "plugin:load:disabled", {
         enabled: false,
@@ -2684,6 +2896,34 @@ const taskSystemPlugin = {
         schedulerDecision: "entered",
         reason: "before-prompt-build",
       });
+      const planningConfig = await getPlanningConfig();
+      if (!planningConfig.enabled) {
+        await appendDebugLog(config, "before_prompt_build:planning-disabled", {
+          agentId,
+          sessionKey,
+          schedulerDecision: "skipped",
+          reason: "planning-disabled",
+        });
+        return;
+      }
+      const activeTaskBinding = activeTaskBindings.get(normalizeSessionKey(sessionKey));
+      const prependContext = buildPlanningRuntimeContext({
+        sessionKey,
+        taskId: activeTaskBinding?.taskId ?? null,
+        mode: planningConfig.mode,
+      });
+      await appendDebugLog(config, "before_prompt_build:planning-contract-injected", {
+        agentId,
+        sessionKey,
+        taskId: activeTaskBinding?.taskId ?? null,
+        planningMode: planningConfig.mode,
+        schedulerDecision: "entered",
+        reason: "planning-contract-injected",
+      });
+      return {
+        prependContext,
+        appendSystemContext: planningConfig.systemPromptContract,
+      };
     });
 
     api.on("before_model_resolve", async (event, ctx) => {

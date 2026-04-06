@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Optional
+from uuid import uuid4
 
 from openclaw_bridge import (
     OpenClawInboundContext,
@@ -185,6 +186,261 @@ def activate_latest_from_payload(
         return {"updated": True, "task": active.to_dict(), "reason": "existing-active-task"}
     if not observed:
         return {"updated": False, "reason": "no-observed-task"}
+
+
+def _resolve_existing_task(store: TaskStore, task_id: str) -> Any:
+    return store.load_task(task_id, allow_archive=False)
+
+
+def _find_source_task_id_for_plan(store: TaskStore, plan_id: str) -> Optional[str]:
+    for task_file in sorted(store.paths.inflight_dir.glob("*.json")):
+        try:
+            payload = json.loads(task_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        plan = meta.get("tool_followup_plan") if isinstance(meta.get("tool_followup_plan"), dict) else {}
+        if str(plan.get("plan_id") or "").strip() == plan_id:
+            return str(payload.get("task_id") or "").strip() or None
+    return None
+
+
+def create_followup_plan_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    source_task_id = str(payload.get("source_task_id") or "").strip()
+    if not source_task_id:
+        return {"accepted": False, "reason": "missing-source-task-id"}
+    try:
+        source_task = _resolve_existing_task(store, source_task_id)
+    except FileNotFoundError:
+        return {"accepted": False, "reason": "source-task-not-found"}
+
+    followup_kind = str(payload.get("followup_kind") or "delayed-reply").strip()
+    followup_due_at = str(payload.get("followup_due_at") or "").strip()
+    followup_message = str(payload.get("followup_message") or "").strip()
+    if not followup_due_at:
+        return {"accepted": False, "reason": "missing-followup-due-at"}
+    if not followup_message:
+        return {"accepted": False, "reason": "missing-followup-message"}
+    try:
+        datetime.fromisoformat(followup_due_at)
+    except ValueError:
+        return {"accepted": False, "reason": "invalid-followup-due-at"}
+
+    plan_id = str(payload.get("plan_id") or "").strip() or f"plan_{uuid4().hex}"
+    plan = {
+        "plan_id": plan_id,
+        "source_task_id": source_task.task_id,
+        "status": "planned",
+        "followup_kind": followup_kind,
+        "followup_due_at": followup_due_at,
+        "followup_message": followup_message,
+        "dependency": str(payload.get("dependency") or "after-source-task-finalized"),
+        "original_time_expression": str(payload.get("original_time_expression") or "").strip() or None,
+        "created_at": now_iso(),
+    }
+    source_task.meta["tool_followup_plan"] = plan
+    saved = store.save_task(source_task)
+    return {
+        "accepted": True,
+        "plan_id": plan_id,
+        "source_task_id": saved.task_id,
+        "runtime_contract": {
+            "followup_kind": followup_kind,
+            "dependency": plan["dependency"],
+            "followup_due_at": followup_due_at,
+        },
+    }
+
+
+def attach_promise_guard_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    source_task_id = str(payload.get("source_task_id") or "").strip()
+    if not source_task_id:
+        return {"armed": False, "reason": "missing-source-task-id"}
+    try:
+        source_task = _resolve_existing_task(store, source_task_id)
+    except FileNotFoundError:
+        return {"armed": False, "reason": "source-task-not-found"}
+
+    guard_id = str(payload.get("guard_id") or "").strip() or f"guard_{uuid4().hex}"
+    source_task.meta["planning_promise_guard"] = {
+        "guard_id": guard_id,
+        "promise_type": str(payload.get("promise_type") or "delayed-followup"),
+        "expected_by_finalize": bool(payload.get("expected_by_finalize", True)),
+        "status": "armed",
+        "armed_at": now_iso(),
+    }
+    saved = store.save_task(source_task)
+    return {
+        "armed": True,
+        "guard_id": guard_id,
+        "source_task_id": saved.task_id,
+    }
+
+
+def schedule_followup_from_plan_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    plan_id = str(payload.get("plan_id") or "").strip()
+    source_task_id = str(payload.get("source_task_id") or "").strip()
+    if not source_task_id and plan_id:
+        source_task_id = _find_source_task_id_for_plan(store, plan_id) or ""
+    if not source_task_id:
+        return {"scheduled": False, "reason": "missing-source-task-id"}
+    try:
+        source_task = _resolve_existing_task(store, source_task_id)
+    except FileNotFoundError:
+        return {"scheduled": False, "reason": "source-task-not-found"}
+
+    plan = source_task.meta.get("tool_followup_plan")
+    if not isinstance(plan, dict):
+        return {"scheduled": False, "reason": "missing-followup-plan"}
+    if plan_id and str(plan.get("plan_id") or "").strip() != plan_id:
+        return {"scheduled": False, "reason": "plan-id-mismatch"}
+    existing_followup_task_id = str(plan.get("followup_task_id") or "").strip()
+    if existing_followup_task_id:
+        try:
+            existing = store.load_task(existing_followup_task_id, allow_archive=False)
+        except FileNotFoundError:
+            existing = None
+        if existing is not None:
+            return {
+                "scheduled": True,
+                "task_id": existing.task_id,
+                "status": existing.status,
+                "due_at": str(existing.meta.get("continuation_due_at") or ""),
+                "source_task_id": source_task.task_id,
+                "plan_id": str(plan.get("plan_id") or ""),
+            }
+
+    followup_due_at = str(plan.get("followup_due_at") or "").strip()
+    followup_message = str(plan.get("followup_message") or "").strip()
+    if not followup_due_at or not followup_message:
+        return {"scheduled": False, "reason": "invalid-followup-plan"}
+    try:
+        due_dt = datetime.fromisoformat(followup_due_at)
+    except ValueError:
+        return {"scheduled": False, "reason": "invalid-followup-due-at"}
+
+    followup_task = store.observe_task(
+        agent_id=source_task.agent_id,
+        session_key=source_task.session_key,
+        channel=source_task.channel,
+        account_id=source_task.account_id,
+        chat_id=source_task.chat_id,
+        user_id=source_task.user_id,
+        task_label=f"follow-up: {source_task.task_label}"[:80],
+        meta={
+            "source": "tool-followup-plan",
+            "parent_task_id": source_task.task_id,
+            "plan_id": str(plan.get("plan_id") or ""),
+            "original_user_request": str(source_task.meta.get("original_user_request") or source_task.task_label or ""),
+        },
+    )
+    scheduled = store.schedule_continuation(
+        followup_task.task_id,
+        continuation_kind=str(plan.get("followup_kind") or "delayed-reply"),
+        due_at=followup_due_at,
+        payload={
+            "reply_text": followup_message,
+            "original_user_request": str(source_task.meta.get("original_user_request") or source_task.task_label or ""),
+            "parent_task_id": source_task.task_id,
+            "plan_id": str(plan.get("plan_id") or ""),
+        },
+        reason="scheduled tool-assisted continuation wait",
+    )
+    plan["status"] = "scheduled"
+    plan["followup_task_id"] = scheduled.task_id
+    plan["materialized_at"] = now_iso()
+    plan["overdue_on_materialize"] = due_dt <= datetime.now(timezone.utc)
+    source_task.meta["tool_followup_plan"] = plan
+    guard = source_task.meta.get("planning_promise_guard")
+    if isinstance(guard, dict):
+        guard["followup_task_id"] = scheduled.task_id
+        guard["status"] = "scheduled"
+        source_task.meta["planning_promise_guard"] = guard
+    store.save_task(source_task)
+    return {
+        "scheduled": True,
+        "task_id": scheduled.task_id,
+        "status": scheduled.status,
+        "due_at": followup_due_at,
+        "source_task_id": source_task.task_id,
+        "plan_id": str(plan.get("plan_id") or ""),
+        "overdue_on_materialize": bool(plan["overdue_on_materialize"]),
+    }
+
+
+def finalize_planned_followup_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    source_task_id = str(payload.get("source_task_id") or "").strip()
+    plan_id = str(payload.get("plan_id") or "").strip()
+    if not source_task_id and plan_id:
+        source_task_id = _find_source_task_id_for_plan(store, plan_id) or ""
+    if not source_task_id:
+        return {"ok": False, "reason": "missing-source-task-id", "promise_fulfilled": False}
+    try:
+        source_task = _resolve_existing_task(store, source_task_id)
+    except FileNotFoundError:
+        return {"ok": False, "reason": "source-task-not-found", "promise_fulfilled": False}
+
+    plan = source_task.meta.get("tool_followup_plan")
+    guard = source_task.meta.get("planning_promise_guard")
+    if not isinstance(plan, dict):
+        return {"ok": False, "reason": "missing-followup-plan", "promise_fulfilled": False}
+    if plan_id and str(plan.get("plan_id") or "").strip() != plan_id:
+        return {"ok": False, "reason": "plan-id-mismatch", "promise_fulfilled": False}
+
+    followup_task_id = str(payload.get("followup_task_id") or plan.get("followup_task_id") or "").strip()
+    promise_fulfilled = False
+    if followup_task_id:
+        try:
+            store.load_task(followup_task_id, allow_archive=False)
+            promise_fulfilled = True
+        except FileNotFoundError:
+            promise_fulfilled = False
+
+    if isinstance(guard, dict):
+        guard["status"] = "fulfilled" if promise_fulfilled else "anomaly"
+        guard["checked_at"] = now_iso()
+        source_task.meta["planning_promise_guard"] = guard
+    if promise_fulfilled:
+        plan["status"] = "fulfilled"
+        plan["finalized_at"] = now_iso()
+    else:
+        source_task.meta["planning_anomaly"] = "promise-without-task"
+        source_task.meta["planning_anomaly_at"] = now_iso()
+        plan["status"] = "anomaly"
+    source_task.meta["tool_followup_plan"] = plan
+    store.save_task(source_task)
+    return {
+        "ok": promise_fulfilled,
+        "promise_fulfilled": promise_fulfilled,
+        "reason": None if promise_fulfilled else "promise-without-task",
+        "source_task_id": source_task.task_id,
+        "plan_id": str(plan.get("plan_id") or ""),
+        "followup_task_id": followup_task_id or None,
+    }
 
 
 def watchdog_auto_recover_from_payload(
@@ -682,6 +938,19 @@ def finalize_active_from_payload(
                 },
             )
             return {"updated": False, "reason": "awaiting-visible-output", "task": touched.to_dict()}
+        promise_guard = active.meta.get("planning_promise_guard")
+        tool_plan = active.meta.get("tool_followup_plan")
+        if isinstance(promise_guard, dict) and bool(promise_guard.get("expected_by_finalize", False)):
+            followup_task_id = ""
+            if isinstance(tool_plan, dict):
+                followup_task_id = str(tool_plan.get("followup_task_id") or "").strip()
+            if not followup_task_id:
+                promise_guard["status"] = "anomaly"
+                promise_guard["checked_at"] = now_iso()
+                active.meta["planning_promise_guard"] = promise_guard
+                active.meta["planning_anomaly"] = "promise-without-task"
+                active.meta["planning_anomaly_at"] = now_iso()
+                store.save_task(active)
         post_run_plan = active.meta.get("post_run_continuation_plan")
         scheduled_followup_task_id = None
         if isinstance(post_run_plan, dict):
@@ -1100,6 +1369,14 @@ def main_tasks_summary_from_payload(
 def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Path] = None) -> dict[str, Any]:
     if command == "register":
         return register_from_payload(payload, config_path=config_path)
+    if command == "create-followup-plan":
+        return create_followup_plan_from_payload(payload, config_path=config_path)
+    if command == "attach-promise-guard":
+        return attach_promise_guard_from_payload(payload, config_path=config_path)
+    if command == "schedule-followup-from-plan":
+        return schedule_followup_from_plan_from_payload(payload, config_path=config_path)
+    if command == "finalize-planned-followup":
+        return finalize_planned_followup_from_payload(payload, config_path=config_path)
     if command == "activate-latest":
         return activate_latest_from_payload(payload, config_path=config_path)
     if command == "watchdog-auto-recover":
@@ -1151,7 +1428,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     usage = (
         "usage: openclaw_hooks.py "
-        "<register|watchdog-auto-recover|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control|resume-main-task|cancel-main-queue-task|main-continuity|main-tasks-summary> "
+        "<register|create-followup-plan|attach-promise-guard|schedule-followup-from-plan|finalize-planned-followup|watchdog-auto-recover|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control|resume-main-task|cancel-main-queue-task|main-continuity|main-tasks-summary> "
         "<payload.json|-> [config.json]"
     )
     if args and args[0] in {"-h", "--help"}:

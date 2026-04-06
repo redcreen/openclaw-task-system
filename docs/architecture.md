@@ -55,40 +55,72 @@
   - runtime 仍然对 delayed / compound 请求做了一部分语义判断与 stopgap 拆解
   - 这部分是当前兼容桥接，不应被视为长期职责边界
 
+同时有一个重要的现场事实：
+
+- 当前 OpenClaw 默认连简单请求也会进入 agent / LLM 路径
+
+因此长期设计上更合理的方向是：
+
+- 不让 task-system 再前置做一层“简单 / 复杂”主判断
+- 而是让原执行架构继续理解请求
+- task-system 专注于监督、约束 future promise、持久化和恢复
+
+### review constraints to keep stable
+
+The following constraints are now part of the intended design and should be treated as default assumptions in future work:
+
+1. task-system is supervisor-first, not executor-first
+2. normal request understanding remains on the original agent / LLM path
+3. task-system should not keep growing front-door simple-versus-complex classifiers
+4. `[wd]` must stay outside the LLM path
+5. if a future action is promised, task-system must be able to prove a real task exists
+6. if planning fails, times out, or is skipped, the system must tell the user the truth
+7. if a delayed task already has an authoritative due time, execution must still happen even when that time has passed, and the user should be told it is overdue or recovered
+
+These constraints were added after live review and should not be silently relaxed by later implementation work.
+
+### 已确认评审约束
+
+下面这些约束现在已经成为默认设计前提，后续继续做时不应再反复摇摆：
+
+1. task-system 以“监工优先”为主，不以“执行优先”为主
+2. 普通请求理解仍然留在原 agent / LLM 路径
+3. task-system 不应继续扩张成前置的 simple/complex 主分类器
+4. `[wd]` 必须始终在 LLM 路径之外
+5. 只要系统承诺 future action，task-system 就必须能证明背后存在真实 task
+6. 只要 planning 失败、超时或被跳过，系统就必须如实告诉用户
+7. 只要 delayed task 已经有权威的绝对时间点，即使真正执行时已过点，也必须执行，并告诉用户这是 overdue 或 recovered
+
+这些约束来自真实评审结论，后续实现不应无声偏离。
+
 ## 2. 一张图看整体
 
 ```mermaid
 flowchart TD
-    classDef source fill:#dbe4ee,stroke:#64748b,color:#0f172a,stroke-width:1.2px;
-    classDef core fill:#dbeafe,stroke:#3b82f6,color:#0f172a,stroke-width:1.4px;
-    classDef lane fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b,stroke-width:1.2px;
-    classDef output fill:#d1fae5,stroke:#10b981,color:#064e3b,stroke-width:1.2px;
+    classDef user fill:#dbe4ee,stroke:#64748b,color:#0f172a,stroke-width:1.2px;
+    classDef host fill:#e5e7eb,stroke:#94a3b8,color:#111827,stroke-width:1.2px;
+    classDef task fill:#dbeafe,stroke:#3b82f6,color:#0f172a,stroke-width:1.4px;
+    classDef llm fill:#e9ddff,stroke:#8b5cf6,color:#1f1b4b,stroke-width:1.2px;
+    classDef output fill:#dcfce7,stroke:#22c55e,color:#14532d,stroke-width:1.2px;
     classDef visible fill:#fef3c7,stroke:#f59e0b,color:#78350f,stroke-width:1.2px;
-    style intake fill:#e5e7eb,stroke:#94a3b8,stroke-width:1px,color:#111827
-    style runtime fill:#dbeafe,stroke:#60a5fa,stroke-width:1px,color:#111827
-    style lanes fill:#e9ddff,stroke:#a78bfa,stroke-width:1px,color:#111827
-    style projection fill:#dcfce7,stroke:#4ade80,stroke-width:1px,color:#111827
 
     U["用户输入"]
     UX["用户可见反馈"]
     OPS["运维可见状态"]
 
-    subgraph intake["接入层"]
-        R["channel receive · plugin hook"]
+    subgraph hoststack["OpenClaw host"]
+        R["channel receive · host plugin hook"]
+    end
+
+    subgraph taskstack["task-system"]
         P["producer"]
-    end
-
-    subgraph runtime["任务运行时"]
         T["task truth source"]
-    end
-
-    subgraph lanes["输出分层"]
         C["control-plane lane"]
-        A["reply lane"]
+        V["projection layer"]
     end
 
-    subgraph projection["状态投影"]
-        V["projection layer"]
+    subgraph agentstack["agent / LLM path"]
+        A["reply lane · agent execution"]
     end
 
     U --> R --> P --> T
@@ -108,9 +140,10 @@ flowchart TD
     V1 --> OPS
     UX --> U
 
-    class U source
-    class R,P,T core
-    class C,A,V lane
+    class U user
+    class R host
+    class P,T,C,V task
+    class A llm
     class C1,C2,C3,A1,V1 output
     class UX,OPS visible
 ```
@@ -122,6 +155,15 @@ flowchart TD
 3. control-plane lane 与 reply lane 分离
 4. 输出最终必须变成用户可见反馈，而不是停在内部 lane
 5. 用户与运维视图都从 projection layer 读取同一份真相
+
+ownership 说明：
+
+- `OpenClaw host`
+  - 负责 channel receive、hook 生命周期、把请求交给原执行架构
+- `task-system`
+  - 负责 producer、truth source、control-plane、projection、监督与恢复
+- `agent / LLM path`
+  - 负责理解请求、执行正常工作、生成正式回复
 
 ## 3. 核心分层
 
@@ -208,25 +250,26 @@ projection layer 负责把 truth source 投影给不同入口：
 
 ```mermaid
 flowchart TD
-    classDef source fill:#dbe4ee,stroke:#64748b,color:#0f172a,stroke-width:1.2px;
+    classDef user fill:#dbe4ee,stroke:#64748b,color:#0f172a,stroke-width:1.2px;
     classDef branch fill:#fed7aa,stroke:#f97316,color:#7c2d12,stroke-width:1.2px;
-    classDef core fill:#dbeafe,stroke:#3b82f6,color:#0f172a,stroke-width:1.4px;
-    classDef lane fill:#e0e7ff,stroke:#6366f1,color:#1e1b4b,stroke-width:1.2px;
+    classDef host fill:#e5e7eb,stroke:#94a3b8,color:#111827,stroke-width:1.2px;
+    classDef task fill:#dbeafe,stroke:#3b82f6,color:#0f172a,stroke-width:1.4px;
+    classDef llm fill:#e9ddff,stroke:#8b5cf6,color:#1f1b4b,stroke-width:1.2px;
     classDef output fill:#ccfbf1,stroke:#14b8a6,color:#134e4a,stroke-width:1.2px;
     classDef visible fill:#fef3c7,stroke:#f59e0b,color:#78350f,stroke-width:1.2px;
 
     M["message received"]
-    G{"channel 是否具备 receive-side producer"}
-    PR["pre-register · early control-plane"]
-    DP["dispatch-side priority path"]
+    G{"host channel supports receive-side producer?"}
+    PR["host + task-system pre-register · early control-plane"]
+    DP["host dispatch-side priority path"]
     TT["task truth source"]
     AD["admission · queue · active task decision"]
     CL["control-plane lane"]
-    RL["reply lane"]
-    CP["发送 wd · follow-up · task 管理消息"]
-    RR["agent 执行 · 最终回复"]
-    ST["更新可见状态"]
-    UV["用户看到状态与回复"]
+    RL["reply lane · agent execution"]
+    CP["send wd · follow-up · task management"]
+    RR["agent reply · final answer"]
+    ST["update visible state"]
+    UV["user sees status and replies"]
 
     M --> G
     G -- yes --> PR
@@ -242,10 +285,11 @@ flowchart TD
     RR --> UV
     ST --> UV
 
-    class M source
+    class M user
     class G branch
-    class PR,DP,TT,AD core
-    class CL,RL lane
+    class PR,DP host
+    class TT,AD,CL task
+    class RL llm
     class CP,RR,ST output
     class UV visible
 ```
@@ -255,6 +299,15 @@ flowchart TD
 - 能前移到 receive-time 的 channel，尽量前移
 - 不能前移的 channel，至少保证 dispatch-side 的 control-plane 优先级
 - 所有路径最终都落到统一 truth source
+
+ownership 说明：
+
+- `host dispatch-side priority path`
+  - 属于 OpenClaw host 当前 channel 行为
+- `task truth source / admission / control-plane lane`
+  - 属于 task-system
+- `reply lane · agent execution`
+  - 属于原 agent / LLM 执行路径
 
 ## 5. 延迟任务如何“到点执行”
 
@@ -380,6 +433,13 @@ flowchart TD
     class G observe
     class O ops
 ```
+
+ownership 说明：
+
+- `register / truth source / continuation poller / watchdog · continuity`
+  - 都属于 task-system
+- 这不是 OpenClaw core 原生的 delayed-task runner
+- OpenClaw host 提供的是插件运行环境与消息/agent 生命周期
 
 ## 6. 为什么必须分 lane
 

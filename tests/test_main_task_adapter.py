@@ -46,20 +46,17 @@ class MainTaskAdapterTests(unittest.TestCase):
         self.assertTrue(decision.should_register)
         self.assertEqual(decision.reason, "observed-task")
 
-    def test_decide_main_task_marks_delayed_reply_as_continuation_task(self) -> None:
+    def test_decide_main_task_no_longer_auto_schedules_delayed_reply(self) -> None:
         context = self.build_context("1分钟后回复我ok1")
         decision = main_task_adapter.decide_main_task(context)
         self.assertTrue(decision.should_register)
-        self.assertEqual(decision.reason, "continuation-task")
-        self.assertIsNotNone(decision.continuation_plan)
+        self.assertEqual(decision.reason, "observed-task")
 
-    def test_decide_main_task_keeps_immediate_work_and_extracts_post_run_followup(self) -> None:
+    def test_decide_main_task_no_longer_extracts_post_run_followup(self) -> None:
         context = self.build_context("你先查一下天气，然后5分钟后回复我信息；")
         decision = main_task_adapter.decide_main_task(context)
         self.assertTrue(decision.should_register)
-        self.assertEqual(decision.reason, "long-task")
-        self.assertIsNone(decision.continuation_plan)
-        self.assertIsNotNone(decision.post_run_continuation_plan)
+        self.assertEqual(decision.reason, "observed-task")
 
     def test_decide_main_task_skips_bare_control_command(self) -> None:
         context = self.build_context("/status")
@@ -147,41 +144,34 @@ class MainTaskAdapterTests(unittest.TestCase):
         self.assertEqual(resumed.status, task_state_module.STATUS_QUEUED)
         self.assertEqual(resumed.meta["resume_target_status"], task_state_module.STATUS_QUEUED)
 
-    def test_delayed_reply_text_auto_schedules_continuation(self) -> None:
+    def test_delayed_reply_text_stays_on_normal_task_path(self) -> None:
         task = main_task_adapter.register_main_task(
             self.build_context("5分钟后回复我ok", requires_external_wait=True),
             paths=self.paths,
         )
-        self.assertEqual(task.status, task_state_module.STATUS_PAUSED)
-        self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
-        self.assertEqual(task.meta["continuation_payload"]["reply_text"], "ok")
+        self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
+        self.assertNotIn("continuation_kind", task.meta)
 
-    def test_delayed_reply_text_without_after_or_to_me_still_schedules_continuation(self) -> None:
+    def test_delayed_reply_text_without_after_or_to_me_stays_normal(self) -> None:
         task = main_task_adapter.register_main_task(
             self.build_context("3分钟回复333"),
             paths=self.paths,
         )
-        self.assertEqual(task.status, task_state_module.STATUS_PAUSED)
-        self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
-        self.assertEqual(task.meta["continuation_payload"]["reply_text"], "333")
+        self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
+        self.assertNotIn("continuation_kind", task.meta)
 
-    def test_delayed_reply_text_tolerates_short_leading_noise(self) -> None:
+    def test_delayed_reply_text_with_noise_stays_normal(self) -> None:
         task = main_task_adapter.register_main_task(
             self.build_context("一3分钟回复333"),
             paths=self.paths,
         )
-        self.assertEqual(task.status, task_state_module.STATUS_PAUSED)
-        self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
-        self.assertEqual(task.meta["continuation_payload"]["reply_text"], "333")
+        self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
+        self.assertNotIn("continuation_kind", task.meta)
 
-    def test_compound_request_stores_post_run_continuation_plan_on_running_task(self) -> None:
+    def test_compound_request_no_longer_stores_post_run_continuation_plan(self) -> None:
         task = main_task_adapter.register_main_task(
             self.build_context("你先查一下天气，然后5分钟后回复我信息；", estimated_steps=2),
             paths=self.paths,
         )
         self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
-        plan = task.meta.get("post_run_continuation_plan")
-        self.assertIsInstance(plan, dict)
-        assert isinstance(plan, dict)
-        self.assertEqual(plan["wait_seconds"], 300)
-        self.assertEqual(plan["lead_request"], "你先查一下天气")
+        self.assertNotIn("post_run_continuation_plan", task.meta)

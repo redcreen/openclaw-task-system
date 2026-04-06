@@ -67,6 +67,36 @@ class TaskConfigTests(unittest.TestCase):
         self.assertEqual(agent.classification.min_request_length, 12)
         self.assertEqual(agent.silence_monitor.silent_timeout_seconds, 45)
 
+    def test_planning_prompt_contract_has_stable_defaults(self) -> None:
+        config = task_config.load_task_system_config(config_path=self.config_path)
+        planning = config.agent_config("main").planning
+        self.assertTrue(planning.enabled)
+        self.assertEqual(planning.mode, "tool-first-after-first-ack")
+        self.assertIn("Do not generate the first [wd].", planning.system_prompt_contract)
+        self.assertIn("all other future-action planning: tool-first", planning.system_prompt_contract)
+
+    def test_planning_prompt_contract_can_be_overridden_by_user_config(self) -> None:
+        self.write_config(
+            {
+                "taskSystem": {
+                    "agents": {
+                        "main": {
+                            "planning": {
+                                "enabled": True,
+                                "mode": "tool-first-after-first-ack",
+                                "systemPromptContract": "custom contract for review and rollout"
+                            }
+                        }
+                    }
+                }
+            }
+        )
+        config = task_config.load_task_system_config(config_path=self.config_path)
+        planning = config.agent_config("main").planning
+        self.assertTrue(planning.enabled)
+        self.assertEqual(planning.mode, "tool-first-after-first-ack")
+        self.assertEqual(planning.system_prompt_contract, "custom contract for review and rollout")
+
 
 if __name__ == "__main__":
     unittest.main()

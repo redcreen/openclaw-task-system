@@ -54,6 +54,17 @@ Today the shipped system supports:
   - immediate work remains a normal task
   - a post-run delayed follow-up can be materialized when the intent is obvious
 
+At the same time, current OpenClaw behavior already sends even simple requests through the normal agent / LLM path.
+
+So the long-term answer should not be:
+
+- make task-system become a universal front-door semantic classifier
+
+It should be:
+
+- let the agent / LLM keep interpreting requests
+- let task-system supervise and verify any promised future action
+
 This stopgap exists to avoid user-visible breakage, but it is not the final model.
 
 ### correct architectural direction
@@ -170,6 +181,19 @@ This question is intentionally left open for the next roadmap discussion.
 - 对部分简单复合请求提供止血式兼容：
   - 前半段仍然作为普通任务立即执行
   - 如果后半段意图足够明显，可以在主任务完成后物化一个 delayed follow-up
+
+同时，当前 OpenClaw 的真实行为是：
+
+- 即使是简单请求，默认也通常还是会进入原来的 agent / LLM 路径
+
+所以长期正确答案不应该是：
+
+- 让 task-system 变成一个统一的前置语义分类器
+
+而应该是：
+
+- 继续让 agent / LLM 理解请求
+- 让 task-system 监督并验证未来承诺是否真的落成 task
 
 这个 stopgap 是为了避免明显用户问题，但它不是最终模型。
 

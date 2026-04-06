@@ -137,6 +137,25 @@ python3 scripts/runtime/configure_openclaw_plugin.py --write
 - `enableWatchdogRecoveryRunner`
   - 启动 watchdog recovery runner
 
+此外，runtime config 里还有一组现在已经正式可改的 planning 配置：
+
+- `agents.main.planning.enabled`
+- `agents.main.planning.mode`
+- `agents.main.planning.systemPromptContract`
+
+其中最关键的是：
+
+- `agents.main.planning.systemPromptContract`
+  - 这是给 LLM 的 planning prompt contract
+  - 用户现在可以直接在 `task_system.json` 里修改它
+
+当前可用版本默认约束是：
+
+- 第一条 `[wd]` 由 runtime 负责
+- 固定 30 秒进度消息由 runtime 负责
+- fallback / recovery 文案由 runtime 负责
+- 除这些固定控制面消息外，future-action planning 默认走 task-system tools
+
 ## 5. 安装后的最小验证
 
 建议顺序：

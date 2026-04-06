@@ -126,6 +126,7 @@
 - 对复杂 follow-up 的长期方向，应该是：
   - LLM 做 planning
   - task-system 做监督、验证、持久化与兜底
+- 鉴于当前 OpenClaw 连简单请求也默认会进入 agent / LLM，task-system 不应再额外演化成前置 simple/complex 主分类器
 
 ## 4.2 外部借鉴原则
 
@@ -495,3 +496,175 @@ Phase 5 收口结论：
    - 用显式 task-system tools + runtime verification 处理复合 delayed follow-up
    - 设计稿见：
      - [llm_tool_task_planning.md](./llm_tool_task_planning.md)
+
+## 12. Phase 6 候选：LLM-assisted planning with supervisor-first runtime
+
+这条候选方向现在已经足够明确，可以开始进入正式实施准备。
+
+核心原则不变：
+
+1. task-system 仍然是 supervisor-first
+2. 第一条 `[wd]` 仍然由 runtime 负责
+3. 30 秒进度消息仍然由 runtime 负责
+4. fallback / recovery 文案仍然由 runtime 负责
+5. 除上述控制面例外外，其余涉及 future-action planning 的部分默认走 tool-assisted planning
+
+### 12.1 目标
+
+Phase 6 要解决的是：
+
+- 不再继续扩张 regex / stopgap 规则来猜复杂复合 delayed follow-up
+- 让原 agent / LLM 继续理解请求
+- 让 task-system 提供显式工具、监控、promise guard、truth source 与恢复机制
+- 以最低成本，尽快把“工具化 planning + 运行时监督”先跑通一个最小闭环
+
+一句话总结：
+
+> 第一条确认与固定控制面仍然由 runtime 兜底，其余 future-action planning 默认交给 tool path；task-system 负责监督、验证、持久化和恢复。
+
+### 12.2 最小落地切片
+
+为了低成本快速实现，这一轮不要试图一次做完整 planner，而是先落一个最小可工作的切片：
+
+1. 保留现有：
+   - 首条 `[wd]`
+   - 30 秒 follow-up
+   - fallback / recovery 提示
+   都由 runtime 负责
+
+2. 新增最小 planning tool 链路，只覆盖：
+   - 创建 follow-up plan
+   - 物化 follow-up task
+   - promise guard
+
+3. 只要求支持一种最小闭环：
+   - 原 agent / LLM 在执行过程中决定创建 future action
+   - 通过 task-system tool 建立真实 plan
+   - finalize 时验证 plan 已物化
+   - 到点后由 task-system continuation runner 执行
+
+4. 先不尝试：
+   - 复杂多阶段 planner
+   - 全 channel 同时 rollout
+   - 把所有 follow-up 文案都工具化
+
+### 12.3 建议工作拆分
+
+#### Step 6A. contract 固定
+
+目标：
+
+- 固定 tool contract
+- 固定 absolute due time 语义
+- 固定 promise guard 语义
+
+输出：
+
+- `followup_due_at` 成为权威字段
+- “逾期也必须执行并告知用户” 成为固定 contract
+- “未建 task 不得口头承诺 future action” 成为固定 contract
+
+#### Step 6B. 最小 tool truth source
+
+目标：
+
+- 落最小工具接口与真相源字段
+
+范围：
+
+- `ts_create_followup_plan`
+- `ts_schedule_followup_from_plan`
+- `ts_attach_promise_guard`
+
+输出：
+
+- plan 能落盘
+- plan 能被物化成 paused follow-up task
+- guard 能在 finalize 阶段被校验
+
+#### Step 6C. 最小监控闭环
+
+目标：
+
+- 先把最关键的 anomaly 看住
+
+范围：
+
+- planning health
+- promise-without-task
+- tool expectation guard
+- overdue follow-up execution
+
+输出：
+
+- anomaly 能进入 truth source
+- dashboard / triage / continuity 能看见
+- 用户文案能如实说明 planning 超时、未建 task、逾期补执行
+
+#### Step 6D. 最小接线
+
+目标：
+
+- 让原 agent / LLM 能走最小 tool path
+
+范围：
+
+- 首条 `[wd]` 仍由 runtime 处理
+- 原 agent / LLM 执行主请求
+- future-action planning 通过 tools 落 plan
+- finalize / continuation runner 完成后半段闭环
+
+输出：
+
+- 一个最小真实路径可以跑通：
+  - 用户请求
+  - runtime `[wd]`
+  - agent / LLM 正常执行
+  - tool 建 plan
+  - finalize 校验
+  - continuation runner 到点执行
+
+#### Step 6E. 最小真实验收
+
+目标：
+
+- 先验一个最关键用户价值，而不是一次性铺满
+
+首要验收例子：
+
+- `先做 A，再在明确绝对时间点或相对时间点后回来继续`
+
+重点不看“模型回答多聪明”，而看：
+
+- 有没有真实 task
+- due time 是否落盘
+- promise 是否被 guard
+- 逾期后是否仍执行并如实告知
+
+### 12.4 最小先跑通测试集
+
+Phase 6 不应该一上来把全量 testsuite 都绑进来。
+
+建议先定义一个最小 starter suite，只跑最关键闭环：
+
+1. tool plan 能创建并落 truth source
+2. plan 能被物化成 paused follow-up task
+3. finalize 能抓住 promise-without-task
+4. overdue follow-up 仍会执行
+5. 首条 `[wd]`、30 秒 follow-up、fallback / recovery 仍保持 runtime-owned
+
+等这 5 条稳定后，再把 coverage 扩到：
+
+- 更多 channel
+- 更多 planning anomaly
+- 更多 UI / projection 输出
+
+### 12.5 Phase 6 退出条件
+
+只有同时满足下面几条，才能说 Phase 6 最小闭环成立：
+
+1. 至少一条 tool-assisted future-action 路径在自动化测试里全绿
+2. promise-without-task 有稳定 anomaly 证据链
+3. overdue follow-up 有自动化验证
+4. 首条 `[wd]`、30 秒 follow-up、fallback / recovery 仍然不依赖 LLM
+5. roadmap、testsuite、architecture、planning design 文档都已同步

@@ -14,6 +14,23 @@ from task_state import DEFAULT_DATA_DIR, PROJECT_ROOT, TaskPaths
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "task_system.json"
 EXAMPLE_CONFIG_PATH = PROJECT_ROOT / "config" / "task_system.example.json"
 
+DEFAULT_TASK_PLANNING_SYSTEM_PROMPT = """You are the normal request executor. task-system runtime is the supervisor and the owner of the task truth source.
+
+Hard rules:
+- Do not generate the first [wd]. That is owned by runtime.
+- Do not generate the fixed 30-second progress message. That is owned by runtime.
+- Do not generate fallback or recovery control-plane text unless runtime explicitly delegates that action.
+- For every future promise, delayed follow-up, reminder, or dependent continuation, use task-system tools by default.
+- Never say that you will come back later unless runtime has accepted a real scheduled follow-up.
+- If task-system tool scheduling fails, times out, or is skipped, say that explicitly to the user.
+- If the request is ambiguous, ask a clarification question instead of inventing a delayed task.
+
+Decision policy:
+- normal immediate work: stay on the normal agent path
+- fixed control-plane messages: leave to runtime
+- all other future-action planning: tool-first
+"""
+
 
 def resolve_openclaw_bin() -> str:
     env_value = os.environ.get("OPENCLAW_BIN", "").strip()
@@ -38,11 +55,19 @@ class SilenceMonitorConfig:
 
 
 @dataclass(frozen=True)
+class PlanningConfig:
+    enabled: bool = True
+    mode: str = "tool-first-after-first-ack"
+    system_prompt_contract: str = DEFAULT_TASK_PLANNING_SYSTEM_PROMPT
+
+
+@dataclass(frozen=True)
 class AgentTaskConfig:
     enabled: bool = True
     auto_start: bool = True
     classification: ClassificationConfig = field(default_factory=ClassificationConfig)
     silence_monitor: SilenceMonitorConfig = field(default_factory=SilenceMonitorConfig)
+    planning: PlanningConfig = field(default_factory=PlanningConfig)
 
 
 @dataclass(frozen=True)
@@ -101,12 +126,21 @@ def _build_silence_monitor_config(raw: dict[str, Any]) -> SilenceMonitorConfig:
     )
 
 
+def _build_planning_config(raw: dict[str, Any]) -> PlanningConfig:
+    return PlanningConfig(
+        enabled=bool(raw.get("enabled", True)),
+        mode=str(raw.get("mode", "tool-first-after-first-ack")),
+        system_prompt_contract=str(raw.get("systemPromptContract", DEFAULT_TASK_PLANNING_SYSTEM_PROMPT)),
+    )
+
+
 def _build_agent_config(raw: dict[str, Any]) -> AgentTaskConfig:
     return AgentTaskConfig(
         enabled=bool(raw.get("enabled", True)),
         auto_start=bool(raw.get("autoStart", True)),
         classification=_build_classification_config(raw.get("classification", {})),
         silence_monitor=_build_silence_monitor_config(raw.get("silenceMonitor", {})),
+        planning=_build_planning_config(raw.get("planning", {})),
     )
 
 

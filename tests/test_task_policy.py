@@ -49,38 +49,6 @@ class TaskPolicyTests(unittest.TestCase):
         self.assertTrue(result.is_long_task)
         self.assertEqual(result.confidence, "medium")
 
-    def test_parse_delayed_reply_request_detects_minutes(self) -> None:
-        plan = task_policy.parse_delayed_reply_request("5分钟后回复我ok")
-        self.assertIsNotNone(plan)
-        assert plan is not None
-        self.assertEqual(plan.kind, "delayed-reply")
-        self.assertEqual(plan.wait_seconds, 300)
-        self.assertEqual(plan.reply_text, "ok")
-
-    def test_parse_delayed_reply_request_accepts_optional_after_and_to_me(self) -> None:
-        plan = task_policy.parse_delayed_reply_request("3分钟回复333")
-        self.assertIsNotNone(plan)
-        assert plan is not None
-        self.assertEqual(plan.wait_seconds, 180)
-        self.assertEqual(plan.reply_text, "333")
-
-    def test_parse_delayed_reply_request_tolerates_short_leading_noise(self) -> None:
-        plan = task_policy.parse_delayed_reply_request("一3分钟回复333")
-        self.assertIsNotNone(plan)
-        assert plan is not None
-        self.assertEqual(plan.wait_seconds, 180)
-        self.assertEqual(plan.reply_text, "333")
-
-    def test_parse_delayed_reply_request_does_not_match_embedded_prompt_text(self) -> None:
-        plan = task_policy.parse_delayed_reply_request(
-            "这是一个已经到达计划时间的延迟任务，请你现在继续执行。\n原始用户请求：1分钟后回复我ok1\n你现在必须直接回复以下最终内容：ok1"
-        )
-        self.assertIsNone(plan)
-
-    def test_parse_post_run_delayed_followup_request_extracts_leading_work(self) -> None:
-        plan = task_policy.parse_post_run_delayed_followup_request("你先查一下天气，然后5分钟后回复我信息；")
-        self.assertIsNotNone(plan)
-        assert plan is not None
-        self.assertEqual(plan.wait_seconds, 300)
-        self.assertEqual(plan.lead_request, "你先查一下天气")
-        self.assertIn("你先查一下天气", plan.reply_text)
+    def test_task_policy_no_longer_exports_regex_followup_parsers(self) -> None:
+        self.assertFalse(hasattr(task_policy, "parse_delayed_reply_request"))
+        self.assertFalse(hasattr(task_policy, "parse_post_run_delayed_followup_request"))
