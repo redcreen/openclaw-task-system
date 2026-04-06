@@ -86,6 +86,55 @@ test("continuation delivery sent carries scheduler diagnostics", async () => {
   }
 });
 
+test("planned content follow-up replies to source message without wd prefix", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    claimDueContinuationsResponse: {
+      tasks: [
+        {
+          task_id: "task-cont-planned-1",
+          session_key: "agent:main:feishu:direct:ou_planned",
+          channel: "feishu",
+          account_id: "acct-planned",
+          chat_id: "chat-planned",
+          reply_text: "[[reply_to_current]] 杭州现在大概28°C，晴，风不大。",
+          continuation_payload: {
+            original_user_request: "杭州天气2分钟后告诉我",
+            plan_id: "plan-planned-1",
+            reply_to_id: "om_source_planned",
+            thread_id: "thread_source_planned",
+          },
+        },
+      ],
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages, {
+    enableContinuationRunner: true,
+    continuationPollMs: 60_000,
+  });
+
+  try {
+    await plugin.start();
+
+    const delivered = await waitForDebugEvent(
+      runtimeRoot,
+      (entry) => entry.event === "continuation-delivery:sent" && entry.payload?.taskId === "task-cont-planned-1",
+      1500,
+    );
+    assert.equal(delivered?.payload?.deliveryPath, "reply-to-source-message");
+    assert.equal(delivered?.payload?.replyToId, "om_source_planned");
+    assert.equal(delivered?.payload?.threadId, "thread_source_planned");
+    assert.equal(delivered?.payload?.message, "杭州现在大概28°C，晴，风不大。");
+    assert.equal(sentMessages.length, 1);
+    assert.equal(sentMessages[0]?.text, "杭州现在大概28°C，晴，风不大。");
+    assert.equal(sentMessages[0]?.replyToId, "om_source_planned");
+    assert.equal(sentMessages[0]?.threadId, "thread_source_planned");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("host feishu delivery sent carries scheduler diagnostics", async () => {
   resetGlobalState();
   const { runtimeRoot } = await createFakeRuntimeRoot();

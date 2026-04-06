@@ -161,3 +161,61 @@ test("registered planning tools call runtime hooks", async () => {
     await cleanupRuntime(plugin, runtimeRoot);
   }
 });
+
+test("finalizing planned follow-up sends runtime-owned wd scheduling confirmation", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    finalizePlannedFollowupResponse: {
+      ok: true,
+      promise_fulfilled: true,
+      status: "linked",
+      followup_task_id: "task-followup-123",
+      followup_due_at: "2026-04-06T12:05:00+08:00",
+      original_time_expression: "5分钟后",
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "帮我查天气，5分钟后同步结果",
+        body: "帮我查天气，5分钟后同步结果",
+        channel: "feishu",
+        senderId: "user-1",
+        messageId: "om_source_message",
+        threadId: "thread_source_message",
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+        messageId: "om_source_message",
+        threadId: "thread_source_message",
+      },
+    );
+
+    const finalizeResult = await plugin.registeredTools.get("ts_finalize_planned_followup").execute("run-1", {
+      source_task_id: "task-123",
+      session_key: "agent:main:feishu:acct-1:user-1",
+      plan_id: "plan-123",
+    });
+
+    assert.match(finalizeResult.content[0].text, /"promise_fulfilled": true/);
+    assert.equal(sentMessages.length, 2);
+    const confirmation = sentMessages[1];
+    assert.match(confirmation?.text || "", /^\[wd\] 已安排妥当/);
+    assert.equal(confirmation?.replyToId, "om_source_message");
+    assert.equal(confirmation?.threadId, "thread_source_message");
+
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    const delivered = debugEvents.find((entry) => entry.event === "followup-scheduled:sent");
+    assert.equal(delivered?.payload?.schedulerDecision, "sent");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});

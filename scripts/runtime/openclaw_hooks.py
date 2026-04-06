@@ -116,6 +116,8 @@ def _build_context(payload: dict[str, Any]) -> OpenClawInboundContext:
         chat_id=payload["chat_id"],
         user_id=payload.get("user_id"),
         user_request=payload["user_request"],
+        reply_to_id=payload.get("reply_to_id") or payload.get("replyToId"),
+        thread_id=payload.get("thread_id") or payload.get("threadId"),
         estimated_steps=payload.get("estimated_steps"),
         touches_multiple_files=bool(payload.get("touches_multiple_files", False)),
         involves_delegation=bool(payload.get("involves_delegation", False)),
@@ -225,6 +227,10 @@ def create_followup_plan_from_payload(
     followup_message = str(payload.get("followup_message") or payload.get("reply_text") or "").strip()
     reply_to_id = str(payload.get("reply_to_id") or payload.get("replyToId") or "").strip()
     thread_id = str(payload.get("thread_id") or payload.get("threadId") or "").strip()
+    if not reply_to_id:
+        reply_to_id = str(source_task.meta.get("source_reply_to_id") or "").strip()
+    if not thread_id:
+        thread_id = str(source_task.meta.get("source_thread_id") or "").strip()
     if not followup_due_at:
         return {"accepted": False, "reason": "missing-followup-due-at"}
     if not followup_message:
@@ -446,6 +452,8 @@ def finalize_planned_followup_from_payload(
         "source_task_id": source_task.task_id,
         "plan_id": str(plan.get("plan_id") or ""),
         "followup_task_id": followup_task_id or None,
+        "followup_due_at": str(plan.get("followup_due_at") or ""),
+        "original_time_expression": str(plan.get("original_time_expression") or ""),
     }
 
 

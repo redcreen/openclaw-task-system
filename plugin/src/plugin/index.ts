@@ -1215,7 +1215,6 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
     const taskId = normalizeText(String(payload.task_id || ""));
     const sessionKey = normalizeText(String(payload.session_key || ""));
     const accountId = normalizeText(String(payload.account_id || ""));
-    const replyText = decorateTaskManagedFollowupText(normalizeText(String(payload.reply_text || "")));
     const originalUserRequest = normalizeText(
       String(
         (payload.continuation_payload &&
@@ -1228,6 +1227,10 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
       payload.continuation_payload && typeof payload.continuation_payload === "object"
         ? (payload.continuation_payload as Record<string, unknown>)
         : null;
+    const isPlannedContentFollowup = Boolean(normalizeText(String(continuationPayload?.plan_id || "")));
+    const replyText = decorateTaskManagedFollowupText(normalizeText(String(payload.reply_text || "")), {
+      wd: !isPlannedContentFollowup,
+    });
     const replyToId = normalizeText(String(continuationPayload?.reply_to_id || ""));
     const threadId = normalizeText(String(continuationPayload?.thread_id || ""));
     if (!channel || !chatId || !taskId || !replyText) {
@@ -1445,6 +1448,9 @@ type PendingReceipt = {
 
 type ActiveTaskBinding = {
   taskId: string;
+  channel?: string;
+  accountId?: string;
+  chatId?: string;
   replyToId?: string;
   threadId?: string;
 };
@@ -1597,26 +1603,46 @@ function extractThreadId(event: Record<string, unknown>, ctx: Record<string, unk
   return undefined;
 }
 
-function decorateTaskManagedFollowupText(text: string): string {
+function decorateTaskManagedFollowupText(text: string, options?: { wd?: boolean }): string {
   const normalized = normalizeText(text);
   if (!normalized) {
     return normalized;
   }
   const replyPrefix = "[[reply_to_current]]";
+  const shouldAddWd = options?.wd !== false;
   if (normalized.startsWith(replyPrefix)) {
     const rest = normalizeText(normalized.slice(replyPrefix.length));
     if (!rest) {
-      return `${replyPrefix} [wd]`;
+      return shouldAddWd ? "[wd]" : "";
+    }
+    if (!shouldAddWd) {
+      return rest;
     }
     if (rest.startsWith("[wd]")) {
-      return `${replyPrefix} ${rest}`;
+      return rest;
     }
-    return `${replyPrefix} [wd] ${rest}`;
+    return `[wd] ${rest}`;
+  }
+  if (!shouldAddWd) {
+    return normalized;
   }
   if (normalized.startsWith("[wd]")) {
     return normalized;
   }
   return `[wd] ${normalized}`;
+}
+
+function formatScheduleConfirmationMessage(result: Record<string, unknown>): string {
+  const dueAt = normalizeText(result.followup_due_at);
+  const expression = normalizeText(result.original_time_expression);
+  let label = expression;
+  if (!label && dueAt) {
+    const parsed = new Date(dueAt);
+    if (!Number.isNaN(parsed.getTime())) {
+      label = `${String(parsed.getHours()).padStart(2, "0")}:${String(parsed.getMinutes()).padStart(2, "0")}`;
+    }
+  }
+  return label ? `已安排妥当，将在 ${label} 回复。` : "已安排妥当。";
 }
 
 function isPreemptingControlPlanePriority(priority: ControlPlanePriority): boolean {
@@ -2062,6 +2088,22 @@ const taskSystemPlugin = {
             session_key: normalizeText(payload.session_key),
             plan_id: normalizeText(payload.plan_id),
           })) ?? { ok: false, error: "finalize-planned-followup-failed" };
+        const sessionKey = normalizeText(payload.session_key);
+        const binding = activeTaskBindings.get(sessionKey);
+        if (result && result.ok === true && result.promise_fulfilled === true && binding?.channel && binding?.chatId) {
+          await sendControlPlaneMessage({
+            eventName: "followup-scheduled",
+            priority: "p1-task-management",
+            channel: binding.channel,
+            accountId: binding.accountId,
+            chatId: binding.chatId,
+            replyToId: binding.replyToId,
+            threadId: binding.threadId,
+            sessionKey,
+            taskId: normalizeText(payload.source_task_id) || binding.taskId,
+            message: formatScheduleConfirmationMessage(result),
+          });
+        }
         return buildToolTextResult(result);
       },
     });
@@ -2659,6 +2701,8 @@ const taskSystemPlugin = {
           chat_id: chatId,
           user_id: senderId,
           user_request: event.body || event.content,
+          reply_to_id: replyToId,
+          thread_id: threadId,
           observe_only: true,
         }));
       const registerDecision = resolveRegisterDecision(registerResult);
@@ -2678,6 +2722,9 @@ const taskSystemPlugin = {
       if (typeof registerDecision.task_id === "string" && registerDecision.task_id.trim()) {
         activeTaskBindings.set(sessionKey, {
           taskId: registerDecision.task_id.trim(),
+          channel: channelName,
+          accountId,
+          chatId,
           replyToId: effectiveReplyToId,
           threadId: effectiveThreadId,
         });

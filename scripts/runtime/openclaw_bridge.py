@@ -29,6 +29,8 @@ class OpenClawInboundContext:
     chat_id: str
     user_id: Optional[str]
     user_request: str
+    reply_to_id: Optional[str] = None
+    thread_id: Optional[str] = None
     estimated_steps: int | None = None
     touches_multiple_files: bool = False
     involves_delegation: bool = False
@@ -155,6 +157,8 @@ def build_main_task_context(ctx: OpenClawInboundContext) -> MainTaskContext:
         user_id=ctx.user_id,
         user_request=ctx.user_request,
         estimated_steps=ctx.estimated_steps,
+        reply_to_id=ctx.reply_to_id,
+        thread_id=ctx.thread_id,
         touches_multiple_files=ctx.touches_multiple_files,
         involves_delegation=ctx.involves_delegation,
         requires_external_wait=ctx.requires_external_wait,

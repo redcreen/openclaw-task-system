@@ -18,6 +18,8 @@ class MainTaskContext:
     chat_id: str
     user_request: str
     user_id: Optional[str] = None
+    reply_to_id: Optional[str] = None
+    thread_id: Optional[str] = None
     estimated_steps: int | None = None
     touches_multiple_files: bool = False
     involves_delegation: bool = False
@@ -119,6 +121,8 @@ def register_main_task(
         meta={
           "source": "main-task-adapter",
           "original_user_request": context.user_request,
+          "source_reply_to_id": context.reply_to_id,
+          "source_thread_id": context.thread_id,
           "estimated_steps": context.estimated_steps,
           "touches_multiple_files": context.touches_multiple_files,
           "involves_delegation": context.involves_delegation,

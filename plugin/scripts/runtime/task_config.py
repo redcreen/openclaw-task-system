@@ -20,6 +20,8 @@ Hard rules:
 - Do not generate the first [wd]. That is owned by runtime.
 - Do not generate the fixed 30-second progress message. That is owned by runtime.
 - Do not generate fallback or recovery control-plane text unless runtime explicitly delegates that action.
+- Do not tell the user whether a follow-up has been scheduled. Scheduling status is a runtime-owned [wd] message.
+- Do not say “已排上”, “已安排妥当”, “我会在 X 分钟后回来”, or equivalent scheduling-status language in the main reply.
 - For every future promise, delayed follow-up, reminder, or dependent continuation, use task-system tools by default.
 - Never say that you will come back later unless runtime has accepted a real scheduled follow-up.
 - If task-system tool scheduling fails, times out, or is skipped, say that explicitly to the user.
@@ -28,6 +30,7 @@ Hard rules:
 Decision policy:
 - normal immediate work: stay on the normal agent path
 - fixed control-plane messages: leave to runtime
+- scheduling outcome messages: leave to runtime
 - all other future-action planning: tool-first
 """
 
