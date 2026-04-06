@@ -123,6 +123,8 @@ test("registered planning tools call runtime hooks", async () => {
       session_key: "agent:main:feishu:acct-1:user-1",
       followup_due_at: "2026-04-06T12:05:00+08:00",
       followup_message: "5分钟后我回来同步结果",
+      followup_summary: "5分钟后同步天气结果",
+      main_user_content_mode: "none",
       original_time_expression: "5分钟后",
       lead_request: "先查一下天气",
       reply_to_id: "om_source_message",
@@ -155,6 +157,8 @@ test("registered planning tools call runtime hooks", async () => {
     const createCall = calls.find((entry) => entry.command === "create-followup-plan");
     assert.equal(createCall?.payload?.followup_due_at, "2026-04-06T12:05:00+08:00");
     assert.equal(createCall?.payload?.followup_message, "5分钟后我回来同步结果");
+    assert.equal(createCall?.payload?.followup_summary, "5分钟后同步天气结果");
+    assert.equal(createCall?.payload?.main_user_content_mode, "none");
     assert.equal(createCall?.payload?.followup_kind, "delayed-reply");
     assert.equal(createCall?.payload?.reply_to_id, "om_source_message");
     assert.equal(createCall?.payload?.thread_id, "thread_source_message");
@@ -165,7 +169,7 @@ test("registered planning tools call runtime hooks", async () => {
 
 test("finalizing planned follow-up sends runtime-owned wd scheduling confirmation", async () => {
   resetGlobalState();
-  const { runtimeRoot } = await createFakeRuntimeRoot({
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot({
     finalizePlannedFollowupResponse: {
       ok: true,
       promise_fulfilled: true,
@@ -173,6 +177,7 @@ test("finalizing planned follow-up sends runtime-owned wd scheduling confirmatio
       followup_task_id: "task-followup-123",
       followup_due_at: "2026-04-06T12:05:00+08:00",
       original_time_expression: "5分钟后",
+      followup_summary: "5分钟后同步天气结果",
     },
   });
   const sentMessages = [];
@@ -209,13 +214,15 @@ test("finalizing planned follow-up sends runtime-owned wd scheduling confirmatio
     assert.match(finalizeResult.content[0].text, /"promise_fulfilled": true/);
     assert.equal(sentMessages.length, 2);
     const confirmation = sentMessages[1];
-    assert.match(confirmation?.text || "", /^\[wd\] 已安排妥当/);
+    assert.equal(confirmation?.text, "[wd] 已安排妥当：5分钟后同步天气结果。");
     assert.equal(confirmation?.replyToId, "om_source_message");
     assert.equal(confirmation?.threadId, "thread_source_message");
 
     const debugEvents = await readDebugEvents(runtimeRoot);
     const delivered = debugEvents.find((entry) => entry.event === "followup-scheduled:sent");
     assert.equal(delivered?.payload?.schedulerDecision, "sent");
+    const commands = await readHookCommands(callsPath);
+    assert.ok(commands.includes("sync-followup-reply-target"));
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }
@@ -249,11 +256,12 @@ test("message_sending only forwards structured user content after planning tools
       },
     );
 
-    await plugin.registeredTools.get("ts_attach_promise_guard").execute("run-1", {
+    await plugin.registeredTools.get("ts_create_followup_plan").execute("run-1", {
       source_task_id: "task-123",
       session_key: "agent:main:feishu:acct-1:user-1",
-      promise_summary: "5分钟后回来同步结果",
       followup_due_at: "2026-04-06T12:05:00+08:00",
+      followup_message: "5分钟后回来同步结果",
+      main_user_content_mode: "full-answer",
     });
     const event = {
       content:
@@ -275,6 +283,61 @@ test("message_sending only forwards structured user content after planning tools
     const debugEvents = await readDebugEvents(runtimeRoot);
     const extracted = debugEvents.find((entry) => entry.event === "message_sending:user-content-extracted");
     assert.equal(extracted?.payload?.reason, "task-user-content-block");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("message_sending suppresses immediate business content when main_user_content_mode is none", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot();
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "宁波天气明天2分钟后告诉我",
+        body: "宁波天气明天2分钟后告诉我",
+        channel: "feishu",
+        senderId: "user-1",
+        messageId: "om_source_message",
+        threadId: "thread_source_message",
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+        messageId: "om_source_message",
+        threadId: "thread_source_message",
+      },
+    );
+
+    await plugin.registeredTools.get("ts_create_followup_plan").execute("run-1", {
+      source_task_id: "task-123",
+      session_key: "agent:main:feishu:acct-1:user-1",
+      followup_due_at: "2026-04-06T12:05:00+08:00",
+      followup_message: "2分钟后我回来同步明天天气",
+      followup_summary: "2分钟后同步明天天气",
+      main_user_content_mode: "none",
+    });
+
+    const event = {
+      content: "<task_user_content>查好了。明天宁波 20°C。</task_user_content>",
+    };
+    await plugin.messageSending(event, {
+      sessionKey: "agent:main:feishu:acct-1:user-1",
+      channelId: "feishu",
+      conversationId: "chat-1",
+      accountId: "acct-1",
+      senderId: "user-1",
+      agentId: "main",
+    });
+
+    assert.equal(event.content, "");
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }
@@ -307,6 +370,14 @@ test("message_sending suppresses unstructured content after planning tools are u
         threadId: "thread_source_message",
       },
     );
+
+    await plugin.registeredTools.get("ts_create_followup_plan").execute("run-1", {
+      source_task_id: "task-123",
+      session_key: "agent:main:feishu:acct-1:user-1",
+      followup_due_at: "2026-04-06T12:05:00+08:00",
+      followup_message: "5分钟后回来同步结果",
+      main_user_content_mode: "full-answer",
+    });
 
     await plugin.registeredTools.get("ts_finalize_planned_followup").execute("run-1", {
       source_task_id: "task-123",

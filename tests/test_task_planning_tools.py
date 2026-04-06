@@ -57,6 +57,8 @@ class TaskPlanningToolsTests(unittest.TestCase):
                 "followup_kind": "delayed-reply",
                 "followup_due_at": "2026-04-06T11:30:00+08:00",
                 "followup_message": "5 分钟后继续告诉你天气结果",
+                "followup_summary": "5 分钟后同步天气结果",
+                "main_user_content_mode": "none",
                 "dependency": "after-source-task-finalized",
                 "original_time_expression": "5分钟后",
                 "reply_to_id": "om_source_message",
@@ -74,6 +76,8 @@ class TaskPlanningToolsTests(unittest.TestCase):
         self.assertEqual(plan["plan_id"], created["plan_id"])
         self.assertEqual(plan["status"], "planned")
         self.assertEqual(plan["followup_message"], "5 分钟后继续告诉你天气结果")
+        self.assertEqual(plan["followup_summary"], "5 分钟后同步天气结果")
+        self.assertEqual(plan["main_user_content_mode"], "none")
         self.assertEqual(plan["reply_to_id"], "om_source_message")
         self.assertEqual(plan["thread_id"], "thread_source_message")
 
@@ -234,6 +238,39 @@ class TaskPlanningToolsTests(unittest.TestCase):
         self.assertTrue(finalized["promise_fulfilled"])
         self.assertEqual(finalized["followup_due_at"], "2026-04-06T11:30:00+08:00")
         self.assertEqual(finalized["original_time_expression"], "5分钟后")
+
+    def test_sync_followup_reply_target_updates_materialized_followup(self) -> None:
+        registration = self._register_running_source_task()
+        source_task_id = str(registration["task_id"])
+        created = openclaw_hooks.create_followup_plan_from_payload(
+            {
+                "source_task_id": source_task_id,
+                "followup_kind": "delayed-reply",
+                "followup_due_at": "2026-04-06T11:30:00+08:00",
+                "followup_message": "5 分钟后继续告诉你天气结果",
+                "reply_to_id": "om_source_message",
+                "thread_id": "thread_source_message",
+            },
+            config_path=self.config_path,
+        )
+        scheduled = openclaw_hooks.schedule_followup_from_plan_from_payload(
+            {"plan_id": created["plan_id"]},
+            config_path=self.config_path,
+        )
+
+        synced = openclaw_hooks.sync_followup_reply_target_from_payload(
+            {
+                "followup_task_id": scheduled["task_id"],
+                "reply_to_id": "om_schedule_wd_message",
+                "thread_id": "thread_source_message",
+            },
+            config_path=self.config_path,
+        )
+
+        self.assertTrue(synced["updated"])
+        store = task_state_module.TaskStore(paths=self.paths)
+        followup = store.load_task(scheduled["task_id"], allow_archive=False)
+        self.assertEqual(followup.meta["continuation_payload"]["reply_to_id"], "om_schedule_wd_message")
 
     def test_overdue_followup_is_still_claimed_and_delivered(self) -> None:
         registration = self._register_running_source_task()

@@ -190,6 +190,9 @@ export async function createFakeRuntimeRoot(options = {}) {
     status: "linked",
     followup_task_id: "task-followup-123",
   };
+  const syncFollowupReplyTargetResponse = options.syncFollowupReplyTargetResponse ?? {
+    updated: true,
+  };
   const resolveActiveResponse = options.resolveActiveResponse ?? {
     found: true,
     task_id: "task-123",
@@ -213,6 +216,7 @@ export async function createFakeRuntimeRoot(options = {}) {
   const serializedAttachPromiseGuardResponse = JSON.stringify(JSON.stringify(attachPromiseGuardResponse));
   const serializedScheduleFollowupFromPlanResponse = JSON.stringify(JSON.stringify(scheduleFollowupFromPlanResponse));
   const serializedFinalizePlannedFollowupResponse = JSON.stringify(JSON.stringify(finalizePlannedFollowupResponse));
+  const serializedSyncFollowupReplyTargetResponse = JSON.stringify(JSON.stringify(syncFollowupReplyTargetResponse));
   const serializedResolveActiveResponse = JSON.stringify(JSON.stringify(resolveActiveResponse));
   const serializedGatewayCallResponses = JSON.stringify(JSON.stringify(gatewayCallResponses));
   const serializedGatewayCallFailures = JSON.stringify(JSON.stringify(gatewayCallFailures));
@@ -260,6 +264,8 @@ elif command == "schedule-followup-from-plan":
     print(json.dumps(json.loads(${serializedScheduleFollowupFromPlanResponse}), ensure_ascii=False))
 elif command == "finalize-planned-followup":
     print(json.dumps(json.loads(${serializedFinalizePlannedFollowupResponse}), ensure_ascii=False))
+elif command == "sync-followup-reply-target":
+    print(json.dumps(json.loads(${serializedSyncFollowupReplyTargetResponse}), ensure_ascii=False))
 elif command == "resolve-active":
     print(json.dumps(json.loads(${serializedResolveActiveResponse}), ensure_ascii=False))
 elif command == "register":
@@ -360,6 +366,10 @@ export function createApi(runtimeRoot, sentMessages, pluginConfigOverrides = {})
                   await new Promise((resolve) => setTimeout(resolve, outboundSendDelayMs));
                 }
                 sentMessages.push(payload);
+                return {
+                  messageId: payload.replyToId ? `reply_${sentMessages.length}` : `message_${sentMessages.length}`,
+                  threadId: payload.threadId,
+                };
               },
             };
           },

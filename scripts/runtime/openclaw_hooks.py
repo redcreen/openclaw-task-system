@@ -225,6 +225,8 @@ def create_followup_plan_from_payload(
     followup_kind = str(payload.get("followup_kind") or payload.get("kind") or "delayed-reply").strip()
     followup_due_at = str(payload.get("followup_due_at") or payload.get("due_at") or "").strip()
     followup_message = str(payload.get("followup_message") or payload.get("reply_text") or "").strip()
+    followup_summary = str(payload.get("followup_summary") or payload.get("summary") or "").strip()
+    main_user_content_mode = str(payload.get("main_user_content_mode") or "none").strip() or "none"
     reply_to_id = str(payload.get("reply_to_id") or payload.get("replyToId") or "").strip()
     thread_id = str(payload.get("thread_id") or payload.get("threadId") or "").strip()
     if not reply_to_id:
@@ -248,6 +250,8 @@ def create_followup_plan_from_payload(
         "followup_kind": followup_kind,
         "followup_due_at": followup_due_at,
         "followup_message": followup_message,
+        "followup_summary": followup_summary or None,
+        "main_user_content_mode": main_user_content_mode,
         "dependency": str(payload.get("dependency") or "after-source-task-finalized"),
         "original_time_expression": str(payload.get("original_time_expression") or "").strip() or None,
         "reply_to_id": reply_to_id or None,
@@ -264,6 +268,8 @@ def create_followup_plan_from_payload(
             "followup_kind": followup_kind,
             "dependency": plan["dependency"],
             "followup_due_at": followup_due_at,
+            "followup_summary": followup_summary or None,
+            "main_user_content_mode": main_user_content_mode,
         },
     }
 
@@ -373,6 +379,7 @@ def schedule_followup_from_plan_from_payload(
             "plan_id": str(plan.get("plan_id") or ""),
             "reply_to_id": str(plan.get("reply_to_id") or ""),
             "thread_id": str(plan.get("thread_id") or ""),
+            "followup_summary": str(plan.get("followup_summary") or ""),
         },
         reason="scheduled tool-assisted continuation wait",
     )
@@ -395,6 +402,8 @@ def schedule_followup_from_plan_from_payload(
         "source_task_id": source_task.task_id,
         "plan_id": str(plan.get("plan_id") or ""),
         "overdue_on_materialize": bool(plan["overdue_on_materialize"]),
+        "followup_summary": str(plan.get("followup_summary") or ""),
+        "main_user_content_mode": str(plan.get("main_user_content_mode") or "none"),
     }
 
 
@@ -454,7 +463,42 @@ def finalize_planned_followup_from_payload(
         "followup_task_id": followup_task_id or None,
         "followup_due_at": str(plan.get("followup_due_at") or ""),
         "original_time_expression": str(plan.get("original_time_expression") or ""),
+        "followup_summary": str(plan.get("followup_summary") or ""),
+        "main_user_content_mode": str(plan.get("main_user_content_mode") or "none"),
     }
+
+
+def sync_followup_reply_target_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    followup_task_id = str(payload.get("followup_task_id") or payload.get("task_id") or "").strip()
+    if not followup_task_id:
+        return {"updated": False, "reason": "missing-followup-task-id"}
+    try:
+        task = store.load_task(followup_task_id, allow_archive=False)
+    except FileNotFoundError:
+        return {"updated": False, "reason": "followup-task-not-found"}
+    continuation_payload = task.meta.get("continuation_payload")
+    if not isinstance(continuation_payload, dict):
+        continuation_payload = {}
+    reply_to_id = str(payload.get("reply_to_id") or payload.get("replyToId") or "").strip()
+    thread_id = str(payload.get("thread_id") or payload.get("threadId") or "").strip()
+    updated = False
+    if reply_to_id and str(continuation_payload.get("reply_to_id") or "").strip() != reply_to_id:
+        continuation_payload["reply_to_id"] = reply_to_id
+        updated = True
+    if thread_id and str(continuation_payload.get("thread_id") or "").strip() != thread_id:
+        continuation_payload["thread_id"] = thread_id
+        updated = True
+    if not updated:
+        return {"updated": False, "reason": "reply-target-unchanged", "task": task.to_dict()}
+    task.meta["continuation_payload"] = continuation_payload
+    task = store.save_task(task)
+    return {"updated": True, "task": task.to_dict()}
 
 
 def watchdog_auto_recover_from_payload(
@@ -1406,6 +1450,8 @@ def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Pat
         return schedule_followup_from_plan_from_payload(payload, config_path=config_path)
     if command == "finalize-planned-followup":
         return finalize_planned_followup_from_payload(payload, config_path=config_path)
+    if command == "sync-followup-reply-target":
+        return sync_followup_reply_target_from_payload(payload, config_path=config_path)
     if command == "activate-latest":
         return activate_latest_from_payload(payload, config_path=config_path)
     if command == "watchdog-auto-recover":
@@ -1459,7 +1505,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     usage = (
         "usage: openclaw_hooks.py "
-        "<register|create-followup-plan|attach-promise-guard|schedule-followup-from-plan|finalize-planned-followup|watchdog-auto-recover|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|sync-source-reply-target|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control|resume-main-task|cancel-main-queue-task|main-continuity|main-tasks-summary> "
+        "<register|create-followup-plan|attach-promise-guard|schedule-followup-from-plan|finalize-planned-followup|sync-followup-reply-target|watchdog-auto-recover|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|sync-source-reply-target|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control|resume-main-task|cancel-main-queue-task|main-continuity|main-tasks-summary> "
         "<payload.json|-> [config.json]"
     )
     if args and args[0] in {"-h", "--help"}:

@@ -52,6 +52,8 @@ Hard rules:
 - Put all user-visible business content inside <task_user_content>...</task_user_content>.
 - Do not put scheduling status, promise state, or tool-chain state inside <task_user_content>.
 - If there is no immediate business content to show, do not emit a <task_user_content> block.
+- For future-first requests, default to main_user_content_mode=none unless an immediate result is explicitly required.
+- When creating a follow-up plan, provide a human-readable followup_summary so runtime can tell the user what has been arranged.
 - For every future promise, delayed follow-up, reminder, or dependent continuation, use task-system tools by default.
 - Never say that you will come back later unless runtime has accepted a real scheduled follow-up.
 - If task-system tool scheduling fails, times out, or is skipped, say that explicitly to the user.
@@ -917,6 +919,8 @@ function buildPlanningRuntimeContext(params: {
     "  4. ts_finalize_planned_followup",
     `- put all user-visible business content inside ${TASK_USER_CONTENT_OPEN}...${TASK_USER_CONTENT_CLOSE}`,
     "- do not put scheduling status, promise state, or tool-chain state inside task_user_content",
+    "- for future-first requests, default to main_user_content_mode=none",
+    "- provide followup_summary so runtime can send a meaningful wd scheduling confirmation",
     "- if there is no immediate business content to show, do not emit a task_user_content block",
     "- use followup_due_at as an absolute RFC3339 time",
     "- if scheduling is overdue, still schedule and tell the user it is being recovered",
@@ -1511,6 +1515,7 @@ type ActiveTaskBinding = {
   replyToId?: string;
   threadId?: string;
   requireStructuredUserContent?: boolean;
+  mainUserContentMode?: "none" | "immediate-summary" | "full-answer";
 };
 
 type ControlPlanePriority = "p0-receive-ack" | "p1-task-management" | "p2-progress-followup" | "p3-advisory";
@@ -1526,6 +1531,11 @@ type ControlPlaneMessage = {
   sessionKey: string;
   message: string;
   taskId?: string;
+};
+
+type ControlPlaneDeliveryResult = {
+  messageId?: string;
+  threadId?: string;
 };
 
 type ControlPlaneTerminalState = {
@@ -1690,7 +1700,30 @@ function decorateTaskManagedFollowupText(text: string, options?: { wd?: boolean 
   return `[wd] ${normalized}`;
 }
 
+function normalizeMainUserContentMode(value: unknown): "none" | "immediate-summary" | "full-answer" {
+  const normalized = normalizeText(value).toLowerCase();
+  if (normalized === "immediate-summary" || normalized === "full-answer") {
+    return normalized;
+  }
+  return "none";
+}
+
+function formatSentence(text: string): string {
+  const normalized = normalizeText(text);
+  if (!normalized) {
+    return normalized;
+  }
+  if (/[。！？.!?]$/.test(normalized)) {
+    return normalized;
+  }
+  return `${normalized}。`;
+}
+
 function formatScheduleConfirmationMessage(result: Record<string, unknown>): string {
+  const summary = normalizeText(result.followup_summary);
+  if (summary) {
+    return `已安排妥当：${formatSentence(summary)}`;
+  }
   const dueAt = normalizeText(result.followup_due_at);
   const expression = normalizeText(result.original_time_expression);
   let label = expression;
@@ -1851,15 +1884,15 @@ async function deliverControlPlaneMessage(
     enqueueToken?: number | null;
     audienceSequence?: number | null;
   },
-): Promise<void> {
+): Promise<ControlPlaneDeliveryResult | null> {
   const channel = String(payload.channel || "").trim().toLowerCase();
   if (!channel || channel === "agent") {
-    return;
+    return null;
   }
   const chatId = normalizeDirectStatusRecipient(channel, String(payload.chatId || ""));
   const message = withTaskPrefix(config, payload.message);
   if (!chatId || !message) {
-    return;
+    return null;
   }
   if (!canSendDirectStatusMessage(channel, chatId)) {
     await appendDebugLog(config, `${payload.eventName}:skipped`, {
@@ -1873,7 +1906,7 @@ async function deliverControlPlaneMessage(
       enqueueToken: schedulerContext?.enqueueToken ?? null,
       audienceSequence: schedulerContext?.audienceSequence ?? null,
     });
-    return;
+    return null;
   }
   try {
     const loadStartedAt = Date.now();
@@ -1891,10 +1924,10 @@ async function deliverControlPlaneMessage(
         enqueueToken: schedulerContext?.enqueueToken ?? null,
         audienceSequence: schedulerContext?.audienceSequence ?? null,
       });
-      return;
+      return null;
     }
     const sendStartedAt = Date.now();
-    await adapter.sendText({
+    const delivery = await adapter.sendText({
       cfg: api.config,
       to: chatId,
       text: message,
@@ -1916,7 +1949,14 @@ async function deliverControlPlaneMessage(
       audienceKey: schedulerContext?.audienceKey ?? buildControlPlaneAudienceKey(channel, payload.accountId, chatId),
       enqueueToken: schedulerContext?.enqueueToken ?? null,
       audienceSequence: schedulerContext?.audienceSequence ?? null,
+      replyToId: payload.replyToId ?? null,
+      threadId: payload.threadId ?? null,
+      deliveryMessageId: normalizeText((delivery as Record<string, unknown> | null)?.messageId) || null,
     });
+    return {
+      messageId: normalizeText((delivery as Record<string, unknown> | null)?.messageId) || undefined,
+      threadId: normalizeText((delivery as Record<string, unknown> | null)?.threadId) || payload.threadId,
+    };
   } catch (error) {
     const messageText = error instanceof Error ? error.message : String(error);
     await appendDebugLog(config, `${payload.eventName}:error`, {
@@ -1936,6 +1976,7 @@ async function deliverControlPlaneMessage(
       audienceSequence: schedulerContext?.audienceSequence ?? null,
     });
     api.logger.warn(`[task-system] ${payload.eventName} failed for ${channel}:${chatId}: ${messageText}`);
+    return null;
   }
 }
 
@@ -2093,6 +2134,8 @@ const taskSystemPlugin = {
           session_key: { type: "string" },
           followup_due_at: { type: "string" },
           followup_message: { type: "string" },
+          followup_summary: { type: "string" },
+          main_user_content_mode: { type: "string", enum: ["none", "immediate-summary", "full-answer"] },
           original_time_expression: { type: "string" },
           lead_request: { type: "string" },
           reply_to_id: { type: "string" },
@@ -2104,8 +2147,10 @@ const taskSystemPlugin = {
         const payload = params as Record<string, unknown>;
         const sessionKey = normalizeText(payload.session_key);
         const binding = activeTaskBindings.get(sessionKey);
+        const mainUserContentMode = normalizeMainUserContentMode(payload.main_user_content_mode);
         if (binding) {
           binding.requireStructuredUserContent = true;
+          binding.mainUserContentMode = mainUserContentMode;
           activeTaskBindings.set(sessionKey, binding);
         }
         const result =
@@ -2114,6 +2159,8 @@ const taskSystemPlugin = {
             session_key: sessionKey,
             followup_due_at: normalizeText(payload.followup_due_at),
             followup_message: normalizeText(payload.followup_message),
+            followup_summary: normalizeText(payload.followup_summary),
+            main_user_content_mode: mainUserContentMode,
             original_time_expression: normalizeText(payload.original_time_expression),
             lead_request: normalizeText(payload.lead_request),
             reply_to_id: normalizeText(payload.reply_to_id) || binding?.replyToId || "",
@@ -2189,7 +2236,7 @@ const taskSystemPlugin = {
           updatedBinding?.channel &&
           updatedBinding?.chatId
         ) {
-          await sendControlPlaneMessage({
+          const delivery = await sendControlPlaneMessage({
             eventName: "followup-scheduled",
             priority: "p1-task-management",
             channel: updatedBinding.channel,
@@ -2201,6 +2248,14 @@ const taskSystemPlugin = {
             taskId: normalizeText(payload.source_task_id) || updatedBinding.taskId,
             message: formatScheduleConfirmationMessage(result),
           });
+          const followupTaskId = normalizeText(result.followup_task_id);
+          if (followupTaskId && normalizeText(delivery?.messageId)) {
+            await callHook(api, config, "sync-followup-reply-target", {
+              followup_task_id: followupTaskId,
+              reply_to_id: delivery?.messageId,
+              thread_id: normalizeText(delivery?.threadId) || updatedBinding.threadId || "",
+            });
+          }
         }
         return buildToolTextResult(result);
       },
@@ -2334,7 +2389,7 @@ const taskSystemPlugin = {
       });
     }
 
-    async function sendControlPlaneMessage(payload: ControlPlaneMessage): Promise<void> {
+    async function sendControlPlaneMessage(payload: ControlPlaneMessage): Promise<ControlPlaneDeliveryResult | null> {
       const normalizedTaskId = normalizeText(payload.taskId);
       const terminalState = normalizedTaskId ? controlPlaneTerminalByTask.get(normalizedTaskId) : undefined;
       if (shouldDropForTerminalControlPlaneState(payload.priority, terminalState)) {
@@ -2350,7 +2405,7 @@ const taskSystemPlugin = {
           pendingTerminalEventByTask:
             normalizedTaskId ? controlPlanePendingTerminalByTask.get(normalizedTaskId)?.eventName ?? null : null,
         });
-        return;
+        return null;
       }
       const audienceKey = buildControlPlaneAudienceKey(payload.channel, payload.accountId, payload.chatId);
       const nextSequence = (controlPlaneSequenceByAudience.get(audienceKey) ?? 0) + 1;
@@ -2465,7 +2520,7 @@ const taskSystemPlugin = {
               pendingTerminalEventByTask:
                 normalizedTaskId ? controlPlanePendingTerminalByTask.get(normalizedTaskId)?.eventName ?? null : null,
             });
-            return;
+            return null;
           }
           const pendingTerminalState = normalizedTaskId ? controlPlanePendingTerminalByTask.get(normalizedTaskId) : undefined;
           if (
@@ -2485,7 +2540,7 @@ const taskSystemPlugin = {
               enqueueToken,
               latestPreemptingTokenByAudience: controlPlaneLatestPreemptingTokenByAudience.get(audienceKey) ?? null,
             });
-            return;
+            return null;
           }
           if (
             isSupersedableControlPlanePriority(payload.priority) &&
@@ -2505,7 +2560,7 @@ const taskSystemPlugin = {
               latestPreemptingTokenByAudience: controlPlaneLatestPreemptingTokenByAudience.get(audienceKey) ?? null,
               latestSupersedableTokenByAudience: controlPlaneLatestSupersedableTokenByAudience.get(audienceKey) ?? null,
             });
-            return;
+            return null;
           }
           if (
             normalizedTaskId &&
@@ -2525,7 +2580,7 @@ const taskSystemPlugin = {
               audienceKey,
               enqueueToken,
             });
-            return;
+            return null;
           }
           if (
             normalizedTaskId &&
@@ -2545,7 +2600,7 @@ const taskSystemPlugin = {
               enqueueToken,
               latestSupersedableTokenByTask: controlPlaneLatestSupersedableTokenByTask.get(normalizedTaskId) ?? null,
             });
-            return;
+            return null;
           }
           await appendControlPlaneLaneLog(payload, "lane-pass", {
             schedulerDecision: "passed",
@@ -2557,7 +2612,7 @@ const taskSystemPlugin = {
             latestSupersedableTokenByTask:
               normalizedTaskId ? controlPlaneLatestSupersedableTokenByTask.get(normalizedTaskId) ?? null : null,
           });
-          await deliverControlPlaneMessage(api, config, payload, {
+          const delivery = await deliverControlPlaneMessage(api, config, payload, {
             audienceKey,
             enqueueToken,
             audienceSequence: nextSequence,
@@ -2584,10 +2639,11 @@ const taskSystemPlugin = {
             });
             controlPlanePendingTerminalByTask.delete(normalizedTaskId);
           }
+          return delivery;
         });
       controlPlaneLaneByAudience.set(audienceKey, nextLane);
       try {
-        await nextLane;
+        return await nextLane;
       } finally {
         if (controlPlaneLaneByAudience.get(audienceKey) === nextLane) {
           controlPlaneLaneByAudience.delete(audienceKey);
@@ -3179,10 +3235,21 @@ const taskSystemPlugin = {
       }
       const sessionKey = normalizeSessionKey(ctx.sessionKey?.trim() || buildSessionKey(ctx.channelId, ctx.conversationId));
       const activeTaskBinding = activeTaskBindings.get(sessionKey);
+      const mainUserContentMode = normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode);
       const resolvedContent = resolveUserFacingContent(event.content, {
         requireStructured: Boolean(activeTaskBinding?.requireStructuredUserContent),
       });
-      if (resolvedContent.text !== normalizeText(event.content)) {
+      if (Boolean(activeTaskBinding?.requireStructuredUserContent) && mainUserContentMode === "none") {
+        if (normalizeText(event.content)) {
+          event.content = "";
+          await appendDebugLog(config, "message_sending:user-content-suppressed", {
+            agentId: ctx.agentId || config.defaultAgentId,
+            sessionKey,
+            schedulerDecision: "suppressed",
+            reason: "main-user-content-mode-none",
+          });
+        }
+      } else if (resolvedContent.text !== normalizeText(event.content)) {
         event.content = resolvedContent.text;
         await appendDebugLog(config, "message_sending:user-content-extracted", {
           agentId: ctx.agentId || config.defaultAgentId,
@@ -3263,6 +3330,16 @@ const taskSystemPlugin = {
         return;
       }
       const activeTaskBinding = activeTaskBindings.get(sessionKey);
+      const mainUserContentMode = normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode);
+      if (Boolean(activeTaskBinding?.requireStructuredUserContent) && mainUserContentMode === "none") {
+        await appendDebugLog(config, "llm_output:user-content-suppressed", {
+          agentId: ctx.agentId || config.defaultAgentId,
+          sessionKey,
+          schedulerDecision: "suppressed",
+          reason: "main-user-content-mode-none",
+        });
+        return;
+      }
       const text = resolveUserFacingContent((event.assistantTexts || []).join("\n"), {
         requireStructured: Boolean(activeTaskBinding?.requireStructuredUserContent),
       }).text;
@@ -3380,27 +3457,36 @@ const taskSystemPlugin = {
         schedulerDecision: "entered",
         reason: "agent-end",
       });
+      const mainUserContentMode = normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode);
+      const hasVisibleOutputForFinalize =
+        event.success && Boolean(activeTaskBinding?.requireStructuredUserContent) && mainUserContentMode === "none"
+          ? true
+          : event.success
+            ? hasVisibleAssistantOutput(event, {
+                requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+              })
+            : false;
+      const resultSummaryForFinalize =
+        event.success && Boolean(activeTaskBinding?.requireStructuredUserContent) && mainUserContentMode === "none"
+          ? "future-first request scheduled for delayed follow-up delivery"
+          : event.success
+            ? summarizeAgentEnd(event, {
+                requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+              })
+            : undefined;
       const finalizeResult = await callHook(api, config, "finalize-active", {
         agent_id: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
         session_key: normalizedSessionKey,
         task_id: activeTaskBinding?.taskId,
         success: event.success,
-        has_visible_output: event.success
-          ? hasVisibleAssistantOutput(event, {
-              requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
-            })
-          : false,
-        result_summary: event.success
-          ? summarizeAgentEnd(event, {
-              requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
-            })
-          : undefined,
+        has_visible_output: hasVisibleOutputForFinalize,
+        result_summary: resultSummaryForFinalize,
         error: event.error,
       });
       const shouldDeliverFinalizeControlPlane =
         Boolean(finalizeResult?.control_plane_message) &&
         Boolean(activeTaskBinding?.taskId) &&
-        (!event.success || !hasVisibleAssistantOutput(event));
+        (!event.success || !hasVisibleOutputForFinalize);
       if (shouldDeliverFinalizeControlPlane) {
         await sendControlPlaneMessage(
           buildHookBackedControlPlaneMessage(finalizeResult, {
