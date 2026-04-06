@@ -70,6 +70,7 @@ test("continuation delivery sent carries scheduler diagnostics", async () => {
     assert.equal(delivered?.payload?.reason, "continuation-delivery-sent");
     assert.equal(delivered?.payload?.replyToId, "om_source_message");
     assert.equal(delivered?.payload?.threadId, "thread_source_message");
+    assert.equal(delivered?.payload?.message, "[wd] 111");
     assert.equal(wakeOk?.payload?.runner, "continuation-delivery");
     assert.equal(wakeOk?.payload?.lifecycleStage, "wake-complete");
     assert.equal(wakeOk?.payload?.deliveryPath, "direct-channel-send");
@@ -77,7 +78,7 @@ test("continuation delivery sent carries scheduler diagnostics", async () => {
     assert.equal(typeof delivered?.payload?.enqueueToken, "number");
     assert.equal(sentMessages.length, 1);
     assert.equal(sentMessages[0]?.to, "8705812936");
-    assert.equal(sentMessages[0]?.text, "111");
+    assert.equal(sentMessages[0]?.text, "[wd] 111");
     assert.equal(sentMessages[0]?.replyToId, "om_source_message");
     assert.equal(sentMessages[0]?.threadId, "thread_source_message");
   } finally {

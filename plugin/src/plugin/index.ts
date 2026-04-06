@@ -1215,7 +1215,7 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
     const taskId = normalizeText(String(payload.task_id || ""));
     const sessionKey = normalizeText(String(payload.session_key || ""));
     const accountId = normalizeText(String(payload.account_id || ""));
-    const replyText = normalizeText(String(payload.reply_text || ""));
+    const replyText = decorateTaskManagedFollowupText(normalizeText(String(payload.reply_text || "")));
     const originalUserRequest = normalizeText(
       String(
         (payload.continuation_payload &&
@@ -1595,6 +1595,28 @@ function extractThreadId(event: Record<string, unknown>, ctx: Record<string, unk
     }
   }
   return undefined;
+}
+
+function decorateTaskManagedFollowupText(text: string): string {
+  const normalized = normalizeText(text);
+  if (!normalized) {
+    return normalized;
+  }
+  const replyPrefix = "[[reply_to_current]]";
+  if (normalized.startsWith(replyPrefix)) {
+    const rest = normalizeText(normalized.slice(replyPrefix.length));
+    if (!rest) {
+      return `${replyPrefix} [wd]`;
+    }
+    if (rest.startsWith("[wd]")) {
+      return `${replyPrefix} ${rest}`;
+    }
+    return `${replyPrefix} [wd] ${rest}`;
+  }
+  if (normalized.startsWith("[wd]")) {
+    return normalized;
+  }
+  return `[wd] ${normalized}`;
 }
 
 function isPreemptingControlPlanePriority(priority: ControlPlanePriority): boolean {
