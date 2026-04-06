@@ -3,12 +3,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 
 PLUGIN_ID = "openclaw-task-system"
 DEFAULT_OPENCLAW_CONFIG = Path.home() / ".openclaw" / "openclaw.json"
+
+
+def detect_python_bin() -> str:
+    for candidate in (
+        shutil.which("python3"),
+        shutil.which("python"),
+        sys.executable,
+    ):
+        if candidate:
+            return str(Path(candidate).resolve())
+    return "python3"
 
 
 @dataclass(frozen=True)
@@ -21,15 +34,16 @@ class ConfigureResult:
 
 def build_minimal_plugin_entry(
     *,
-    python_bin: str = "python3",
+    python_bin: str | None = None,
     default_agent_id: str = "main",
     task_message_prefix: str = "[wd] ",
 ) -> dict[str, object]:
+    resolved_python_bin = python_bin or detect_python_bin()
     return {
         "enabled": True,
         "config": {
             "enabled": True,
-            "pythonBin": python_bin,
+            "pythonBin": resolved_python_bin,
             "defaultAgentId": default_agent_id,
             "taskMessagePrefix": task_message_prefix,
         },
@@ -64,7 +78,7 @@ def load_config(path: Path) -> dict[str, object]:
 def apply_minimal_plugin_config(
     data: dict[str, object],
     *,
-    python_bin: str = "python3",
+    python_bin: str | None = None,
     default_agent_id: str = "main",
     task_message_prefix: str = "[wd] ",
 ) -> tuple[dict[str, object], bool]:
@@ -94,7 +108,7 @@ def configure_openclaw_plugin(
     *,
     path: Path = DEFAULT_OPENCLAW_CONFIG,
     write: bool = False,
-    python_bin: str = "python3",
+    python_bin: str | None = None,
     default_agent_id: str = "main",
     task_message_prefix: str = "[wd] ",
 ) -> ConfigureResult:
@@ -154,7 +168,7 @@ def render_markdown(result: ConfigureResult, *, write: bool) -> str:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Write a minimal OpenClaw plugin entry for openclaw-task-system.")
     parser.add_argument("--path", type=Path, default=DEFAULT_OPENCLAW_CONFIG)
-    parser.add_argument("--python-bin", default="python3")
+    parser.add_argument("--python-bin", default=None)
     parser.add_argument("--default-agent-id", default="main")
     parser.add_argument("--task-message-prefix", default="[wd] ")
     parser.add_argument("--write", action="store_true", help="Write changes back to openclaw.json")

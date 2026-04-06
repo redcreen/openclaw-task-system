@@ -57,6 +57,20 @@ class TaskPolicyTests(unittest.TestCase):
         self.assertEqual(plan.wait_seconds, 300)
         self.assertEqual(plan.reply_text, "ok")
 
+    def test_parse_delayed_reply_request_accepts_optional_after_and_to_me(self) -> None:
+        plan = task_policy.parse_delayed_reply_request("3分钟回复333")
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(plan.wait_seconds, 180)
+        self.assertEqual(plan.reply_text, "333")
+
+    def test_parse_delayed_reply_request_tolerates_short_leading_noise(self) -> None:
+        plan = task_policy.parse_delayed_reply_request("一3分钟回复333")
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(plan.wait_seconds, 180)
+        self.assertEqual(plan.reply_text, "333")
+
     def test_parse_delayed_reply_request_does_not_match_embedded_prompt_text(self) -> None:
         plan = task_policy.parse_delayed_reply_request(
             "这是一个已经到达计划时间的延迟任务，请你现在继续执行。\n原始用户请求：1分钟后回复我ok1\n你现在必须直接回复以下最终内容：ok1"

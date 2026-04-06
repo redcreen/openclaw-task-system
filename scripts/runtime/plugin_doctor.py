@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -63,10 +64,21 @@ def run_checks() -> list[CheckResult]:
     return checks
 
 
+def detect_python_bin() -> str:
+    for candidate in (
+        shutil.which("python3"),
+        shutil.which("python"),
+        sys.executable,
+    ):
+        if candidate:
+            return str(Path(candidate).resolve())
+    return "python3"
+
+
 def build_openclaw_plugin_entry() -> dict[str, object]:
     return {
         "enabled": True,
-        "pythonBin": "python3",
+        "pythonBin": detect_python_bin(),
         "defaultAgentId": "main",
         "taskMessagePrefix": "[wd] ",
     }

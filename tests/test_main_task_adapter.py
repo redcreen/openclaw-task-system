@@ -147,3 +147,21 @@ class MainTaskAdapterTests(unittest.TestCase):
         self.assertEqual(task.status, task_state_module.STATUS_PAUSED)
         self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
         self.assertEqual(task.meta["continuation_payload"]["reply_text"], "ok")
+
+    def test_delayed_reply_text_without_after_or_to_me_still_schedules_continuation(self) -> None:
+        task = main_task_adapter.register_main_task(
+            self.build_context("3分钟回复333"),
+            paths=self.paths,
+        )
+        self.assertEqual(task.status, task_state_module.STATUS_PAUSED)
+        self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
+        self.assertEqual(task.meta["continuation_payload"]["reply_text"], "333")
+
+    def test_delayed_reply_text_tolerates_short_leading_noise(self) -> None:
+        task = main_task_adapter.register_main_task(
+            self.build_context("一3分钟回复333"),
+            paths=self.paths,
+        )
+        self.assertEqual(task.status, task_state_module.STATUS_PAUSED)
+        self.assertEqual(task.meta["continuation_kind"], "delayed-reply")
+        self.assertEqual(task.meta["continuation_payload"]["reply_text"], "333")

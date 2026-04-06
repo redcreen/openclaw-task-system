@@ -42,9 +42,15 @@ class ContinuationPlan:
     reply_text: str
 
 
-DELAYED_REPLY_PATTERNS = (
-    re.compile(r"^\s*(?P<delay>\d+)\s*分钟后回复我(?P<message>.+?)\s*$"),
-    re.compile(r"^\s*(?P<delay>\d+)\s*秒后回复我(?P<message>.+?)\s*$"),
+PRIMARY_DELAYED_REPLY_PATTERN = re.compile(
+    r"^\s*(?P<delay>\d+)\s*(?P<unit>分钟|分|秒)(?:钟)?\s*(?:后)?\s*"
+    r"(?P<verb>回复(?:我)?|回(?:我)?|提醒(?:我)?|告诉(?:我)?)"
+    r"(?P<message>.+?)\s*$"
+)
+FALLBACK_DELAYED_REPLY_PATTERN = re.compile(
+    r"(?P<delay>\d+)\s*(?P<unit>分钟|分|秒)(?:钟)?\s*(?:后)?\s*"
+    r"(?P<verb>回复(?:我)?|回(?:我)?|提醒(?:我)?|告诉(?:我)?)"
+    r"(?P<message>.+?)\s*$"
 )
 
 
@@ -52,36 +58,49 @@ def _contains_any(text: str, keywords: Iterable[str]) -> list[str]:
     return [keyword for keyword in keywords if keyword in text]
 
 
+def _normalize_request_text(user_request: str) -> str:
+    return " ".join(user_request.replace("\u3000", " ").split()).strip()
+
+
+def _is_tolerable_delay_leadin(prefix: str) -> bool:
+    cleaned = re.sub(r"[\s\-—–_·•、，,。.:：;；()（）\[\]【】'\"“”‘’]+", "", prefix)
+    return len(cleaned) <= 2
+
+
 def parse_delayed_reply_request(
     user_request: str,
     *,
     now_dt: datetime | None = None,
 ) -> ContinuationPlan | None:
-    normalized = user_request.strip()
+    normalized = _normalize_request_text(user_request)
     if not normalized:
         return None
 
-    for pattern in DELAYED_REPLY_PATTERNS:
-        matched = pattern.fullmatch(normalized)
-        if not matched:
-            continue
-        delay = int(matched.group("delay"))
-        message = matched.group("message").strip()
-        if not message:
-            return None
-        if "分钟后" in matched.group(0):
-            wait_seconds = delay * 60
-        else:
-            wait_seconds = delay
-        base = now_dt or datetime.now(timezone.utc).astimezone()
-        due_at = (base + timedelta(seconds=wait_seconds)).isoformat()
-        return ContinuationPlan(
-            kind="delayed-reply",
-            due_at=due_at,
-            wait_seconds=wait_seconds,
-            reply_text=message,
-        )
-    return None
+    matched = PRIMARY_DELAYED_REPLY_PATTERN.fullmatch(normalized)
+    if matched is None:
+        fallback = FALLBACK_DELAYED_REPLY_PATTERN.search(normalized)
+        if fallback is not None and _is_tolerable_delay_leadin(normalized[: fallback.start()]):
+            matched = fallback
+    if matched is None:
+        return None
+
+    delay = int(matched.group("delay"))
+    message = matched.group("message").strip()
+    if not message:
+        return None
+    unit = matched.group("unit")
+    if unit.startswith("分"):
+        wait_seconds = delay * 60
+    else:
+        wait_seconds = delay
+    base = now_dt or datetime.now(timezone.utc).astimezone()
+    due_at = (base + timedelta(seconds=wait_seconds)).isoformat()
+    return ContinuationPlan(
+        kind="delayed-reply",
+        due_at=due_at,
+        wait_seconds=wait_seconds,
+        reply_text=message,
+    )
 
 
 def classify_main_task(
