@@ -881,6 +881,27 @@ function buildToolTextResult(payload: Record<string, unknown>): { content: Array
   };
 }
 
+async function resolveActiveTaskIdForPlanning(
+  api: OpenClawPluginApi,
+  config: Required<TaskSystemPluginConfig>,
+  params: {
+    agentId: string;
+    sessionKey: string;
+    taskId: string | null;
+  },
+): Promise<string | null> {
+  const boundTaskId = normalizeText(params.taskId);
+  if (boundTaskId) {
+    return boundTaskId;
+  }
+  const activeResult = await callHook(api, config, "resolve-active", {
+    agent_id: params.agentId,
+    session_key: params.sessionKey,
+  });
+  const resolvedTaskId = normalizeText(activeResult?.task_id);
+  return resolvedTaskId || null;
+}
+
 function canSendDirectStatusMessage(channel: string, chatId: string): boolean {
   const normalizedChannel = normalizeText(channel).toLowerCase();
   const normalizedChatId = normalizeDirectStatusRecipient(channel, chatId);
@@ -2907,15 +2928,20 @@ const taskSystemPlugin = {
         return;
       }
       const activeTaskBinding = activeTaskBindings.get(normalizeSessionKey(sessionKey));
-      const prependContext = buildPlanningRuntimeContext({
+      const planningTaskId = await resolveActiveTaskIdForPlanning(api, config, {
+        agentId,
         sessionKey,
         taskId: activeTaskBinding?.taskId ?? null,
+      });
+      const prependContext = buildPlanningRuntimeContext({
+        sessionKey,
+        taskId: planningTaskId,
         mode: planningConfig.mode,
       });
       await appendDebugLog(config, "before_prompt_build:planning-contract-injected", {
         agentId,
         sessionKey,
-        taskId: activeTaskBinding?.taskId ?? null,
+        taskId: planningTaskId,
         planningMode: planningConfig.mode,
         schedulerDecision: "entered",
         reason: "planning-contract-injected",

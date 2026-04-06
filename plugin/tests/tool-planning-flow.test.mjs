@@ -64,6 +64,46 @@ test("before_prompt_build injects planning contract and runtime context", async 
   }
 });
 
+test("before_prompt_build falls back to resolve-active when in-memory task binding is missing", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot({
+    resolveActiveResponse: {
+      found: true,
+      task_id: "task-from-truth-source",
+      status: "running",
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    const result = await plugin.beforePromptBuild(
+      {
+        prompt: "用户要我5分钟后回来同步结果。",
+        messages: [],
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+        trigger: "user",
+      },
+    );
+
+    assert.match(result?.prependContext || "", /current_task_id: task-from-truth-source/);
+    const commands = await readHookCommands(callsPath);
+    assert.ok(commands.includes("resolve-active"));
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    const injected = debugEvents.find((entry) => entry.event === "before_prompt_build:planning-contract-injected");
+    assert.equal(injected?.payload?.taskId, "task-from-truth-source");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("registered planning tools call runtime hooks", async () => {
   resetGlobalState();
   const { runtimeRoot, callsPath } = await createFakeRuntimeRoot();
