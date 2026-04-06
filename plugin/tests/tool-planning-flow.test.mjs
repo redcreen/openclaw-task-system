@@ -343,6 +343,65 @@ test("message_sending suppresses immediate business content when main_user_conte
   }
 });
 
+test("attach_promise_guard suppresses immediate business content until planning sets an explicit mode", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot();
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "2分钟后提醒我查天气，然后回来同步结果",
+        body: "2分钟后提醒我查天气，然后回来同步结果",
+        channel: "feishu",
+        senderId: "user-1",
+        messageId: "om_source_message",
+        threadId: "thread_source_message",
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+        messageId: "om_source_message",
+        threadId: "thread_source_message",
+      },
+    );
+
+    await plugin.registeredTools.get("ts_attach_promise_guard").execute("run-1", {
+      source_task_id: "task-123",
+      session_key: "agent:main:feishu:acct-1:user-1",
+      promise_summary: "2分钟后同步天气结果",
+      followup_due_at: "2026-04-06T12:05:00+08:00",
+    });
+
+    const event = {
+      content: "<task_user_content>目的地按宁波算，明天天气大致 14°C~21°C。</task_user_content>",
+    };
+    await plugin.messageSending(event, {
+      sessionKey: "agent:main:feishu:acct-1:user-1",
+      channelId: "feishu",
+      conversationId: "chat-1",
+      accountId: "acct-1",
+      senderId: "user-1",
+      agentId: "main",
+    });
+
+    assert.equal(event.content, "");
+    const calls = await readHookCalls(callsPath);
+    const progressCall = calls.find((entry) => entry.command === "progress-active");
+    assert.equal(progressCall, undefined);
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    const suppressed = debugEvents.find((entry) => entry.event === "message_sending:user-content-suppressed");
+    assert.equal(suppressed?.payload?.reason, "main-user-content-mode-none");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("message_sending suppresses unstructured content after planning tools are used", async () => {
   resetGlobalState();
   const { runtimeRoot, callsPath } = await createFakeRuntimeRoot();

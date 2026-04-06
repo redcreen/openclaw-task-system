@@ -2110,6 +2110,12 @@ const taskSystemPlugin = {
         const binding = activeTaskBindings.get(sessionKey);
         if (binding) {
           binding.requireStructuredUserContent = true;
+          if (!binding.mainUserContentMode) {
+            // Once the model declares a future promise, default to suppressing
+            // immediate business content until a later planning tool call sets
+            // an explicit user-content mode.
+            binding.mainUserContentMode = "none";
+          }
           activeTaskBindings.set(sessionKey, binding);
         }
         const result =
