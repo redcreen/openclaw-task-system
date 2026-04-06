@@ -201,25 +201,8 @@ def register_inbound_task(
                 due_dt = None
             now_dt = datetime.now(timezone.utc).astimezone()
             if due_dt is not None and due_dt > now_dt:
-                _, _, active_count, running_count, queued_count = _queue_metrics(
-                    store,
-                    agent_id=ctx.agent_id,
-                    task_id=recoverable.task_id,
-                )
-                return BridgeDecision(
-                    should_register_task=True,
-                    task_id=recoverable.task_id,
-                    classification_reason="scheduled-continuation",
-                    confidence="high",
-                    task_status=recoverable.status,
-                    queue_position=None,
-                    ahead_count=0,
-                    active_count=active_count,
-                    running_count=running_count,
-                    queued_count=queued_count,
-                    estimated_wait_seconds=None,
-                    continuation_due_at=continuation_due_at,
-                )
+                recoverable = None
+    if recoverable is not None:
         resumed = resume_main_task(
             recoverable.task_id,
             progress_note=f"恢复执行：{ctx.user_request[:120]}",

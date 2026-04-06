@@ -331,7 +331,7 @@ class OpenClawBridgeTests(unittest.TestCase):
         task = store.load_task(decision.task_id)
         self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
 
-    def test_register_inbound_task_reports_scheduled_continuation(self) -> None:
+    def test_register_inbound_task_does_not_report_scheduled_continuation_for_fresh_message(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         task = store.observe_task(
             agent_id="main",
@@ -352,11 +352,12 @@ class OpenClawBridgeTests(unittest.TestCase):
         )
         decision = openclaw_bridge.register_inbound_task(self.make_context("继续"), paths=self.paths)
         assert decision.task_id is not None
-        self.assertEqual(decision.task_id, scheduled.task_id)
-        self.assertEqual(decision.task_status, task_state_module.STATUS_PAUSED)
-        self.assertIsNotNone(decision.continuation_due_at)
+        self.assertNotEqual(decision.task_id, scheduled.task_id)
+        self.assertEqual(decision.classification_reason, "observed-task")
+        self.assertEqual(decision.task_status, task_state_module.STATUS_RUNNING)
+        self.assertIsNone(decision.continuation_due_at)
 
-    def test_register_inbound_task_keeps_future_continuation_paused(self) -> None:
+    def test_register_inbound_task_keeps_future_continuation_paused_when_new_message_arrives(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         task = store.observe_task(
             agent_id="main",
@@ -382,11 +383,18 @@ class OpenClawBridgeTests(unittest.TestCase):
             ),
             paths=self.paths,
         )
-        self.assertEqual(second.task_id, first.task_id)
-        self.assertEqual(second.classification_reason, "scheduled-continuation")
-        self.assertEqual(second.task_status, task_state_module.STATUS_PAUSED)
+        self.assertNotEqual(second.task_id, first.task_id)
+        self.assertEqual(second.classification_reason, "observed-task")
+        self.assertEqual(second.task_status, task_state_module.STATUS_RUNNING)
 
-    def test_register_inbound_task_reuses_existing_future_continuation(self) -> None:
+        still_paused = store.load_task(first.task_id)
+        self.assertEqual(still_paused.status, task_state_module.STATUS_PAUSED)
+        self.assertEqual(
+            still_paused.meta.get("continuation_due_at"),
+            "2099-01-01T00:00:00+08:00",
+        )
+
+    def test_register_inbound_task_does_not_reuse_existing_future_continuation(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         task = store.observe_task(
             agent_id="main",
@@ -412,6 +420,9 @@ class OpenClawBridgeTests(unittest.TestCase):
             observe_only=True,
         )
         assert second.task_id is not None
-        self.assertEqual(second.task_id, first.task_id)
-        self.assertEqual(second.classification_reason, "scheduled-continuation")
-        self.assertEqual(second.task_status, task_state_module.STATUS_PAUSED)
+        self.assertNotEqual(second.task_id, first.task_id)
+        self.assertEqual(second.classification_reason, "observed-task")
+        self.assertEqual(second.task_status, task_state_module.STATUS_RECEIVED)
+
+        still_paused = store.load_task(first.task_id)
+        self.assertEqual(still_paused.status, task_state_module.STATUS_PAUSED)
