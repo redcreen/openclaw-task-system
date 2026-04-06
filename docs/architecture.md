@@ -76,6 +76,7 @@ The following constraints are now part of the intended design and should be trea
 5. if a future action is promised, task-system must be able to prove a real task exists
 6. if planning fails, times out, or is skipped, the system must tell the user the truth
 7. if a delayed task already has an authoritative due time, execution must still happen even when that time has passed, and the user should be told it is overdue or recovered
+8. regex-based or phrase-list-based cleanup must not become the primary mechanism for separating scheduling status from user content
 
 These constraints were added after live review and should not be silently relaxed by later implementation work.
 
@@ -90,8 +91,73 @@ These constraints were added after live review and should not be silently relaxe
 5. 只要系统承诺 future action，task-system 就必须能证明背后存在真实 task
 6. 只要 planning 失败、超时或被跳过，系统就必须如实告诉用户
 7. 只要 delayed task 已经有权威的绝对时间点，即使真正执行时已过点，也必须执行，并告诉用户这是 overdue 或 recovered
+8. tool 链路内部状态不直接作为用户输出
+9. 排程状态属于 runtime-owned 控制面，不属于普通主答复
+10. 严禁把 regex / 句式表 / 关键词过滤 / 硬编码文本清洗扩张成长期主方案
 
 这些约束来自真实评审结论，后续实现不应无声偏离。
+
+### tool-chain 信息边界
+
+还有一条需要固定下来的约束是：
+
+- tool-chain information is not user output
+
+这里的 tool-chain information 指：
+
+- plan id
+- promise guard
+- accepted / rejected 调度状态
+- due_at / follow-up task id
+- 裸 tool 返回结果
+
+这些信息首先属于：
+
+- task truth source
+- scheduler metadata
+- anomaly / verification state
+
+它们不应直接以主答复形式暴露给用户。
+
+同样也不应采用下面这种方向来解决：
+
+- 先允许模型把调度状态说进主答复
+- 再在后面不断补 regex / 句式表 / 关键词过滤把这些词抠掉
+
+这类做法只能作为短期止血，不得演化成正式架构。
+
+正式架构应当依赖：
+
+- structured tool result
+- task truth source
+- runtime-owned control-plane projection
+- user-content channel separation
+
+在当前阶段，这条 `user-content channel separation` 的最小实现是：
+
+- 当 planning tools 已参与当前任务时
+- 用户可见业务内容必须通过：
+  - `<task_user_content> ... </task_user_content>`
+ 这个结构化内容块输出
+- runtime 只转发这个内容块里的内容
+- 排程成功 / 失败仍然单独投影成 `[wd]`
+
+用户真正应该看到的是两类投影：
+
+1. runtime-owned control-plane
+   - `[wd] 已收到...`
+   - `[wd] 已安排妥当...`
+   - `[wd] 这次还没有排上...`
+   - watchdog / continuity / recovery
+2. business content
+   - 即时业务结果
+   - 或到点后的 follow-up 正文
+
+设计缘由是：
+
+- “是否安排妥当”本质上是监督状态，不是业务内容
+- tool 结果必须先被 task-system 消化，才能变成用户可见状态
+- 这样可以避免模型把内部调度状态和最终业务内容混成同一条回复
 
 ## 2. 一张图看整体
 

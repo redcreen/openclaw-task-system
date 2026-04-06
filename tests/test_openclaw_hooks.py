@@ -74,6 +74,36 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(decision["task_status"], result["task_status"])
         self.assertEqual(decision["queue_position"], result["queue_position"])
 
+    def test_sync_source_reply_target_updates_task_meta(self) -> None:
+        registered = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:reply-target",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:reply-target",
+                "user_id": "ou_test",
+                "user_request": "帮我查一下天气",
+                "observe_only": True,
+            },
+            config_path=self.config_path,
+        )
+        result = openclaw_hooks.dispatch(
+            "sync-source-reply-target",
+            {
+                "agent_id": "main",
+                "session_key": "session:reply-target",
+                "task_id": registered["task_id"],
+                "reply_to_id": "om_source_message",
+                "thread_id": "thread_source",
+            },
+            config_path=self.config_path,
+        )
+        self.assertTrue(result["updated"])
+        task = task_state_module.TaskStore(paths=self.paths).load_task(registered["task_id"])
+        self.assertEqual(task.meta.get("source_reply_to_id"), "om_source_message")
+        self.assertEqual(task.meta.get("source_thread_id"), "thread_source")
+
     def test_openclaw_hooks_cli_accepts_stdin_payload(self) -> None:
         script = Path(__file__).resolve().parents[1] / "scripts" / "runtime" / "openclaw_hooks.py"
         payload = {

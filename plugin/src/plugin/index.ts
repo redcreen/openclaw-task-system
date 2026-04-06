@@ -49,6 +49,9 @@ Hard rules:
 - Do not generate the first [wd]. That is owned by runtime.
 - Do not generate the fixed 30-second progress message. That is owned by runtime.
 - Do not generate fallback or recovery control-plane text unless runtime explicitly delegates that action.
+- Put all user-visible business content inside <task_user_content>...</task_user_content>.
+- Do not put scheduling status, promise state, or tool-chain state inside <task_user_content>.
+- If there is no immediate business content to show, do not emit a <task_user_content> block.
 - For every future promise, delayed follow-up, reminder, or dependent continuation, use task-system tools by default.
 - Never say that you will come back later unless runtime has accepted a real scheduled follow-up.
 - If task-system tool scheduling fails, times out, or is skipped, say that explicitly to the user.
@@ -848,6 +851,54 @@ function normalizeText(value: unknown): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+const TASK_USER_CONTENT_OPEN = "<task_user_content>";
+const TASK_USER_CONTENT_CLOSE = "</task_user_content>";
+
+type StructuredUserContentResult = {
+  text: string;
+  hadBlock: boolean;
+};
+
+function extractStructuredUserContent(text: string): StructuredUserContentResult {
+  const raw = typeof text === "string" ? text : "";
+  if (!raw) {
+    return { text: "", hadBlock: false };
+  }
+  const pieces: string[] = [];
+  let cursor = 0;
+  while (cursor < raw.length) {
+    const openIndex = raw.indexOf(TASK_USER_CONTENT_OPEN, cursor);
+    if (openIndex === -1) {
+      break;
+    }
+    const contentStart = openIndex + TASK_USER_CONTENT_OPEN.length;
+    const closeIndex = raw.indexOf(TASK_USER_CONTENT_CLOSE, contentStart);
+    if (closeIndex === -1) {
+      break;
+    }
+    const candidate = normalizeText(raw.slice(contentStart, closeIndex));
+    if (candidate) {
+      pieces.push(candidate);
+    }
+    cursor = closeIndex + TASK_USER_CONTENT_CLOSE.length;
+  }
+  return {
+    text: pieces.join("\n").trim(),
+    hadBlock: pieces.length > 0,
+  };
+}
+
+function resolveUserFacingContent(text: string, options?: { requireStructured?: boolean }): StructuredUserContentResult {
+  const structured = extractStructuredUserContent(text);
+  if (structured.hadBlock) {
+    return structured;
+  }
+  if (options?.requireStructured) {
+    return { text: "", hadBlock: false };
+  }
+  return { text: normalizeText(text), hadBlock: false };
+}
+
 function buildPlanningRuntimeContext(params: {
   sessionKey: string;
   taskId: string | null;
@@ -864,6 +915,9 @@ function buildPlanningRuntimeContext(params: {
     "  2. ts_create_followup_plan",
     "  3. ts_schedule_followup_from_plan",
     "  4. ts_finalize_planned_followup",
+    `- put all user-visible business content inside ${TASK_USER_CONTENT_OPEN}...${TASK_USER_CONTENT_CLOSE}`,
+    "- do not put scheduling status, promise state, or tool-chain state inside task_user_content",
+    "- if there is no immediate business content to show, do not emit a task_user_content block",
     "- use followup_due_at as an absolute RFC3339 time",
     "- if scheduling is overdue, still schedule and tell the user it is being recovered",
     "- never promise a future reply without a successful task-system tool result",
@@ -1453,6 +1507,7 @@ type ActiveTaskBinding = {
   chatId?: string;
   replyToId?: string;
   threadId?: string;
+  requireStructuredUserContent?: boolean;
 };
 
 type ControlPlanePriority = "p0-receive-ack" | "p1-task-management" | "p2-progress-followup" | "p3-advisory";
@@ -1905,7 +1960,10 @@ function extractTextFromUnknown(value: unknown): string[] {
   return Object.values(record).flatMap((entry) => extractTextFromUnknown(entry));
 }
 
-function summarizeAgentEnd(event: { messages: unknown[]; success: boolean; durationMs?: number }): string {
+function summarizeAgentEnd(
+  event: { messages: unknown[]; success: boolean; durationMs?: number },
+  options?: { requireStructuredUserContent?: boolean },
+): string {
   const assistantMessages = event.messages.filter((entry) => {
     if (!entry || typeof entry !== "object") {
       return false;
@@ -1915,7 +1973,11 @@ function summarizeAgentEnd(event: { messages: unknown[]; success: boolean; durat
   });
   const latestAssistant = assistantMessages.at(-1);
   const texts = latestAssistant ? extractTextFromUnknown(latestAssistant).filter(Boolean) : [];
-  const summary = texts.find((entry) => entry.length >= 20) || texts[0];
+  const resolved = resolveUserFacingContent(texts.join("\n"), {
+    requireStructured: options?.requireStructuredUserContent,
+  });
+  const contentTexts = resolved.text ? extractTextFromUnknown(resolved.text).filter(Boolean) : [];
+  const summary = contentTexts.find((entry) => entry.length >= 20) || contentTexts[0];
   if (summary) {
     return summary.slice(0, 240);
   }
@@ -1924,7 +1986,10 @@ function summarizeAgentEnd(event: { messages: unknown[]; success: boolean; durat
     : `agent run failed after ${event.durationMs ?? 0}ms`;
 }
 
-function hasVisibleAssistantOutput(event: { messages: unknown[] }): boolean {
+function hasVisibleAssistantOutput(
+  event: { messages: unknown[] },
+  options?: { requireStructuredUserContent?: boolean },
+): boolean {
   const assistantMessages = event.messages.filter((entry) => {
     if (!entry || typeof entry !== "object") {
       return false;
@@ -1933,7 +1998,10 @@ function hasVisibleAssistantOutput(event: { messages: unknown[] }): boolean {
     return typeof role === "string" && role.toLowerCase() === "assistant";
   });
   for (const message of assistantMessages) {
-    if (extractTextFromUnknown(message).some((entry) => entry.length > 0)) {
+    const resolved = resolveUserFacingContent(extractTextFromUnknown(message).join("\n"), {
+      requireStructured: options?.requireStructuredUserContent,
+    });
+    if (extractTextFromUnknown(resolved.text).some((entry) => entry.length > 0)) {
       return true;
     }
   }
@@ -1994,10 +2062,16 @@ const taskSystemPlugin = {
       },
       async execute(_id, params) {
         const payload = params as Record<string, unknown>;
+        const sessionKey = normalizeText(payload.session_key);
+        const binding = activeTaskBindings.get(sessionKey);
+        if (binding) {
+          binding.requireStructuredUserContent = true;
+          activeTaskBindings.set(sessionKey, binding);
+        }
         const result =
           (await callHook(api, config, "attach-promise-guard", {
             source_task_id: normalizeText(payload.source_task_id),
-            session_key: normalizeText(payload.session_key),
+            session_key: sessionKey,
             promise_summary: normalizeText(payload.promise_summary),
             followup_due_at: normalizeText(payload.followup_due_at),
           })) ?? { ok: false, error: "attach-promise-guard-failed" };
@@ -2027,6 +2101,10 @@ const taskSystemPlugin = {
         const payload = params as Record<string, unknown>;
         const sessionKey = normalizeText(payload.session_key);
         const binding = activeTaskBindings.get(sessionKey);
+        if (binding) {
+          binding.requireStructuredUserContent = true;
+          activeTaskBindings.set(sessionKey, binding);
+        }
         const result =
           (await callHook(api, config, "create-followup-plan", {
             source_task_id: normalizeText(payload.source_task_id),
@@ -2057,10 +2135,16 @@ const taskSystemPlugin = {
       },
       async execute(_id, params) {
         const payload = params as Record<string, unknown>;
+        const sessionKey = normalizeText(payload.session_key);
+        const binding = activeTaskBindings.get(sessionKey);
+        if (binding) {
+          binding.requireStructuredUserContent = true;
+          activeTaskBindings.set(sessionKey, binding);
+        }
         const result =
           (await callHook(api, config, "schedule-followup-from-plan", {
             source_task_id: normalizeText(payload.source_task_id),
-            session_key: normalizeText(payload.session_key),
+            session_key: sessionKey,
             plan_id: normalizeText(payload.plan_id),
           })) ?? { ok: false, error: "schedule-followup-from-plan-failed" };
         return buildToolTextResult(result);
@@ -2082,25 +2166,36 @@ const taskSystemPlugin = {
       },
       async execute(_id, params) {
         const payload = params as Record<string, unknown>;
+        const sessionKey = normalizeText(payload.session_key);
+        const binding = activeTaskBindings.get(sessionKey);
+        if (binding) {
+          binding.requireStructuredUserContent = true;
+          activeTaskBindings.set(sessionKey, binding);
+        }
         const result =
           (await callHook(api, config, "finalize-planned-followup", {
             source_task_id: normalizeText(payload.source_task_id),
-            session_key: normalizeText(payload.session_key),
+            session_key: sessionKey,
             plan_id: normalizeText(payload.plan_id),
           })) ?? { ok: false, error: "finalize-planned-followup-failed" };
-        const sessionKey = normalizeText(payload.session_key);
-        const binding = activeTaskBindings.get(sessionKey);
-        if (result && result.ok === true && result.promise_fulfilled === true && binding?.channel && binding?.chatId) {
+        const updatedBinding = activeTaskBindings.get(sessionKey);
+        if (
+          result &&
+          result.ok === true &&
+          result.promise_fulfilled === true &&
+          updatedBinding?.channel &&
+          updatedBinding?.chatId
+        ) {
           await sendControlPlaneMessage({
             eventName: "followup-scheduled",
             priority: "p1-task-management",
-            channel: binding.channel,
-            accountId: binding.accountId,
-            chatId: binding.chatId,
-            replyToId: binding.replyToId,
-            threadId: binding.threadId,
+            channel: updatedBinding.channel,
+            accountId: updatedBinding.accountId,
+            chatId: updatedBinding.chatId,
+            replyToId: updatedBinding.replyToId,
+            threadId: updatedBinding.threadId,
             sessionKey,
-            taskId: normalizeText(payload.source_task_id) || binding.taskId,
+            taskId: normalizeText(payload.source_task_id) || updatedBinding.taskId,
             message: formatScheduleConfirmationMessage(result),
           });
         }
@@ -2716,6 +2811,8 @@ const taskSystemPlugin = {
         classificationReason: registerDecision.classification_reason ?? null,
         taskId: registerDecision.task_id ?? null,
         preRegistered: Boolean(preRegistered),
+        preRegisteredMessageId: preRegistered?.snapshot.messageId ?? null,
+        preRegisteredThreadId: preRegistered?.snapshot.threadId ?? null,
         producerMode: preRegistered ? "receive-side-producer" : "dispatch-side-priority-only",
         producerConsumerAligned: Boolean(preRegistered),
       });
@@ -2728,6 +2825,24 @@ const taskSystemPlugin = {
           replyToId: effectiveReplyToId,
           threadId: effectiveThreadId,
         });
+        if (preRegistered && (effectiveReplyToId || effectiveThreadId)) {
+          await appendDebugLog(config, "before_dispatch:sync-source-reply-target", {
+            agentId,
+            sessionKey,
+            taskId: registerDecision.task_id.trim(),
+            replyToId: effectiveReplyToId || null,
+            threadId: effectiveThreadId || null,
+            schedulerDecision: "entered",
+            reason: "pre-registered-reply-target",
+          });
+          await callHook(api, config, "sync-source-reply-target", {
+            agent_id: agentId,
+            session_key: sessionKey,
+            task_id: registerDecision.task_id.trim(),
+            reply_to_id: effectiveReplyToId || "",
+            thread_id: effectiveThreadId || "",
+          });
+        }
       }
       const classificationReason = String(registerDecision.classification_reason || "").trim();
       const isExistingActive = classificationReason === "existing-active-task";
@@ -3059,6 +3174,21 @@ const taskSystemPlugin = {
       if (!config.syncProgressOnMessageSending || !event.content?.trim()) {
         return;
       }
+      const sessionKey = normalizeSessionKey(ctx.sessionKey?.trim() || buildSessionKey(ctx.channelId, ctx.conversationId));
+      const activeTaskBinding = activeTaskBindings.get(sessionKey);
+      const resolvedContent = resolveUserFacingContent(event.content, {
+        requireStructured: Boolean(activeTaskBinding?.requireStructuredUserContent),
+      });
+      if (resolvedContent.text !== normalizeText(event.content)) {
+        event.content = resolvedContent.text;
+        await appendDebugLog(config, "message_sending:user-content-extracted", {
+          agentId: ctx.agentId || config.defaultAgentId,
+          sessionKey,
+          schedulerDecision: resolvedContent.hadBlock ? "structured" : "suppressed",
+          reason: resolvedContent.hadBlock ? "task-user-content-block" : "missing-task-user-content-block",
+          content: resolvedContent.text.slice(0, 240),
+        });
+      }
       if (ctx.sessionKey?.trim()) {
         if (!(await isTaskMonitorEnabled(ctx.sessionKey))) {
           await appendDebugLog(config, "message_sending:taskmonitor-disabled", {
@@ -3096,7 +3226,6 @@ const taskSystemPlugin = {
         });
         return;
       }
-      const sessionKey = normalizeSessionKey(buildSessionKey(ctx.channelId, ctx.conversationId));
       const agentId = resolveAgentId(ctx.agentId, sessionKey, config.defaultAgentId);
       await appendDebugLog(config, "message_sending", {
         agentId,
@@ -3105,7 +3234,6 @@ const taskSystemPlugin = {
         schedulerDecision: "entered",
         reason: "progress-sync",
       });
-      const activeTaskBinding = activeTaskBindings.get(sessionKey);
       await callHook(api, config, "progress-active", {
         agent_id: agentId,
         session_key: sessionKey,
@@ -3131,7 +3259,10 @@ const taskSystemPlugin = {
         });
         return;
       }
-      const text = normalizeText((event.assistantTexts || []).join("\n"));
+      const activeTaskBinding = activeTaskBindings.get(sessionKey);
+      const text = resolveUserFacingContent((event.assistantTexts || []).join("\n"), {
+        requireStructured: Boolean(activeTaskBinding?.requireStructuredUserContent),
+      }).text;
       if (!text) {
         return;
       }
@@ -3169,7 +3300,6 @@ const taskSystemPlugin = {
         schedulerDecision: "entered",
         reason: "progress-sync",
       });
-      const activeTaskBinding = activeTaskBindings.get(sessionKey);
       await callHook(api, config, "progress-active", {
         agent_id: agentId,
         session_key: sessionKey,
@@ -3252,8 +3382,16 @@ const taskSystemPlugin = {
         session_key: normalizedSessionKey,
         task_id: activeTaskBinding?.taskId,
         success: event.success,
-        has_visible_output: event.success ? hasVisibleAssistantOutput(event) : false,
-        result_summary: event.success ? summarizeAgentEnd(event) : undefined,
+        has_visible_output: event.success
+          ? hasVisibleAssistantOutput(event, {
+              requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+            })
+          : false,
+        result_summary: event.success
+          ? summarizeAgentEnd(event, {
+              requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+            })
+          : undefined,
         error: event.error,
       });
       const shouldDeliverFinalizeControlPlane =

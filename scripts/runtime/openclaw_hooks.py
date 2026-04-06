@@ -756,6 +756,29 @@ def resolve_active_task_from_payload(
     }
 
 
+def sync_source_reply_target_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    task = _resolve_target_task(store, payload)
+    if task is None:
+        return {"updated": False, "reason": "no-active-task"}
+    reply_to_id = str(payload.get("reply_to_id") or payload.get("replyToId") or "").strip()
+    thread_id = str(payload.get("thread_id") or payload.get("threadId") or "").strip()
+    meta: dict[str, Any] = {}
+    if reply_to_id and str(task.meta.get("source_reply_to_id") or "").strip() != reply_to_id:
+        meta["source_reply_to_id"] = reply_to_id
+    if thread_id and str(task.meta.get("source_thread_id") or "").strip() != thread_id:
+        meta["source_thread_id"] = thread_id
+    if not meta:
+        return {"updated": False, "reason": "reply-target-unchanged", "task": task.to_dict()}
+    task = store.touch_task(task.task_id, user_visible=False, meta=meta)
+    return {"updated": True, "task": task.to_dict()}
+
+
 def progress_from_payload(
     payload: dict[str, Any],
     *,
@@ -1395,6 +1418,8 @@ def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Pat
         return mark_continuation_wake_from_payload(payload, config_path=config_path)
     if command == "resolve-active":
         return resolve_active_task_from_payload(payload, config_path=config_path)
+    if command == "sync-source-reply-target":
+        return sync_source_reply_target_from_payload(payload, config_path=config_path)
     if command == "progress":
         return progress_from_payload(payload, config_path=config_path)
     if command == "progress-active":
@@ -1434,7 +1459,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     usage = (
         "usage: openclaw_hooks.py "
-        "<register|create-followup-plan|attach-promise-guard|schedule-followup-from-plan|finalize-planned-followup|watchdog-auto-recover|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control|resume-main-task|cancel-main-queue-task|main-continuity|main-tasks-summary> "
+        "<register|create-followup-plan|attach-promise-guard|schedule-followup-from-plan|finalize-planned-followup|watchdog-auto-recover|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|sync-source-reply-target|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control|resume-main-task|cancel-main-queue-task|main-continuity|main-tasks-summary> "
         "<payload.json|-> [config.json]"
     )
     if args and args[0] in {"-h", "--help"}:

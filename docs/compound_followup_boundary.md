@@ -103,6 +103,7 @@ Therefore:
 - shipping behavior may include pragmatic stopgaps
 - roadmap direction must move toward structured planning or tool-assisted task decomposition
 - if the LLM planning path is unhealthy, timed out, or skipped, the system must report that honestly instead of pretending the follow-up exists
+- even when tools produce internal planning or scheduling state, that state should not be shown directly to the user; it should first be projected by task-system as `[wd]` control-plane state or later business content
 
 ### why this matters
 
@@ -233,6 +234,7 @@ This question is intentionally left open for the next roadmap discussion.
 - 当前已发布行为里可以包含一些务实止血
 - 但 roadmap 的方向必须转向 structured planning 或 tool-assisted task decomposition
 - 如果 LLM planning 路径不健康、超时或被跳过，系统必须如实告诉用户，而不能假装 follow-up 已经存在
+- 即使 tool 产出了内部 planning / scheduling 状态，这些状态也不应直接回复给用户；它们应先被 task-system 投影成 `[wd]` 控制面信息，或在真正到点时再投影成业务内容
 
 ### 为什么这件事重要
 

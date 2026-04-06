@@ -127,6 +127,7 @@
   - LLM 做 planning
   - task-system 做监督、验证、持久化与兜底
 - 鉴于当前 OpenClaw 连简单请求也默认会进入 agent / LLM，task-system 不应再额外演化成前置 simple/complex 主分类器
+- tool 链路产生的内部调度状态，不应直接作为用户输出；它们必须先进入 task-system truth source，再由 runtime 统一投影成 `[wd]` 控制面消息或真正的后续业务结果
 
 ## 4.2 外部借鉴原则
 
@@ -508,6 +509,7 @@ Phase 5 收口结论：
 3. 30 秒进度消息仍然由 runtime 负责
 4. fallback / recovery 文案仍然由 runtime 负责
 5. 除上述控制面例外外，其余涉及 future-action planning 的部分默认走 tool-assisted planning
+6. 不允许把 regex / 句式表 / 关键词过滤 / 文本清洗扩张成长期主方案
 
 ### 12.1 目标
 
@@ -517,6 +519,8 @@ Phase 6 要解决的是：
 - 让原 agent / LLM 继续理解请求
 - 让 task-system 提供显式工具、监控、promise guard、truth source 与恢复机制
 - 以最低成本，尽快把“工具化 planning + 运行时监督”先跑通一个最小闭环
+- 明确拒绝走“先让模型说，再靠硬编码文本规则清洗”的方向
+- 把“业务内容通道”和“调度状态通道”正式拆开
 
 一句话总结：
 

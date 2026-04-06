@@ -19,6 +19,67 @@ The following review constraints should be treated as fixed unless explicitly ch
 6. if planning fails, times out, or is skipped, the user must be told explicitly
 7. delayed follow-up scheduling should use an absolute due time as the authoritative field
 8. if execution happens after that absolute time, the follow-up must still run and the user must be told it is overdue or recovered
+9. tool-chain information is not user output
+10. scheduling status is runtime-owned control-plane, not normal assistant prose
+11. hard-coded regex or phrase-list cleanup must not be used as the long-term mechanism for separating scheduling status from user content
+
+### hard constraint: tool-chain information is not user output
+
+The following rule should now be treated as fixed:
+
+- tool outputs and internal planning state must not be projected directly to the user as part of the normal assistant reply
+
+This includes:
+
+- plan ids
+- promise guards
+- accepted or rejected scheduling state
+- due-time bookkeeping
+- follow-up task ids
+- raw tool results
+
+Those signals must first land in task-system, then be projected in one of two forms:
+
+1. runtime-owned control-plane messages
+   - `[wd] 已收到...`
+   - `[wd] 已安排妥当...`
+   - `[wd] 这次还没有排上...`
+   - recovery or fallback messages
+2. business content replies
+   - the immediate answer
+   - or the actual delayed follow-up content when it is due
+
+So the user-facing rule is:
+
+- scheduling status belongs to task-system
+- business content belongs to the main answer or the actual follow-up reply
+- tool-chain information itself is not user output
+
+### hard constraint: no hard-coded text cleanup as the primary design
+
+The following rule should be treated as a top-level design constraint:
+
+- do not solve scheduling-status leakage by growing regex lists, phrase tables, keyword filters, or ad-hoc text cleanup rules over free-form model output
+
+Why this must stay fixed:
+
+- that path becomes unbounded
+- wording variants will always leak through
+- it mixes control-plane semantics into the content channel first, then tries to pull them back out
+- it makes future maintenance unpredictable
+
+The required direction is:
+
+1. keep scheduling state in structured tool results
+2. let task-system project that state into runtime-owned `[wd]` messages
+3. keep normal assistant prose focused on business content only
+4. treat channel separation as the solution, not text post-processing
+
+In the current minimum implementation, that channel separation is enforced by a dedicated business-content block:
+
+- `<task_user_content> ... </task_user_content>`
+
+When planning tools have been used for the current task, runtime forwards only the content inside that block.
 
 ### problem
 
@@ -387,6 +448,10 @@ The most important hard rule:
 
 > Do not say "I will come back in 5 minutes" unless the runtime has accepted a real scheduled follow-up.
 
+One more hard rule should now be treated the same way:
+
+> Do not expose scheduling acceptance, scheduling rejection, or raw tool state directly to the user. Return that state to task-system, and let task-system project it as a `[wd]` control-plane message.
+
 This prompt contract should be treated as part of the implementation surface, not as optional writing guidance.
 
 For the usable version of this project, this contract should also be user-editable through runtime config:
@@ -654,6 +719,67 @@ In one sentence:
 6. 只要 planning 失败、超时或被跳过，就必须明确告诉用户
 7. delayed follow-up 调度应以绝对时间点作为权威字段
 8. 即使真正执行时已经超过这个绝对时间点，也仍然必须执行，并告诉用户这是 overdue 或 recovered
+9. 工具链里的内部信息不是用户输出
+10. “是否已排上 / 是否安排妥当”属于 runtime-owned 控制面，不属于主答复
+11. 严禁把 regex、句式表、关键词过滤或零散文本清洗扩张成长期主方案
+
+### 硬约束：工具链信息不是用户输出
+
+下面这条现在也应视为固定约束：
+
+- tool 输出和内部 planning 状态，不能直接作为用户可见的正常主答复
+
+这里包括：
+
+- plan id
+- promise guard
+- 调度 accepted / rejected
+- due time 记账状态
+- follow-up task id
+- 裸 tool 结果
+
+这些信号必须先进入 task-system，再投影成下面两类之一：
+
+1. runtime-owned 控制面消息
+   - `[wd] 已收到...`
+   - `[wd] 已安排妥当...`
+   - `[wd] 这次还没有排上...`
+   - recovery / fallback 文案
+2. 业务内容回复
+   - 立即主答复
+   - 或真正到点后的 delayed follow-up 正文
+
+所以用户侧规则要明确成：
+
+- 调度状态归 task-system
+- 业务内容归主答复或真实 follow-up
+- 工具链内部信息本身不直接面向用户
+
+### 硬约束：严禁用硬编码文本清洗当主方案
+
+下面这条要视为最高优先级设计约束：
+
+- 不能通过不断增加 regex、句式表、关键词过滤或零散文本清洗规则，去修补“排程状态混入主答复”这个问题
+
+为什么这条必须固定：
+
+- 这种做法会无限膨胀
+- 模型只要换一种说法就会漏
+- 它先把控制面语义放进内容通道，再试图事后抽出来，方向本身就是错的
+- 后续维护会越来越不可控
+
+正确方向必须是：
+
+1. 排程状态先留在结构化 tool 结果里
+2. task-system 再把它投影成 runtime-owned 的 `[wd]`
+3. 主答复只承载业务内容
+4. 靠通道分离解决问题，而不是靠文本后处理
+
+在当前阶段，这条“通道分离”的最小实现是一个专门的业务内容块：
+
+- `<task_user_content> ... </task_user_content>`
+
+一旦当前任务已经使用 planning tools，runtime 之后只转发这个内容块里的业务内容。
 
 ### 问题
 
@@ -1015,6 +1141,10 @@ LLM 不应该直接操作原始 task 文件，而应该调用显式 task-system 
 最重要的一条硬规则是：
 
 > 只有当 runtime 已接受一条真实 scheduled follow-up 时，模型才能说“我 5 分钟后回来”。
+
+现在还应增加一条同等级硬规则：
+
+> 不要把调度 accepted / rejected 或裸 tool 状态直接告诉用户；这些状态应先返回给 task-system，再由 task-system 统一投影成 `[wd]` 控制面消息。
 
 这组 prompt contract 不应被当成可选文案建议，而应被视为实现边界的一部分。
 
