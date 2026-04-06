@@ -91,6 +91,7 @@ Therefore:
 
 - shipping behavior may include pragmatic stopgaps
 - roadmap direction must move toward structured planning or tool-assisted task decomposition
+- if the LLM planning path is unhealthy, timed out, or skipped, the system must report that honestly instead of pretending the follow-up exists
 
 ### why this matters
 
@@ -207,6 +208,7 @@ This question is intentionally left open for the next roadmap discussion.
 
 - 当前已发布行为里可以包含一些务实止血
 - 但 roadmap 的方向必须转向 structured planning 或 tool-assisted task decomposition
+- 如果 LLM planning 路径不健康、超时或被跳过，系统必须如实告诉用户，而不能假装 follow-up 已经存在
 
 ### 为什么这件事重要
 
