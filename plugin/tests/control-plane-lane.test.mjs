@@ -372,6 +372,76 @@ test("control-plane lane does not stay blocked after a timed-out send in the sam
   }
 });
 
+test("timed-out task-management control-plane is retried through host delivery when still worth sending", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    taskmonitorControlResponse: {
+      ok: true,
+      enabled: true,
+      message: "taskmonitor 已开启。",
+      control_plane_message: {
+        schema: "openclaw.task-system.control-plane.v1",
+        kind: "taskmonitor-updated",
+        event_name: "taskmonitor-updated",
+        priority: "p1-task-management",
+        text: "taskmonitor 已开启。",
+      },
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages, {
+    enableHostFeishuDelivery: true,
+    hostDeliveryPollMs: 20,
+    outboundSendTimeoutMs: 20,
+    outboundSendModeSequence: ["hang", "ok"],
+  });
+
+  try {
+    await plugin.start();
+
+    await plugin.beforeDispatch(
+      {
+        content: "/taskmonitor on",
+        body: "/taskmonitor on",
+        channel: "feishu",
+        senderId: "ou_retry_user",
+        messageId: "om_retry_source",
+        threadId: "thread_retry_source",
+      },
+      {
+        sessionKey: "agent:main:feishu:direct:ou_retry_user",
+        channelId: "feishu",
+        conversationId: "chat-retry",
+        accountId: "acct-retry",
+        senderId: "ou_retry_user",
+        agentId: "main",
+      },
+    );
+
+    const retryEnqueued = await waitForDebugEvent(
+      runtimeRoot,
+      (entry) => entry.event === "taskmonitor-updated:retry-enqueued",
+      1500,
+    );
+    const hostDelivered = await waitForDebugEvent(
+      runtimeRoot,
+      (entry) => entry.event === "host-feishu-delivery:sent" && entry.payload?.chatId === "chat-retry",
+      1500,
+    );
+    assert.equal(retryEnqueued?.payload?.failureKind, "timeout");
+    assert.equal(retryEnqueued?.payload?.reason, "eligible-feishu-host-retry");
+    assert.equal(hostDelivered?.payload?.schedulerDecision, "sent");
+    assert.equal(hostDelivered?.payload?.replyToId, "om_retry_source");
+    assert.equal(hostDelivered?.payload?.threadId, "thread_retry_source");
+    assert.equal(sentMessages.length, 1);
+    assert.equal(sentMessages[0]?.replyToId, "om_retry_source");
+    assert.equal(sentMessages[0]?.threadId, "thread_retry_source");
+    assert.match(sentMessages[0]?.text || "", /^\[wd\]/);
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("status command sends continuity summary through control-plane lane without entering register flow", async () => {
   resetGlobalState();
   const { runtimeRoot, callsPath } = await createFakeRuntimeRoot();

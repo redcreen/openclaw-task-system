@@ -184,6 +184,7 @@ These constraints were added after live review and should not be silently relaxe
 
 - `[wd]` 和 runtime-owned follow-up 只要存在源消息上下文，就应尽量保留 `reply_to_id / thread_id`，避免同一条控制面消息有时是回复、有时变成普通新消息
 - control-plane lane 可以按 audience 串行化，但单次 adapter load / send 不能无限期占住 lane；runtime 必须对 direct delivery 设置明确超时边界
+- 当 direct control-plane delivery 超时或失败时，runtime 不应无限等待；对于仍然值得补发的高价值 `[wd]`，应转入受监督的异步补投路径，而不是静默丢弃
 
 ## 2. 一张图看整体
 

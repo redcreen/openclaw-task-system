@@ -199,6 +199,7 @@ python3 scripts/runtime/plugin_smoke.py --json
 - host / continuation direct-send paths also suppress raw `<task_user_content>` leakage
 - promise-guard rehydrate after reload
 - same-audience control-plane lane recovers after timed-out direct send
+- timed-out high-value `[wd]` can be re-enqueued into supervised retry delivery when still worth sending
 - lifecycle `entered / ignored / skipped`
 - scheduler diagnostics 字段
 - runner 字段：

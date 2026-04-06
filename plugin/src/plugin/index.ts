@@ -1164,6 +1164,10 @@ type SendInstructionPayload = {
   message?: string;
   reply_to_id?: string;
   thread_id?: string;
+  event_name?: string;
+  priority?: string;
+  created_at?: string;
+  retry_reason?: string;
 };
 
 function instructionDir(config: Required<TaskSystemPluginConfig>): string {
@@ -1183,9 +1187,21 @@ function failedInstructionDir(config: Required<TaskSystemPluginConfig>): string 
 }
 
 async function ensureHostDeliveryDirs(config: Required<TaskSystemPluginConfig>): Promise<void> {
+  await mkdir(instructionDir(config), { recursive: true });
   await mkdir(dispatchResultDir(config), { recursive: true });
   await mkdir(processedInstructionDir(config), { recursive: true });
   await mkdir(failedInstructionDir(config), { recursive: true });
+}
+
+async function enqueueSendInstruction(
+  config: Required<TaskSystemPluginConfig>,
+  payload: SendInstructionPayload,
+): Promise<string> {
+  await ensureHostDeliveryDirs(config);
+  const name = `${normalizeText(payload.task_id) || "control-plane"}-${randomUUID()}.json`;
+  const target = join(instructionDir(config), name);
+  await writeFile(target, JSON.stringify(payload, null, 2) + "\n", "utf-8");
+  return name;
 }
 
 function shouldUseHostFeishuDelivery(payload: SendInstructionPayload): boolean {
@@ -1856,6 +1872,128 @@ function decorateTaskManagedFollowupText(text: string, options?: { wd?: boolean 
   return `[wd] ${normalized}`;
 }
 
+function controlPlaneRetryWindowMs(priority: ControlPlanePriority): number {
+  if (priority === "p0-receive-ack") {
+    return 30_000;
+  }
+  if (priority === "p1-task-management") {
+    return 5 * 60 * 1000;
+  }
+  if (priority === "p2-progress-followup") {
+    return 60_000;
+  }
+  return 0;
+}
+
+function shouldRetryControlPlaneMessage(
+  config: Required<TaskSystemPluginConfig>,
+  payload: ControlPlaneMessage,
+  failureKind: "timeout" | "adapter-unavailable" | "error",
+  deliveredAfterMs: number,
+): {
+  shouldRetry: boolean;
+  reason:
+    | "eligible-feishu-host-retry"
+    | "stale-control-plane-message"
+    | "retry-not-supported-for-channel"
+    | "retry-disabled-host-delivery"
+    | "low-priority-no-retry";
+} {
+  if (payload.channel !== "feishu") {
+    return {
+      shouldRetry: false,
+      reason: "retry-not-supported-for-channel",
+    };
+  }
+  if (!config.enableHostFeishuDelivery) {
+    return {
+      shouldRetry: false,
+      reason: "retry-disabled-host-delivery",
+    };
+  }
+  const allowedAgeMs = controlPlaneRetryWindowMs(payload.priority);
+  if (allowedAgeMs <= 0) {
+    return {
+      shouldRetry: false,
+      reason: "low-priority-no-retry",
+    };
+  }
+  if (deliveredAfterMs > allowedAgeMs) {
+    return {
+      shouldRetry: false,
+      reason: "stale-control-plane-message",
+    };
+  }
+  return {
+    shouldRetry: true,
+    reason: "eligible-feishu-host-retry",
+  };
+}
+
+async function maybeEnqueueControlPlaneRetry(
+  config: Required<TaskSystemPluginConfig>,
+  payload: ControlPlaneMessage,
+  params: {
+    failureKind: "timeout" | "adapter-unavailable" | "error";
+    audienceKey?: string | null;
+    enqueueToken?: number | null;
+    audienceSequence?: number | null;
+    deliveredAfterMs: number;
+  },
+): Promise<void> {
+  const decision = shouldRetryControlPlaneMessage(config, payload, params.failureKind, params.deliveredAfterMs);
+  if (!decision.shouldRetry) {
+    await appendDebugLog(config, `${payload.eventName}:retry-skipped`, {
+      channel: payload.channel,
+      chatId: payload.chatId,
+      taskId: payload.taskId ?? null,
+      sessionKey: payload.sessionKey,
+      priority: payload.priority,
+      schedulerDecision: "skipped",
+      reason: decision.reason,
+      failureKind: params.failureKind,
+      audienceKey: params.audienceKey ?? null,
+      enqueueToken: params.enqueueToken ?? null,
+      audienceSequence: params.audienceSequence ?? null,
+      replyToId: payload.replyToId ?? null,
+      threadId: payload.threadId ?? null,
+    });
+    return;
+  }
+  const instructionName = await enqueueSendInstruction(config, {
+    schema: "openclaw.task-system.send-instruction.v1",
+    task_id: payload.taskId || undefined,
+    agent_id: inferAgentIdFromSessionKey(payload.sessionKey) || undefined,
+    session_key: payload.sessionKey,
+    channel: payload.channel,
+    account_id: payload.accountId || "",
+    chat_id: payload.chatId,
+    message: withTaskPrefix(config, payload.message),
+    reply_to_id: payload.replyToId || undefined,
+    thread_id: payload.threadId || undefined,
+    event_name: payload.eventName,
+    priority: payload.priority,
+    created_at: new Date().toISOString(),
+    retry_reason: params.failureKind,
+  });
+  await appendDebugLog(config, `${payload.eventName}:retry-enqueued`, {
+    channel: payload.channel,
+    chatId: payload.chatId,
+    taskId: payload.taskId ?? null,
+    sessionKey: payload.sessionKey,
+    priority: payload.priority,
+    schedulerDecision: "retry-enqueued",
+    reason: decision.reason,
+    failureKind: params.failureKind,
+    audienceKey: params.audienceKey ?? null,
+    enqueueToken: params.enqueueToken ?? null,
+    audienceSequence: params.audienceSequence ?? null,
+    replyToId: payload.replyToId ?? null,
+    threadId: payload.threadId ?? null,
+    instructionName,
+  });
+}
+
 function normalizeMainUserContentMode(value: unknown): "none" | "immediate-summary" | "full-answer" {
   const normalized = normalizeText(value).toLowerCase();
   if (normalized === "immediate-summary" || normalized === "full-answer") {
@@ -2047,6 +2185,7 @@ async function deliverControlPlaneMessage(
   }
   const chatId = normalizeDirectStatusRecipient(channel, String(payload.chatId || ""));
   const message = withTaskPrefix(config, payload.message);
+  const deliveryStartedAt = Date.now();
   if (!chatId || !message) {
     return null;
   }
@@ -2076,6 +2215,13 @@ async function deliverControlPlaneMessage(
         sessionKey: payload.sessionKey,
         schedulerDecision: "adapter-unavailable",
         adapterLoadMs,
+        audienceKey: schedulerContext?.audienceKey ?? null,
+        enqueueToken: schedulerContext?.enqueueToken ?? null,
+        audienceSequence: schedulerContext?.audienceSequence ?? null,
+      });
+      await maybeEnqueueControlPlaneRetry(config, payload, {
+        failureKind: "adapter-unavailable",
+        deliveredAfterMs: Date.now() - deliveryStartedAt,
         audienceKey: schedulerContext?.audienceKey ?? null,
         enqueueToken: schedulerContext?.enqueueToken ?? null,
         audienceSequence: schedulerContext?.audienceSequence ?? null,
@@ -2117,6 +2263,7 @@ async function deliverControlPlaneMessage(
     };
   } catch (error) {
     const messageText = error instanceof Error ? error.message : String(error);
+    const failureKind = /timed out/i.test(messageText) ? "timeout" : "error";
     await appendDebugLog(config, `${payload.eventName}:error`, {
       channel,
       chatId,
@@ -2129,6 +2276,13 @@ async function deliverControlPlaneMessage(
       logLevel: "warn",
       operatorVisible: true,
       errorCategory: "control-plane-delivery-failure",
+      audienceKey: schedulerContext?.audienceKey ?? null,
+      enqueueToken: schedulerContext?.enqueueToken ?? null,
+      audienceSequence: schedulerContext?.audienceSequence ?? null,
+    });
+    await maybeEnqueueControlPlaneRetry(config, payload, {
+      failureKind,
+      deliveredAfterMs: Date.now() - deliveryStartedAt,
       audienceKey: schedulerContext?.audienceKey ?? null,
       enqueueToken: schedulerContext?.enqueueToken ?? null,
       audienceSequence: schedulerContext?.audienceSequence ?? null,
