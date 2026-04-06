@@ -26,6 +26,7 @@ def load_task(task_id: str, *, paths: Optional[TaskPaths] = None) -> dict[str, A
 def write_outbox(task: dict[str, Any], *, message: str, paths: Optional[TaskPaths] = None) -> Path:
     resolved_paths = paths or default_paths()
     ensure_dirs(resolved_paths)
+    meta = task.get("meta") if isinstance(task.get("meta"), dict) else {}
     payload = {
         "schema": OUTBOX_SCHEMA,
         "task_id": task["task_id"],
@@ -35,6 +36,8 @@ def write_outbox(task: dict[str, Any], *, message: str, paths: Optional[TaskPath
         "account_id": task.get("account_id"),
         "chat_id": task.get("chat_id"),
         "message": message,
+        "reply_to_id": task.get("reply_to_id") or meta.get("source_reply_to_id"),
+        "thread_id": task.get("thread_id") or meta.get("source_thread_id"),
         "created_at": task.get("updated_at") or task.get("last_internal_touch_at"),
     }
     path = outbox_dir(resolved_paths) / f"{task['task_id']}.json"

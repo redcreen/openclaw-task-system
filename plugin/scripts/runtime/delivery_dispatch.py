@@ -37,6 +37,8 @@ def build_instruction(payload: dict[str, Any]) -> dict[str, Any]:
         "account_id": payload.get("account_id"),
         "chat_id": payload.get("chat_id"),
         "message": payload["message"],
+        "reply_to_id": payload.get("reply_to_id"),
+        "thread_id": payload.get("thread_id"),
     }
 
 

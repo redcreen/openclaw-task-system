@@ -218,6 +218,8 @@ test("agent_end delivers finalize failure control-plane message when runtime ret
         body: "帮我继续排查这个问题",
         channel: "telegram",
         senderId: "8705812936",
+        messageId: "msg-source-1",
+        threadId: "thread-source-1",
       },
       {
         sessionKey: "agent:main:telegram:direct:8705812936",
@@ -264,6 +266,10 @@ test("agent_end delivers finalize failure control-plane message when runtime ret
     assert.equal(sentMessages.length, 2);
     assert.match(sentMessages[0].text, /^\[wd\]/);
     assert.match(sentMessages[1].text, /当前任务已失败：agent_end failure/);
+    assert.equal(sentMessages[0].replyToId, "msg-source-1");
+    assert.equal(sentMessages[1].replyToId, "msg-source-1");
+    assert.equal(sentMessages[0].threadId, "thread-source-1");
+    assert.equal(sentMessages[1].threadId, "thread-source-1");
     assert.equal(terminalArmed?.payload?.terminalPhase, "armed");
     assert.equal(terminalArmed?.payload?.terminalEventName, "agent-failed");
     assert.equal(terminalPendingArmed?.payload?.terminalPhase, "pending");
@@ -272,6 +278,95 @@ test("agent_end delivers finalize failure control-plane message when runtime ret
     assert.equal(terminalCommitted?.payload?.blockedBy, "task-failed");
     assert.equal(terminalCleared?.payload?.terminalPhase, "cleared");
     assert.equal(terminalCleared?.payload?.reason, "finalize-active-complete");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("control-plane lane does not stay blocked after a timed-out send in the same audience", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    taskmonitorControlResponse: {
+      ok: true,
+      enabled: true,
+      message: "taskmonitor 已开启。",
+      control_plane_message: {
+        schema: "openclaw.task-system.control-plane.v1",
+        kind: "taskmonitor-updated",
+        event_name: "taskmonitor-updated",
+        priority: "p1-task-management",
+        text: "taskmonitor 已开启。",
+      },
+    },
+    mainContinuityResponse: {
+      runbook_status: "ok",
+      primary_action_kind: "none",
+      control_plane_message: {
+        schema: "openclaw.task-system.control-plane.v1",
+        kind: "continuity-summary",
+        event_name: "continuity-summary",
+        priority: "p1-task-management",
+        text: "当前没有需要立即处理的 continuity 风险。",
+      },
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages, {
+    outboundSendTimeoutMs: 20,
+    outboundSendModeSequence: ["hang", "ok"],
+  });
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "/taskmonitor on",
+        body: "/taskmonitor on",
+        channel: "telegram",
+        senderId: "8705812936",
+        messageId: "msg-timeout-1",
+      },
+      {
+        sessionKey: "agent:main:telegram:direct:8705812936",
+        channelId: "telegram",
+        conversationId: "8705812936",
+        accountId: "default",
+        senderId: "8705812936",
+        agentId: "main",
+      },
+    );
+
+    await plugin.beforeDispatch(
+      {
+        content: "/status",
+        body: "/status",
+        channel: "telegram",
+        senderId: "8705812936",
+        messageId: "msg-timeout-2",
+      },
+      {
+        sessionKey: "agent:main:telegram:direct:8705812936",
+        channelId: "telegram",
+        conversationId: "8705812936",
+        accountId: "default",
+        senderId: "8705812936",
+        agentId: "main",
+      },
+    );
+
+    const firstError = await waitForDebugEvent(
+      runtimeRoot,
+      (entry) => entry.event === "taskmonitor-updated:error" || entry.event === "taskmonitor-control:error",
+      1500,
+    );
+    const secondSent = await waitForDebugEvent(
+      runtimeRoot,
+      (entry) => entry.event === "continuity-summary:sent",
+      1500,
+    );
+    assert.equal(firstError?.payload?.reason, "control-plane-send-failed");
+    assert.equal(secondSent?.payload?.schedulerDecision, "sent");
+    assert.equal(sentMessages.length, 1);
+    assert.equal(sentMessages[0]?.replyToId, "msg-timeout-2");
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }

@@ -326,9 +326,18 @@ export function createApi(runtimeRoot, sentMessages, pluginConfigOverrides = {})
   const handlers = new Map();
   const services = [];
   const registeredTools = new Map();
+  const outboundAdapterLoadDelayMs = Number.isFinite(pluginConfigOverrides.outboundAdapterLoadDelayMs)
+    ? Number(pluginConfigOverrides.outboundAdapterLoadDelayMs)
+    : 0;
   const outboundSendDelayMs = Number.isFinite(pluginConfigOverrides.outboundSendDelayMs)
     ? Number(pluginConfigOverrides.outboundSendDelayMs)
     : 0;
+  const outboundSendDelaySequenceMs = Array.isArray(pluginConfigOverrides.outboundSendDelaySequenceMs)
+    ? pluginConfigOverrides.outboundSendDelaySequenceMs.map((entry) => Number(entry))
+    : null;
+  const outboundSendModeSequence = Array.isArray(pluginConfigOverrides.outboundSendModeSequence)
+    ? pluginConfigOverrides.outboundSendModeSequence.map((entry) => String(entry))
+    : null;
   const outboundAdapterMode = typeof pluginConfigOverrides.outboundAdapterMode === "string"
     ? pluginConfigOverrides.outboundAdapterMode
     : "ok";
@@ -355,16 +364,33 @@ export function createApi(runtimeRoot, sentMessages, pluginConfigOverrides = {})
       channel: {
         outbound: {
           async loadAdapter() {
+            if (outboundAdapterLoadDelayMs > 0) {
+              await new Promise((resolve) => setTimeout(resolve, outboundAdapterLoadDelayMs));
+            }
+            if (outboundAdapterMode === "hang") {
+              return await new Promise(() => {});
+            }
             if (outboundAdapterMode === "unavailable") {
               return null;
             }
             return {
               async sendText(payload) {
-                if (outboundAdapterMode === "error") {
+                const nextMode =
+                  outboundSendModeSequence && outboundSendModeSequence.length > 0
+                    ? String(outboundSendModeSequence.shift() || "ok")
+                    : outboundAdapterMode;
+                if (nextMode === "hang") {
+                  return await new Promise(() => {});
+                }
+                if (nextMode === "error") {
                   throw new Error(outboundErrorMessage);
                 }
-                if (outboundSendDelayMs > 0) {
-                  await new Promise((resolve) => setTimeout(resolve, outboundSendDelayMs));
+                const nextDelay =
+                  outboundSendDelaySequenceMs && outboundSendDelaySequenceMs.length > 0
+                    ? Number(outboundSendDelaySequenceMs.shift() ?? 0)
+                    : outboundSendDelayMs;
+                if (Number.isFinite(nextDelay) && nextDelay > 0) {
+                  await new Promise((resolve) => setTimeout(resolve, nextDelay));
                 }
                 sentMessages.push(payload);
                 return {

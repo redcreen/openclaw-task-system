@@ -35,6 +35,8 @@ type TaskSystemPluginConfig = {
   continuationPollMs?: number;
   enableWatchdogRecoveryRunner?: boolean;
   watchdogRecoveryPollMs?: number;
+  outboundAdapterLoadTimeoutMs?: number;
+  outboundSendTimeoutMs?: number;
 };
 
 type PlanningRuntimeConfig = {
@@ -140,6 +142,14 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
       typeof value.watchdogRecoveryPollMs === "number" && Number.isFinite(value.watchdogRecoveryPollMs)
         ? Math.max(1000, Math.trunc(value.watchdogRecoveryPollMs))
         : 30000,
+    outboundAdapterLoadTimeoutMs:
+      typeof value.outboundAdapterLoadTimeoutMs === "number" && Number.isFinite(value.outboundAdapterLoadTimeoutMs)
+        ? Math.max(1000, Math.trunc(value.outboundAdapterLoadTimeoutMs))
+        : 10000,
+    outboundSendTimeoutMs:
+      typeof value.outboundSendTimeoutMs === "number" && Number.isFinite(value.outboundSendTimeoutMs)
+        ? Math.max(1000, Math.trunc(value.outboundSendTimeoutMs))
+        : 10000,
   };
 }
 
@@ -611,6 +621,8 @@ type TextCapableAdapter = {
     to: string;
     text: string;
     accountId?: string;
+    replyToId?: string;
+    threadId?: string;
   }) => Promise<unknown>;
 };
 
@@ -619,6 +631,7 @@ const outboundAdapterCache = new WeakMap<OpenClawPluginApi, Map<string, Promise<
 async function loadOutboundAdapter(
   api: OpenClawPluginApi,
   channel: string,
+  timeoutMs: number,
 ): Promise<TextCapableAdapter | null> {
   const normalizedChannel = normalizeText(channel).toLowerCase();
   if (!normalizedChannel) {
@@ -633,8 +646,11 @@ async function loadOutboundAdapter(
   if (cached) {
     return cached;
   }
-  const pending = api.runtime.channel.outbound
-    .loadAdapter(normalizedChannel)
+  const pending = withTimeout(
+    `load outbound adapter ${normalizedChannel}`,
+    timeoutMs,
+    () => api.runtime.channel.outbound.loadAdapter(normalizedChannel),
+  )
     .then((adapter) => (adapter as TextCapableAdapter | null) ?? null)
     .catch(() => {
       cache?.delete(normalizedChannel);
@@ -654,7 +670,7 @@ async function warmOutboundAdapters(
       if (!normalized) {
         return;
       }
-      await loadOutboundAdapter(api, normalized);
+      await loadOutboundAdapter(api, normalized, 1000);
     }),
   );
 }
@@ -853,6 +869,31 @@ function normalizeText(value: unknown): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+async function withTimeout<T>(
+  label: string,
+  timeoutMs: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return operation();
+  }
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 const TASK_USER_CONTENT_OPEN = "<task_user_content>";
 const TASK_USER_CONTENT_CLOSE = "</task_user_content>";
 
@@ -904,6 +945,36 @@ function resolveUserFacingContent(text: string, options?: { requireStructured?: 
     return { text: "", hadBlock: false, hadRawMarker: false };
   }
   return { text: normalizeText(text), hadBlock: false, hadRawMarker: false };
+}
+
+function sanitizeUserFacingDeliveryText(
+  text: string,
+  options?: { requireStructured?: boolean },
+): {
+  text: string;
+  suppressed: boolean;
+  reason: "raw-task-user-content-marker" | "missing-task-user-content-block" | "empty";
+} {
+  const resolved = resolveUserFacingContent(text, options);
+  if (resolved.hadRawMarker && !resolved.text) {
+    return {
+      text: "",
+      suppressed: true,
+      reason: "raw-task-user-content-marker",
+    };
+  }
+  if (!resolved.text) {
+    return {
+      text: "",
+      suppressed: true,
+      reason: options?.requireStructured ? "missing-task-user-content-block" : "empty",
+    };
+  }
+  return {
+    text: resolved.text,
+    suppressed: false,
+    reason: "empty",
+  };
 }
 
 function buildPlanningRuntimeContext(params: {
@@ -1091,6 +1162,8 @@ type SendInstructionPayload = {
   account_id?: string;
   chat_id?: string;
   message?: string;
+  reply_to_id?: string;
+  thread_id?: string;
 };
 
 function instructionDir(config: Required<TaskSystemPluginConfig>): string {
@@ -1142,6 +1215,8 @@ async function writeHostDispatchResult(
         account_id: payload.account_id || null,
         chat_id: payload.chat_id || null,
         message: payload.message || null,
+        reply_to_id: payload.reply_to_id || null,
+        thread_id: payload.thread_id || null,
         ...result,
       },
       null,
@@ -1176,13 +1251,23 @@ async function processFeishuInstruction(
 
   const accountId = String(payload.account_id || "").trim();
   const chatId = String(payload.chat_id || "").trim();
-  const message = String(payload.message || "").trim();
+  const replyToId = normalizeText(payload.reply_to_id);
+  const threadId = normalizeText(payload.thread_id);
+  const sanitized = sanitizeUserFacingDeliveryText(String(payload.message || "").trim());
+  const message = sanitized.text;
+  const invalidPayloadReason = !accountId
+    ? "missing-account-id"
+    : !chatId
+      ? "missing-chat-id"
+      : sanitized.suppressed
+        ? sanitized.reason
+        : "empty-message";
   const audienceKey = buildControlPlaneAudienceKey("feishu", accountId, chatId);
   const enqueueToken = Date.now();
   if (!accountId || !chatId || !message) {
     await writeHostDispatchResult(config, name, payload, {
       action: "send",
-      reason: !accountId ? "missing-account-id" : !chatId ? "missing-chat-id" : "empty-message",
+      reason: invalidPayloadReason,
       command: ["host-feishu-send"],
       executed: false,
       exit_code: null,
@@ -1190,7 +1275,7 @@ async function processFeishuInstruction(
       stderr: null,
       via: "plugin-host",
     });
-    await archiveHostInstruction(config, path, name, { succeeded: false });
+    await archiveHostInstruction(config, path, name, false);
     await appendDebugLog(config, "host-feishu-delivery:skipped-invalid-payload", {
       taskId: payload.task_id || null,
       accountId,
@@ -1201,13 +1286,15 @@ async function processFeishuInstruction(
       lifecycleStage: "delivery-skipped",
       deliveryPath: "plugin-host",
       schedulerDecision: "skipped",
-      reason: !accountId ? "missing-account-id" : !chatId ? "missing-chat-id" : "empty-message",
+      reason: invalidPayloadReason,
+      replyToId: replyToId || null,
+      threadId: threadId || null,
       instructionName: name,
     });
     return;
   }
 
-  const adapter = await loadOutboundAdapter(api, "feishu");
+  const adapter = await loadOutboundAdapter(api, "feishu", config.outboundAdapterLoadTimeoutMs);
   if (!adapter?.sendText) {
     await writeHostDispatchResult(config, name, payload, {
       action: "send",
@@ -1219,7 +1306,7 @@ async function processFeishuInstruction(
       stderr: null,
       via: "plugin-host",
     });
-    await archiveHostInstruction(config, path, name, { succeeded: false });
+    await archiveHostInstruction(config, path, name, false);
     await appendDebugLog(config, "host-feishu-delivery:adapter-unavailable", {
       taskId: payload.task_id || null,
       accountId,
@@ -1237,12 +1324,16 @@ async function processFeishuInstruction(
   }
 
   try {
-    const delivery = await adapter.sendText({
-      cfg: api.config,
-      to: chatId,
-      text: message,
-      accountId,
-    });
+    const delivery = await withTimeout(`send feishu host delivery`, config.outboundSendTimeoutMs, () =>
+      adapter.sendText!({
+        cfg: api.config,
+        to: chatId,
+        text: message,
+        accountId,
+        replyToId: replyToId || undefined,
+        threadId: threadId || undefined,
+      }),
+    );
     await writeHostDispatchResult(config, name, payload, {
       action: "send",
       reason: "supported-host-feishu",
@@ -1254,7 +1345,7 @@ async function processFeishuInstruction(
       via: "plugin-host",
       result: delivery,
     });
-    await archiveHostInstruction(config, path, name, { succeeded: true });
+    await archiveHostInstruction(config, path, name, true);
     await appendDebugLog(config, "host-feishu-delivery:sent", {
       taskId: payload.task_id || null,
       accountId,
@@ -1267,6 +1358,8 @@ async function processFeishuInstruction(
       schedulerDecision: "sent",
       reason: "host-feishu-send-succeeded",
       instructionName: name,
+      replyToId: replyToId || null,
+      threadId: threadId || null,
     });
   } catch (error) {
     const messageText = error instanceof Error ? error.message : String(error);
@@ -1280,7 +1373,7 @@ async function processFeishuInstruction(
       stderr: messageText,
       via: "plugin-host",
     });
-    await archiveHostInstruction(config, path, name, { succeeded: false });
+    await archiveHostInstruction(config, path, name, false);
     await appendDebugLog(config, "host-feishu-delivery:error", {
       taskId: payload.task_id || null,
       accountId,
@@ -1293,6 +1386,8 @@ async function processFeishuInstruction(
       schedulerDecision: "error",
       reason: "host-feishu-send-failed",
       instructionName: name,
+      replyToId: replyToId || null,
+      threadId: threadId || null,
       error: messageText,
     });
   }
@@ -1341,10 +1436,10 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         ? (payload.continuation_payload as Record<string, unknown>)
         : null;
     const isPlannedContentFollowup = Boolean(normalizeText(String(continuationPayload?.plan_id || "")));
-    const resolvedReplyContent = resolveUserFacingContent(normalizeText(String(payload.reply_text || "")), {
-      requireStructured: isPlannedContentFollowup,
-    });
-    const replyText = decorateTaskManagedFollowupText(resolvedReplyContent.text, {
+      const sanitizedReplyContent = sanitizeUserFacingDeliveryText(normalizeText(String(payload.reply_text || "")), {
+        requireStructured: isPlannedContentFollowup,
+      });
+    const replyText = decorateTaskManagedFollowupText(sanitizedReplyContent.text, {
       wd: !isPlannedContentFollowup,
     });
     const replyToId = normalizeText(String(continuationPayload?.reply_to_id || ""));
@@ -1376,7 +1471,7 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         reason: "continuation-wake-started",
         originalUserRequest: originalUserRequest || null,
       });
-      const adapter = await loadOutboundAdapter(api, channel);
+      const adapter = await loadOutboundAdapter(api, channel, config.outboundAdapterLoadTimeoutMs);
       if (!adapter?.sendText) {
         await appendDebugLog(config, "continuation-delivery:adapter-unavailable", {
           taskId,
@@ -1403,14 +1498,16 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         });
         continue;
       }
-      await adapter.sendText({
-        cfg: api.config,
-        to: chatId,
-        text: replyText,
-        accountId,
-        replyToId: replyToId || undefined,
-        threadId: threadId || undefined,
-      });
+      await withTimeout(`send ${channel} continuation delivery`, config.outboundSendTimeoutMs, () =>
+        adapter.sendText!({
+          cfg: api.config,
+          to: chatId,
+          text: replyText,
+          accountId,
+          replyToId: replyToId || undefined,
+          threadId: threadId || undefined,
+        }),
+      );
       await appendDebugLog(config, "continuation-delivery:sent", {
         taskId,
         sessionKey,
@@ -1969,7 +2066,7 @@ async function deliverControlPlaneMessage(
   }
   try {
     const loadStartedAt = Date.now();
-    const adapter = await loadOutboundAdapter(api, channel);
+    const adapter = await loadOutboundAdapter(api, channel, config.outboundAdapterLoadTimeoutMs);
     const adapterLoadMs = Date.now() - loadStartedAt;
     if (!adapter?.sendText) {
       await appendDebugLog(config, `${payload.eventName}:adapter-unavailable`, {
@@ -1986,14 +2083,16 @@ async function deliverControlPlaneMessage(
       return null;
     }
     const sendStartedAt = Date.now();
-    const delivery = await adapter.sendText({
-      cfg: api.config,
-      to: chatId,
-      text: message,
-      accountId: payload.accountId || "",
-      replyToId: payload.replyToId,
-      threadId: payload.threadId,
-    });
+    const delivery = await withTimeout(`send ${channel} control-plane message`, config.outboundSendTimeoutMs, () =>
+      adapter.sendText!({
+        cfg: api.config,
+        to: chatId,
+        text: message,
+        accountId: payload.accountId || "",
+        replyToId: payload.replyToId,
+        threadId: payload.threadId,
+      }),
+    );
     const sendMs = Date.now() - sendStartedAt;
     await appendDebugLog(config, `${payload.eventName}:sent`, {
       channel,
@@ -3683,6 +3782,8 @@ const taskSystemPlugin = {
             channel: ctx.channelId ?? "unknown",
             accountId: ctx.accountId ?? "",
             chatId: ctx.conversationId ?? normalizedSessionKey,
+            replyToId: activeTaskBinding?.replyToId,
+            threadId: activeTaskBinding?.threadId,
             sessionKey: normalizedSessionKey,
             taskId: activeTaskBinding?.taskId,
             eventName: event.success ? "task-completed" : "task-failed",

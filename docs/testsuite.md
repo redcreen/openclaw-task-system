@@ -189,13 +189,16 @@ python3 scripts/runtime/plugin_smoke.py --json
 - pre-register / canonical snapshot / `queueKey`
 - long-queue retention for receive-side pre-register / early-ack state
 - immediate `[wd]` / early ack / dedupe
+- runtime delivery pipeline preserves `reply_to_id / thread_id` across outbox -> delivery-ready -> send-instructions
 - short follow-up
 - structured `control_plane_message`
 - terminal / preempt / supersede
 - `sent / skipped / dropped / error / adapter-unavailable`
 - continuation / host delivery / fulfilled shortcut
 - raw `<task_user_content>` marker suppression
+- host / continuation direct-send paths also suppress raw `<task_user_content>` leakage
 - promise-guard rehydrate after reload
+- same-audience control-plane lane recovers after timed-out direct send
 - lifecycle `entered / ignored / skipped`
 - scheduler diagnostics 字段
 - runner 字段：

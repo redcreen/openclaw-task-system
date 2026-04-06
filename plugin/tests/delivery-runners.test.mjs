@@ -157,6 +157,8 @@ test("host feishu delivery sent carries scheduler diagnostics", async () => {
       account_id: "acct-1",
       chat_id: "chat-1",
       message: "host path message",
+      reply_to_id: "om_host_source",
+      thread_id: "thread_host_source",
     });
     await plugin.start();
 
@@ -172,11 +174,51 @@ test("host feishu delivery sent carries scheduler diagnostics", async () => {
     assert.equal(delivered?.payload?.lifecycleStage, "delivery-sent");
     assert.equal(delivered?.payload?.deliveryPath, "plugin-host");
     assert.equal(delivered?.payload?.reason, "host-feishu-send-succeeded");
+    assert.equal(delivered?.payload?.replyToId, "om_host_source");
+    assert.equal(delivered?.payload?.threadId, "thread_host_source");
     assert.equal(typeof delivered?.payload?.enqueueToken, "number");
     assert.equal(delivered?.payload?.instructionName, "instruction-1.json");
     assert.equal(sentMessages.length, 1);
     assert.equal(sentMessages[0]?.to, "chat-1");
     assert.equal(sentMessages[0]?.accountId, "acct-1");
+    assert.equal(sentMessages[0]?.replyToId, "om_host_source");
+    assert.equal(sentMessages[0]?.threadId, "thread_host_source");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("host feishu delivery suppresses raw task_user_content markers", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot();
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages, {
+    enableHostFeishuDelivery: true,
+    hostDeliveryPollMs: 60_000,
+    enableContinuationRunner: false,
+  });
+
+  try {
+    await writeSendInstruction(runtimeRoot, "instruction-raw-content.json", {
+      schema: "openclaw.task-system.send-instruction.v1",
+      task_id: "task-host-raw",
+      agent_id: "main",
+      session_key: "agent:main:feishu:direct:ou_raw",
+      channel: "feishu",
+      account_id: "acct-raw",
+      chat_id: "chat-raw",
+      message: "<task_user_content>目的地按宁波算，明天天气大致 14°C~21°C。",
+      reply_to_id: "om_host_raw",
+    });
+    await plugin.start();
+
+    const skipped = await waitForDebugEvent(
+      runtimeRoot,
+      (entry) => entry.event === "host-feishu-delivery:skipped-invalid-payload",
+      1500,
+    );
+    assert.equal(skipped?.payload?.reason, "raw-task-user-content-marker");
+    assert.equal(sentMessages.length, 0);
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }

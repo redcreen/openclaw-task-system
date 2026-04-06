@@ -38,6 +38,8 @@ def build_delivery_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "account_id": event.get("account_id"),
         "chat_id": event.get("chat_id"),
         "message": event["message"],
+        "reply_to_id": event.get("reply_to_id"),
+        "thread_id": event.get("thread_id"),
     }
 
 

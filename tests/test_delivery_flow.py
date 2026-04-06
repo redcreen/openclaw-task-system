@@ -51,6 +51,28 @@ class DeliveryFlowTests(unittest.TestCase):
         self.assertEqual(sent_payload["message"], "test message")
         self.assertIn("sent_at", sent_payload)
 
+    def test_outbox_preserves_reply_target_from_task_meta(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:test",
+            channel="feishu",
+            chat_id="chat:test",
+            task_label="delivery flow",
+            meta={
+                "source_reply_to_id": "om_source_message",
+                "source_thread_id": "thread_source_message",
+            },
+        )
+        event_path = emit_task_event.write_outbox(
+            task.to_dict(),
+            message="test message",
+            paths=self.paths,
+        )
+
+        payload = json.loads(event_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["reply_to_id"], "om_source_message")
+        self.assertEqual(payload["thread_id"], "thread_source_message")
+
     def test_sent_to_delivery_ready_flow(self) -> None:
         sent_dir = self.paths.data_dir / "sent"
         sent_dir.mkdir(parents=True, exist_ok=True)
@@ -83,6 +105,35 @@ class DeliveryFlowTests(unittest.TestCase):
         self.assertEqual(payload["message"], "delivery message")
         self.assertEqual(payload["schema"], "openclaw.task-system.delivery.v1")
 
+    def test_sent_to_delivery_ready_flow_preserves_reply_target(self) -> None:
+        sent_dir = self.paths.data_dir / "sent"
+        sent_dir.mkdir(parents=True, exist_ok=True)
+        sent_file = sent_dir / "task_reply.json"
+        sent_file.write_text(
+            json.dumps(
+                {
+                    "schema": "openclaw.task-system.outbox.v1",
+                    "task_id": "task_reply",
+                    "agent_id": "main",
+                    "session_key": "session:test",
+                    "channel": "feishu",
+                    "chat_id": "chat:test",
+                    "message": "delivery message",
+                    "reply_to_id": "om_source_message",
+                    "thread_id": "thread_source_message",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        prepare_delivery.prepare_all(paths=self.paths)
+        payload = json.loads((self.paths.data_dir / "delivery-ready" / "task_reply.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["reply_to_id"], "om_source_message")
+        self.assertEqual(payload["thread_id"], "thread_source_message")
+
     def test_delivery_ready_to_send_instruction_flow(self) -> None:
         ready_dir = self.paths.data_dir / "delivery-ready"
         ready_dir.mkdir(parents=True, exist_ok=True)
@@ -113,6 +164,37 @@ class DeliveryFlowTests(unittest.TestCase):
         payload = json.loads(instruction_path.read_text(encoding="utf-8"))
         self.assertEqual(payload["schema"], "openclaw.task-system.send-instruction.v1")
         self.assertEqual(payload["message"], "notify message")
+
+    def test_delivery_ready_to_send_instruction_flow_preserves_reply_target(self) -> None:
+        ready_dir = self.paths.data_dir / "delivery-ready"
+        ready_dir.mkdir(parents=True, exist_ok=True)
+        ready_file = ready_dir / "task_reply_instruction.json"
+        ready_file.write_text(
+            json.dumps(
+                {
+                    "schema": "openclaw.task-system.delivery.v1",
+                    "task_id": "task_reply_instruction",
+                    "agent_id": "main",
+                    "session_key": "session:test",
+                    "channel": "feishu",
+                    "chat_id": "chat:test",
+                    "message": "notify message",
+                    "reply_to_id": "om_source_message",
+                    "thread_id": "thread_source_message",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        delivery_dispatch.dispatch_all(paths=self.paths)
+        payload = json.loads(
+            (self.paths.data_dir / "send-instructions" / "task_reply_instruction.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(payload["reply_to_id"], "om_source_message")
+        self.assertEqual(payload["thread_id"], "thread_source_message")
 
     def test_send_instruction_to_dispatch_result_flow(self) -> None:
         instruction_dir = self.paths.data_dir / "send-instructions"

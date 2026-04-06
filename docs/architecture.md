@@ -180,6 +180,11 @@ These constraints were added after live review and should not be silently relaxe
 - tool 结果必须先被 task-system 消化，才能变成用户可见状态
 - 这样可以避免模型把内部调度状态和最终业务内容混成同一条回复
 
+还有两条实现约束现在也要保持稳定：
+
+- `[wd]` 和 runtime-owned follow-up 只要存在源消息上下文，就应尽量保留 `reply_to_id / thread_id`，避免同一条控制面消息有时是回复、有时变成普通新消息
+- control-plane lane 可以按 audience 串行化，但单次 adapter load / send 不能无限期占住 lane；runtime 必须对 direct delivery 设置明确超时边界
+
 ## 2. 一张图看整体
 
 ```mermaid
