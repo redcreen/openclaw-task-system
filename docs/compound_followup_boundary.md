@@ -1,9 +1,13 @@
 # Compound follow-up boundary
 
+[English](#english) | [中文](#中文)
+
+## English
+
 > Status: open design boundary
 > Scope: delayed reply and continuation semantics for mixed-intent user requests
 
-## problem
+### problem
 
 The current task system handles two classes of requests well:
 
@@ -16,12 +20,12 @@ It becomes ambiguous when one user message mixes both:
 - `先处理这个问题，10分钟后再提醒我看结果`
 - `先去查一下，再过一会儿回来继续`
 
-These are not just "delay phrases". They are compound task requests with at least two intent segments:
+These are compound task requests with at least two intent segments:
 
 - an immediate task
 - a delayed follow-up task
 
-## why regex-only handling is the wrong long-term answer
+### why regex-only handling is the wrong long-term answer
 
 It is tempting to keep adding more parsing rules for:
 
@@ -31,19 +35,17 @@ It is tempting to keep adding more parsing rules for:
 - `并且`
 - `回复我信息`
 
-But that approach does not scale.
-
-Reasons:
+But that approach does not scale, because:
 
 1. natural language is open-ended
 2. the delayed part may be vague or implicit
 3. the delayed part may depend on whether the immediate part succeeded
 4. the message may contain more than two intent segments
-5. a rule can easily look correct on one phrase and fail on another
+5. a rule can look correct on one phrase and fail on another
 
 So this class of problem should not be treated as a regex-completion problem.
 
-## what the current shipped system does
+### what the current shipped system does
 
 Today the shipped system supports:
 
@@ -54,7 +56,7 @@ Today the shipped system supports:
 
 This stopgap exists to avoid user-visible breakage, but it is not the final model.
 
-## correct architectural direction
+### correct architectural direction
 
 The right long-term direction is:
 
@@ -77,7 +79,7 @@ user request
 
 This is a planning problem, not a pure pattern-matching problem.
 
-## product boundary for now
+### product boundary for now
 
 Current boundary:
 
@@ -90,7 +92,7 @@ Therefore:
 - shipping behavior may include pragmatic stopgaps
 - roadmap direction must move toward structured planning or tool-assisted task decomposition
 
-## why this matters
+### why this matters
 
 Without this boundary, the system drifts into:
 
@@ -102,7 +104,7 @@ That would weaken the task system's core contract:
 
 > if the system promises a delayed action, there must be a real scheduled task behind it.
 
-## next design question
+### next design question
 
 One strong candidate direction is:
 
@@ -115,3 +117,119 @@ That would let the model choose between:
 - multi-step task decomposition
 
 This question is intentionally left open for the next roadmap discussion.
+
+## 中文
+
+> 状态：开放设计边界
+> 范围：混合意图请求中的 delayed reply 与 continuation 语义
+
+### 问题
+
+当前 task system 对两类请求处理得比较稳定：
+
+1. 应该立刻执行的普通任务
+2. 明确单一意图的延迟回复，例如 `3分钟后回复333`
+
+一旦一条消息里混合了两种意图，事情就会变得模糊：
+
+- `你先查一下天气，然后5分钟后回复我信息`
+- `先处理这个问题，10分钟后再提醒我看结果`
+- `先去查一下，再过一会儿回来继续`
+
+这类请求至少包含两个意图片段：
+
+- 一个立即任务
+- 一个延迟 follow-up 任务
+
+### 为什么不能长期靠 regex 补规则
+
+看起来最直接的做法，是继续补更多解析规则，例如：
+
+- `然后`
+- `之后`
+- `再`
+- `并且`
+- `回复我信息`
+
+但这条路长期一定会失效，因为：
+
+1. 自然语言是开放的
+2. 延迟部分可能是模糊表达
+3. 延迟部分可能依赖立即任务是否成功
+4. 一条消息可能不止两个意图片段
+5. 某条规则在一句话里成立，在另一句话里就会误判
+
+所以这类问题不能被当成“继续补 regex”来解决。
+
+### 当前已发布系统在做什么
+
+当前系统已经支持：
+
+- 对清晰、单一意图的 delayed reply 直接识别
+- 对部分简单复合请求提供止血式兼容：
+  - 前半段仍然作为普通任务立即执行
+  - 如果后半段意图足够明显，可以在主任务完成后物化一个 delayed follow-up
+
+这个 stopgap 是为了避免明显用户问题，但它不是最终模型。
+
+### 正确的长期架构方向
+
+长期正确方向应该是：
+
+1. 把入站请求先拆成结构化 task plan
+2. 把立即工作和延迟 follow-up 分开
+3. 由 runtime 显式创建需要的任务图
+4. 让延迟部分作为一等 follow-up task 被观察和管理
+
+概念上是：
+
+```text
+用户请求
+  -> 意图拆解
+  -> task plan
+      - immediate task
+      - delayed follow-up task
+      - dependency and ordering
+  -> task-system runtime
+```
+
+这本质上是 planning 问题，不是纯 pattern-matching 问题。
+
+### 当前产品边界
+
+当前边界可以明确成：
+
+- 单一意图、表达清晰的 delayed reply：完全支持
+- 简单复合短语：可以作为兼容桥接识别
+- 复杂或模糊的复合请求：不能长期依赖硬编码短语增长
+
+所以：
+
+- 当前已发布行为里可以包含一些务实止血
+- 但 roadmap 的方向必须转向 structured planning 或 tool-assisted task decomposition
+
+### 为什么这件事重要
+
+如果不把这条边界说清楚，系统就会逐渐滑向：
+
+- 越来越多的硬编码短语规则
+- 越来越脆弱的 delayed follow-up 行为
+- agent 口头承诺了稍后回来，但 runtime 实际没有建任务
+
+这会削弱 task system 的核心契约：
+
+> 只要系统承诺了稍后再做一件事，背后就必须有一条真实的 scheduled task。
+
+### 下一步设计问题
+
+一个很强的候选方向是：
+
+- 把 task-system 的 task 创建和 follow-up 调度能力，暴露成 LLM 可调用工具
+
+这样模型就可以在不同场景里显式选择：
+
+- 正常即时执行
+- 创建明确的 delayed follow-up
+- 进行多步任务拆解
+
+这个问题目前故意保持开放，留给下一轮 roadmap 讨论。
