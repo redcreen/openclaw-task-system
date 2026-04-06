@@ -1224,6 +1224,12 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
           "",
       ),
     );
+    const continuationPayload =
+      payload.continuation_payload && typeof payload.continuation_payload === "object"
+        ? (payload.continuation_payload as Record<string, unknown>)
+        : null;
+    const replyToId = normalizeText(String(continuationPayload?.reply_to_id || ""));
+    const threadId = normalizeText(String(continuationPayload?.thread_id || ""));
     if (!channel || !chatId || !taskId || !replyText) {
       continue;
     }
@@ -1283,6 +1289,8 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         to: chatId,
         text: replyText,
         accountId,
+        replyToId: replyToId || undefined,
+        threadId: threadId || undefined,
       });
       await appendDebugLog(config, "continuation-delivery:sent", {
         taskId,
@@ -1295,9 +1303,11 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         enqueueToken,
         runner: "continuation-delivery",
         lifecycleStage: "delivery-sent",
-        deliveryPath: "direct-channel-send",
+        deliveryPath: replyToId ? "reply-to-source-message" : "direct-channel-send",
         schedulerDecision: "sent",
         reason: "continuation-delivery-sent",
+        replyToId: replyToId || null,
+        threadId: threadId || null,
       });
       await callHook(api, config, "continuation-wake", {
         task_id: taskId,
@@ -1435,6 +1445,8 @@ type PendingReceipt = {
 
 type ActiveTaskBinding = {
   taskId: string;
+  replyToId?: string;
+  threadId?: string;
 };
 
 type ControlPlanePriority = "p0-receive-ack" | "p1-task-management" | "p2-progress-followup" | "p3-advisory";
@@ -1958,19 +1970,25 @@ const taskSystemPlugin = {
           followup_message: { type: "string" },
           original_time_expression: { type: "string" },
           lead_request: { type: "string" },
+          reply_to_id: { type: "string" },
+          thread_id: { type: "string" },
         },
         required: ["source_task_id", "session_key", "followup_due_at", "followup_message"],
       },
       async execute(_id, params) {
         const payload = params as Record<string, unknown>;
+        const sessionKey = normalizeText(payload.session_key);
+        const binding = activeTaskBindings.get(sessionKey);
         const result =
           (await callHook(api, config, "create-followup-plan", {
             source_task_id: normalizeText(payload.source_task_id),
-            session_key: normalizeText(payload.session_key),
+            session_key: sessionKey,
             followup_due_at: normalizeText(payload.followup_due_at),
             followup_message: normalizeText(payload.followup_message),
             original_time_expression: normalizeText(payload.original_time_expression),
             lead_request: normalizeText(payload.lead_request),
+            reply_to_id: normalizeText(payload.reply_to_id) || binding?.replyToId || "",
+            thread_id: normalizeText(payload.thread_id) || binding?.threadId || "",
             followup_kind: "delayed-reply",
           })) ?? { ok: false, error: "create-followup-plan-failed" };
         return buildToolTextResult(result);
@@ -2638,6 +2656,8 @@ const taskSystemPlugin = {
       if (typeof registerDecision.task_id === "string" && registerDecision.task_id.trim()) {
         activeTaskBindings.set(sessionKey, {
           taskId: registerDecision.task_id.trim(),
+          replyToId: effectiveReplyToId,
+          threadId: effectiveThreadId,
         });
       }
       const classificationReason = String(registerDecision.classification_reason || "").trim();

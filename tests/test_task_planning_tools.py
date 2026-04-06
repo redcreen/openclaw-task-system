@@ -59,6 +59,8 @@ class TaskPlanningToolsTests(unittest.TestCase):
                 "followup_message": "5 分钟后继续告诉你天气结果",
                 "dependency": "after-source-task-finalized",
                 "original_time_expression": "5分钟后",
+                "reply_to_id": "om_source_message",
+                "thread_id": "thread_source_message",
             },
             config_path=self.config_path,
         )
@@ -72,6 +74,8 @@ class TaskPlanningToolsTests(unittest.TestCase):
         self.assertEqual(plan["plan_id"], created["plan_id"])
         self.assertEqual(plan["status"], "planned")
         self.assertEqual(plan["followup_message"], "5 分钟后继续告诉你天气结果")
+        self.assertEqual(plan["reply_to_id"], "om_source_message")
+        self.assertEqual(plan["thread_id"], "thread_source_message")
 
     def test_create_followup_plan_accepts_legacy_due_at_and_reply_text_aliases(self) -> None:
         registration = self._register_running_source_task()
@@ -99,6 +103,8 @@ class TaskPlanningToolsTests(unittest.TestCase):
                 "followup_kind": "delayed-reply",
                 "followup_due_at": "2026-04-06T11:30:00+08:00",
                 "followup_message": "5 分钟后继续告诉你天气结果",
+                "reply_to_id": "om_source_message",
+                "thread_id": "thread_source_message",
             },
             config_path=self.config_path,
         )
@@ -119,6 +125,8 @@ class TaskPlanningToolsTests(unittest.TestCase):
         self.assertEqual(followup.status, task_state_module.STATUS_PAUSED)
         self.assertEqual(followup.meta["continuation_kind"], "delayed-reply")
         self.assertEqual(followup.meta["continuation_payload"]["reply_text"], "5 分钟后继续告诉你天气结果")
+        self.assertEqual(followup.meta["continuation_payload"]["reply_to_id"], "om_source_message")
+        self.assertEqual(followup.meta["continuation_payload"]["thread_id"], "thread_source_message")
 
     def test_finalize_active_marks_promise_without_task_anomaly(self) -> None:
         registration = self._register_running_source_task()

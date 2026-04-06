@@ -124,6 +124,8 @@ test("registered planning tools call runtime hooks", async () => {
       followup_message: "5分钟后我回来同步结果",
       original_time_expression: "5分钟后",
       lead_request: "先查一下天气",
+      reply_to_id: "om_source_message",
+      thread_id: "thread_source_message",
     });
     const scheduleResult = await plugin.registeredTools.get("ts_schedule_followup_from_plan").execute("run-1", {
       source_task_id: "task-123",
@@ -153,6 +155,8 @@ test("registered planning tools call runtime hooks", async () => {
     assert.equal(createCall?.payload?.followup_due_at, "2026-04-06T12:05:00+08:00");
     assert.equal(createCall?.payload?.followup_message, "5分钟后我回来同步结果");
     assert.equal(createCall?.payload?.followup_kind, "delayed-reply");
+    assert.equal(createCall?.payload?.reply_to_id, "om_source_message");
+    assert.equal(createCall?.payload?.thread_id, "thread_source_message");
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }

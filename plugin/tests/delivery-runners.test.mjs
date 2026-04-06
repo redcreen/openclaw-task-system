@@ -26,6 +26,8 @@ test("continuation delivery sent carries scheduler diagnostics", async () => {
           reply_text: "111",
           continuation_payload: {
             original_user_request: "1分钟后回复111",
+            reply_to_id: "om_source_message",
+            thread_id: "thread_source_message",
           },
         },
       ],
@@ -64,8 +66,10 @@ test("continuation delivery sent carries scheduler diagnostics", async () => {
     assert.equal(delivered?.payload?.taskId, "task-cont-1");
     assert.equal(delivered?.payload?.runner, "continuation-delivery");
     assert.equal(delivered?.payload?.lifecycleStage, "delivery-sent");
-    assert.equal(delivered?.payload?.deliveryPath, "direct-channel-send");
+    assert.equal(delivered?.payload?.deliveryPath, "reply-to-source-message");
     assert.equal(delivered?.payload?.reason, "continuation-delivery-sent");
+    assert.equal(delivered?.payload?.replyToId, "om_source_message");
+    assert.equal(delivered?.payload?.threadId, "thread_source_message");
     assert.equal(wakeOk?.payload?.runner, "continuation-delivery");
     assert.equal(wakeOk?.payload?.lifecycleStage, "wake-complete");
     assert.equal(wakeOk?.payload?.deliveryPath, "direct-channel-send");
@@ -74,6 +78,8 @@ test("continuation delivery sent carries scheduler diagnostics", async () => {
     assert.equal(sentMessages.length, 1);
     assert.equal(sentMessages[0]?.to, "8705812936");
     assert.equal(sentMessages[0]?.text, "111");
+    assert.equal(sentMessages[0]?.replyToId, "om_source_message");
+    assert.equal(sentMessages[0]?.threadId, "thread_source_message");
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }

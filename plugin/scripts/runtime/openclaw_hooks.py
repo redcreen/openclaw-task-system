@@ -223,6 +223,8 @@ def create_followup_plan_from_payload(
     followup_kind = str(payload.get("followup_kind") or payload.get("kind") or "delayed-reply").strip()
     followup_due_at = str(payload.get("followup_due_at") or payload.get("due_at") or "").strip()
     followup_message = str(payload.get("followup_message") or payload.get("reply_text") or "").strip()
+    reply_to_id = str(payload.get("reply_to_id") or payload.get("replyToId") or "").strip()
+    thread_id = str(payload.get("thread_id") or payload.get("threadId") or "").strip()
     if not followup_due_at:
         return {"accepted": False, "reason": "missing-followup-due-at"}
     if not followup_message:
@@ -242,6 +244,8 @@ def create_followup_plan_from_payload(
         "followup_message": followup_message,
         "dependency": str(payload.get("dependency") or "after-source-task-finalized"),
         "original_time_expression": str(payload.get("original_time_expression") or "").strip() or None,
+        "reply_to_id": reply_to_id or None,
+        "thread_id": thread_id or None,
         "created_at": now_iso(),
     }
     source_task.meta["tool_followup_plan"] = plan
@@ -361,6 +365,8 @@ def schedule_followup_from_plan_from_payload(
             "original_user_request": str(source_task.meta.get("original_user_request") or source_task.task_label or ""),
             "parent_task_id": source_task.task_id,
             "plan_id": str(plan.get("plan_id") or ""),
+            "reply_to_id": str(plan.get("reply_to_id") or ""),
+            "thread_id": str(plan.get("thread_id") or ""),
         },
         reason="scheduled tool-assisted continuation wait",
     )
