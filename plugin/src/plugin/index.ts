@@ -1282,7 +1282,10 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         ? (payload.continuation_payload as Record<string, unknown>)
         : null;
     const isPlannedContentFollowup = Boolean(normalizeText(String(continuationPayload?.plan_id || "")));
-    const replyText = decorateTaskManagedFollowupText(normalizeText(String(payload.reply_text || "")), {
+    const resolvedReplyContent = resolveUserFacingContent(normalizeText(String(payload.reply_text || "")), {
+      requireStructured: isPlannedContentFollowup,
+    });
+    const replyText = decorateTaskManagedFollowupText(resolvedReplyContent.text, {
       wd: !isPlannedContentFollowup,
     });
     const replyToId = normalizeText(String(continuationPayload?.reply_to_id || ""));

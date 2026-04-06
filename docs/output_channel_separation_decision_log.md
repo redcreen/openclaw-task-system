@@ -59,6 +59,23 @@ The minimum implementation chosen for this phase is:
 4. scheduling confirmation remains a separate `[wd]` control-plane message
 5. delayed follow-up content still replies to the original message and does not carry `[wd]`
 
+### additional product constraints confirmed in live review
+
+Live review added two more constraints that should now be treated as part of the same design:
+
+1. a scheduling confirmation must include a human-meaningful follow-up summary
+   - bad: `[wd] 已安排妥当，将在 2分钟后 回复。`
+   - good: `[wd] 已安排妥当：2分钟后同步明天天气。`
+2. if a request is primarily about future reminders or future follow-up delivery, the immediate user-visible message should usually be control-plane only
+   - do not send the eventual business result immediately unless the model explicitly indicates that an immediate result is required
+   - in those future-first cases, the default immediate user-visible output should be `[wd]` scheduling state, and the business result should wait until the due follow-up fires
+
+This keeps the user-facing semantics stable:
+
+- scheduling state is `[wd]`
+- future follow-up content is the later business reply
+- the immediate main answer should not collapse those two into one mixed message
+
 ### rationale
 
 This is stricter than prompt-only guidance, but it keeps the boundary explicit:
@@ -126,6 +143,24 @@ tool-assisted planning 引入了一个结构性问题：
 3. 如果没有这个内容块，runtime 选择抑制用户可见内容，而不是继续猜
 4. 排程成功/失败确认仍然单独走 `[wd]`
 5. 到点 follow-up 内容继续回复原消息，且不带 `[wd]`
+
+### 在 live review 中进一步确认的产品约束
+
+这轮 live review 又补了两条需要固定下来的约束：
+
+1. 排程确认消息必须带可读的 follow-up 摘要
+   - 不好的写法：`[wd] 已安排妥当，将在 2分钟后 回复。`
+   - 更合理的写法：`[wd] 已安排妥当：2分钟后同步明天天气。`
+2. 如果一条请求的核心价值本来就在未来提醒 / 未来同步，那么即时用户可见消息默认应以控制面为主
+   - 除非模型明确表示“现在就需要给即时业务结果”
+   - 否则不应立刻把未来要发送的业务结果提前发出来
+   - 这类请求的默认即时可见输出应是 `[wd]` 调度状态，业务内容留到真正到点时再发
+
+这样才能稳定维持下面这条用户语义：
+
+- 排程状态走 `[wd]`
+- 到点 follow-up 才是业务内容
+- 不能把这两类信息再混成同一条即时回复
 
 ### 设计缘由
 

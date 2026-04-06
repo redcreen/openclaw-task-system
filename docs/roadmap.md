@@ -235,6 +235,9 @@
 - simple compound follow-up phrases: compatibility stopgap only
 - long-term solution: structured planning or tool-assisted task decomposition
 - task-system should remain supervisor-first, not planner-first
+- scheduling state should be projected only through runtime-owned `[wd]`
+- future-first requests should default to control-plane-only immediate output unless structured planning explicitly asks for immediate business content
+- scheduling confirmations must include a meaningful follow-up summary, not only a raw time delta
 
 推荐设计稿见：
 

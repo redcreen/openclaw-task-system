@@ -97,6 +97,9 @@ These constraints were added after live review and should not be silently relaxe
 
 这些约束来自真实评审结论，后续实现不应无声偏离。
 
+11. 如果一条请求的核心价值在未来提醒 / 未来同步，那么即时用户可见消息默认应以控制面为主，而不是提前发出未来结果
+12. `[wd] 已安排妥当...` 这类调度确认必须带可读的 follow-up 摘要，不能只报时间不报内容
+
 ### tool-chain 信息边界
 
 还有一条需要固定下来的约束是：
@@ -152,6 +155,24 @@ These constraints were added after live review and should not be silently relaxe
 2. business content
    - 即时业务结果
    - 或到点后的 follow-up 正文
+
+这里还有一条需要固定的产品语义：
+
+- 如果请求本身是 future-first 的，例如“2分钟后告诉我明天天气，3分钟后告诉我后天天气”
+- 那么默认即时可见输出应是：
+  - `[wd] 已安排妥当：2分钟后同步明天天气。`
+  - `[wd] 已安排妥当：3分钟后同步后天天气。`
+- 而不应该立刻把未来真正要发送的业务结果提前发出来
+
+这意味着当前架构不仅需要分离：
+
+- control-plane channel
+- business-content channel
+
+还需要让 runtime 能根据结构化 planning 结果决定：
+
+- 这次是否应该立刻发业务内容
+- 还是只先发 `[wd]` 调度状态，等到点再发真正结果
 
 设计缘由是：
 

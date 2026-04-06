@@ -55,6 +55,16 @@ So the user-facing rule is:
 - business content belongs to the main answer or the actual follow-up reply
 - tool-chain information itself is not user output
 
+Two product constraints follow from this:
+
+1. scheduling confirmation must include a human-meaningful follow-up summary
+   - bad: `[wd] 已安排妥当，将在 2分钟后 回复。`
+   - good: `[wd] 已安排妥当：2分钟后同步明天天气。`
+2. if the request is primarily about future reminders or future follow-up delivery, the immediate user-visible output should usually be control-plane only
+   - do not emit the eventual business result immediately by default
+   - let `[wd]` tell the user what has been arranged
+   - deliver the actual business content when the scheduled follow-up fires
+
 ### hard constraint: no hard-coded text cleanup as the primary design
 
 The following rule should be treated as a top-level design constraint:
@@ -80,6 +90,22 @@ In the current minimum implementation, that channel separation is enforced by a 
 - `<task_user_content> ... </task_user_content>`
 
 When planning tools have been used for the current task, runtime forwards only the content inside that block.
+
+That content channel must also support an explicit runtime choice:
+
+- `main_user_content_mode = none`
+- `main_user_content_mode = immediate-summary`
+- `main_user_content_mode = full-answer`
+
+The intended default for future-first requests is:
+
+- `main_user_content_mode = none`
+
+In that mode:
+
+- runtime sends `[wd]` scheduling state immediately
+- runtime does not send the eventual business result yet
+- the delayed follow-up later carries the real content
 
 ### problem
 
@@ -451,6 +477,10 @@ The most important hard rule:
 One more hard rule should now be treated the same way:
 
 > Do not expose scheduling acceptance, scheduling rejection, or raw tool state directly to the user. Return that state to task-system, and let task-system project it as a `[wd]` control-plane message.
+
+And one more product rule should be treated as fixed:
+
+> If the request is future-first, do not eagerly send the eventual business result. Let runtime send `[wd]` scheduling state first, and let the scheduled follow-up deliver the actual content later.
 
 This prompt contract should be treated as part of the implementation surface, not as optional writing guidance.
 

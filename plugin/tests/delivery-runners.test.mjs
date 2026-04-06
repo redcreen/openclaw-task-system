@@ -97,7 +97,8 @@ test("planned content follow-up replies to source message without wd prefix", as
           channel: "feishu",
           account_id: "acct-planned",
           chat_id: "chat-planned",
-          reply_text: "[[reply_to_current]] 杭州现在大概28°C，晴，风不大。",
+          reply_text:
+            "[[reply_to_current]] <task_user_content>杭州现在大概28°C，晴，风不大。</task_user_content>",
           continuation_payload: {
             original_user_request: "杭州天气2分钟后告诉我",
             plan_id: "plan-planned-1",
@@ -126,6 +127,7 @@ test("planned content follow-up replies to source message without wd prefix", as
     assert.equal(delivered?.payload?.replyToId, "om_source_planned");
     assert.equal(delivered?.payload?.threadId, "thread_source_planned");
     assert.equal(delivered?.payload?.message, "杭州现在大概28°C，晴，风不大。");
+    assert.doesNotMatch(delivered?.payload?.message || "", /task_user_content/i);
     assert.equal(sentMessages.length, 1);
     assert.equal(sentMessages[0]?.text, "杭州现在大概28°C，晴，风不大。");
     assert.equal(sentMessages[0]?.replyToId, "om_source_planned");
