@@ -48,8 +48,9 @@ export function buildCanonicalSnapshotEntry({
   earlyAckSent = false,
   messageId = "",
   threadId = "",
+  timestamp = Date.now(),
 } = {}) {
-  const ts = Date.now();
+  const ts = timestamp;
   const queueIdentity = buildQueueIdentity({ channel, accountId, conversationId, senderId });
   return {
     version: 2,

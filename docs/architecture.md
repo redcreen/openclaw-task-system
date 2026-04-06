@@ -258,6 +258,16 @@ ownership 说明：
 
 producer 负责把 channel 侧消息转成 task-system 可消费的入站任务事件。
 
+对 `receive-side producer` 还需要固定一条实现约束：
+
+- pre-register snapshot 和 queued early ack marker 的保留时间必须覆盖真实 channel queue drain 时间
+- 不能把这类入口快照只按“短交互窗口”保留，否则消息一旦在宿主队列里排久一点，就会退化回 dispatch-side contract
+
+当前实现里，这意味着：
+
+- Feishu 的 receive-side snapshot / early-ack marker 需要跨长队列等待保持可消费
+- consumer 在 `before_dispatch` 阶段仍应尽量命中入口侧 snapshot，而不是因为 TTL 过短退化成重新 register
+
 当前正式 contract：
 
 - `feishu`: `receive-side-producer`

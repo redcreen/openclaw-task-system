@@ -393,7 +393,7 @@ test("message_sending entered carries scheduler diagnostics", async () => {
     );
     assert.equal(entered?.payload?.schedulerDecision, "entered");
     assert.equal(entered?.payload?.reason, "progress-sync");
-    assert.equal(entered?.payload?.sessionKey, "telegram:8705812936");
+    assert.equal(entered?.payload?.sessionKey, "agent:main:telegram:direct:8705812936");
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }

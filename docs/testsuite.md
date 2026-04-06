@@ -187,6 +187,7 @@ python3 scripts/runtime/plugin_smoke.py --json
 合起来覆盖：
 
 - pre-register / canonical snapshot / `queueKey`
+- long-queue retention for receive-side pre-register / early-ack state
 - immediate `[wd]` / early ack / dedupe
 - short follow-up
 - structured `control_plane_message`

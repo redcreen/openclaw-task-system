@@ -7,8 +7,8 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 const INTERNAL_STARTUP_RESUME_MARKER = "[[TASK-SYSTEM-STARTUP-RESUME]]";
 const EARLY_ACK_STATE_KEY = "__openclawTaskSystemEarlyAckState";
-const EARLY_ACK_TTL_MS = 5 * 60 * 1000;
 const PRE_REGISTER_STATE_KEY = "__openclawTaskSystemPreRegisterState";
+const RECEIVE_SIDE_PRODUCER_TTL_MS = 12 * 60 * 60 * 1000;
 
 type TaskSystemPluginConfig = {
   enabled?: boolean;
@@ -319,7 +319,7 @@ function consumeQueuedEarlyAck(identity: QueueIdentity, ids: string[]): boolean 
     const existing = Array.isArray(state.get(key)) ? state.get(key)! : [];
     const fresh = existing
       .map((entry) => normalizeEarlyAckMarker(entry))
-      .filter((entry): entry is EarlyAckMarker => Boolean(entry) && now - entry.sentAt <= EARLY_ACK_TTL_MS);
+      .filter((entry): entry is EarlyAckMarker => Boolean(entry) && now - entry.sentAt <= RECEIVE_SIDE_PRODUCER_TTL_MS);
     if (fresh.length === 0) {
       state.delete(key);
       continue;
@@ -498,7 +498,7 @@ function listFreshConsumedPreRegisters(entries: RawPreRegisterEntry[], now: numb
   return entries
     .map((entry) => {
       const normalized = normalizeRawPreRegisterState(entry);
-      if (!normalized || now - normalized.timestamp > EARLY_ACK_TTL_MS) {
+      if (!normalized || now - normalized.timestamp > RECEIVE_SIDE_PRODUCER_TTL_MS) {
         return null;
       }
       return normalized;

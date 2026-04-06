@@ -102,6 +102,142 @@ test("before_dispatch consumes structured preRegisterSnapshot entry", async () =
   }
 });
 
+test("before_dispatch still reuses receive-side pre-register snapshot after long queue delay", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot();
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  globalThis[PRE_REGISTER_STATE_KEY].set(buildStateKey("feishu", "acct-1", "user-1"), [
+    buildCanonicalSnapshotEntry({
+      content: "2分钟后提醒我查天气",
+      registerDecision: buildRegisterDecision({
+        task_id: "task-long-queue",
+        queue_position: 15,
+        ahead_count: 14,
+      }),
+      earlyAckSent: true,
+      timestamp: Date.now() - 10 * 60 * 1000,
+    }),
+  ]);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "2分钟后提醒我查天气",
+        body: "2分钟后提醒我查天气",
+        channel: "feishu",
+        senderId: "user-1",
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+      },
+    );
+
+    const commands = await readHookCommands(callsPath);
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    const decisionEvent = debugEvents.find((entry) => entry.event === "immediate-ack:decision");
+    const skippedEvent = debugEvents.find((entry) => entry.event === "immediate-ack:skipped");
+    assert.deepEqual(commands, ["taskmonitor-status"]);
+    assert.equal(decisionEvent?.payload?.producerMode, "receive-side-producer");
+    assert.equal(decisionEvent?.payload?.producerConsumerAligned, true);
+    assert.equal(skippedEvent?.payload?.reason, "queued-early-ack-already-sent");
+    assert.equal(sentMessages.length, 0);
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("before_dispatch still consumes queued early ack marker after long queue delay", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot();
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  globalThis[EARLY_ACK_STATE_KEY].set(buildStateKey("feishu", "acct-1", "chat-1"), [
+    buildEarlyAckMarker({
+      sentAt: Date.now() - 10 * 60 * 1000,
+    }),
+  ]);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "继续处理",
+        body: "继续处理",
+        channel: "feishu",
+        senderId: "user-1",
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+      },
+    );
+
+    const commands = await readHookCommands(callsPath);
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    const skippedEvent = debugEvents.find((entry) => entry.event === "immediate-ack:skipped");
+    assert.deepEqual(commands, ["taskmonitor-status", "register"]);
+    assert.equal(skippedEvent?.payload?.reason, "queued-early-ack-already-sent");
+    assert.equal(sentMessages.length, 0);
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("before_dispatch expires stale receive-side producer state after the extended retention window", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot();
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  globalThis[PRE_REGISTER_STATE_KEY].set(buildStateKey("feishu", "acct-1", "user-1"), [
+    buildCanonicalSnapshotEntry({
+      content: "过期测试",
+      registerDecision: buildRegisterDecision({ task_id: "task-expired" }),
+      earlyAckSent: true,
+      timestamp: Date.now() - 13 * 60 * 60 * 1000,
+    }),
+  ]);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "过期测试",
+        body: "过期测试",
+        channel: "feishu",
+        senderId: "user-1",
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+      },
+    );
+
+    const commands = await readHookCommands(callsPath);
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    const decisionEvent = debugEvents.find((entry) => entry.event === "immediate-ack:decision");
+    assert.deepEqual(commands, ["taskmonitor-status", "register"]);
+    assert.equal(decisionEvent?.payload?.producerMode, "dispatch-side-priority-only");
+    assert.equal(decisionEvent?.payload?.producerConsumerAligned, false);
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("before_dispatch prefers structured register_decision from runtime register response", async () => {
   resetGlobalState();
   const { runtimeRoot, callsPath } = await createFakeRuntimeRoot({
