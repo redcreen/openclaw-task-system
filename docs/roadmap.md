@@ -163,6 +163,8 @@
 正式说明见：
 
 - [testsuite.md](./testsuite.md)
+- [compound_followup_boundary.md](./compound_followup_boundary.md)
+- [llm_tool_task_planning.md](./llm_tool_task_planning.md)
 
 ### 6.2 协议与日志证据
 
@@ -189,7 +191,29 @@
   - 控制面消息是否被普通回复堵住
   - 是否出现残留 / 重复 / 失序
 
-## 7. 正式 Roadmap
+## 7. 当前已知边界
+
+有一类问题已经明确记录下来，不再假装它可以靠继续补规则彻底解决：
+
+- 复合请求里的 delayed follow-up 语义
+  - 例如：`先做 A，然后 5 分钟后回来继续`
+
+正式说明见：
+
+- [compound_followup_boundary.md](./compound_followup_boundary.md)
+- [llm_tool_task_planning.md](./llm_tool_task_planning.md)
+
+当前原则：
+
+- clear single-intent delayed replies: shipped and supported
+- simple compound follow-up phrases: compatibility stopgap only
+- long-term solution: structured planning or tool-assisted task decomposition
+
+推荐设计稿见：
+
+- [llm_tool_task_planning.md](./llm_tool_task_planning.md)
+
+## 8. 正式 Roadmap
 
 ## Phase 0. 项目定义与边界固定
 
@@ -441,3 +465,8 @@ Phase 5 收口结论：
 
 4. Feishu queue 与 task queue 边界继续收口
    - 在现有 contract 模型下继续减少 channel queue 对用户可见 control-plane 的影响
+
+5. LLM-assisted task planning for compound follow-up
+   - 用显式 task-system tools + runtime verification 处理复合 delayed follow-up
+   - 设计稿见：
+     - [llm_tool_task_planning.md](./llm_tool_task_planning.md)

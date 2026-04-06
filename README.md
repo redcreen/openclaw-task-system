@@ -112,6 +112,16 @@ Current shipped capabilities include:
 - operator views such as `dashboard`, `triage`, `queues`, `lanes`, and `continuity`
 - producer contract and channel acceptance truth sources
 
+There is one important current boundary:
+
+- clear single-intent delayed replies are supported
+- compound requests like "do A now, then come back later" are not something regex growth can solve correctly forever
+
+See:
+
+- [`docs/compound_followup_boundary.md`](./docs/compound_followup_boundary.md)
+- [`docs/llm_tool_task_planning.md`](./docs/llm_tool_task_planning.md)
+
 ### project status
 
 The current mainline roadmap is complete.
@@ -124,6 +134,15 @@ The current mainline roadmap is complete.
 - Phase 5: complete
 
 The automated testsuite is also fully green.
+
+One design boundary is intentionally recorded as open:
+
+- delayed follow-up inside compound requests
+
+See:
+
+- [`docs/compound_followup_boundary.md`](./docs/compound_followup_boundary.md)
+- [`docs/llm_tool_task_planning.md`](./docs/llm_tool_task_planning.md)
 
 ### repository layout
 
@@ -567,6 +586,16 @@ openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.gi
 - `dashboard`、`triage`、`queues`、`lanes`、`continuity` 等运维视图
 - producer contract 与 channel acceptance 真相源
 
+还有一个需要明确记录的当前边界：
+
+- 单一意图、表达清晰的延迟回复已经支持
+- “先做 A，再过几分钟回来继续” 这类复合请求，不是靠不断补规则就能长期解决的问题
+
+详见：
+
+- [`docs/compound_followup_boundary.md`](./docs/compound_followup_boundary.md)
+- [`docs/llm_tool_task_planning.md`](./docs/llm_tool_task_planning.md)
+
 ### 当前状态
 
 当前主线 roadmap 已全部完成：
@@ -579,6 +608,15 @@ openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.gi
 - Phase 5：完成
 
 完整自动化 testsuite 也已经全绿。
+
+同时有一个刻意保留为开放设计问题的边界：
+
+- 复合请求里的 delayed follow-up 语义
+
+详见：
+
+- [`docs/compound_followup_boundary.md`](./docs/compound_followup_boundary.md)
+- [`docs/llm_tool_task_planning.md`](./docs/llm_tool_task_planning.md)
 
 ### 仓库结构
 
@@ -893,3 +931,4 @@ python3 scripts/runtime/main_ops.py channel-acceptance --json
 - 更多 channel 的 receive-side producer 支持
 - 更完整的用户控制面、批量操作与更强的任务视图
 - 在现有 contract 模型下继续清理 Feishu queue 与 task queue 的边界
+- 用 LLM-assisted task planning 处理复合 delayed follow-up
