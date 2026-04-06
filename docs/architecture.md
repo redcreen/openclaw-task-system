@@ -18,6 +18,43 @@
 - 用户侧和运维侧必须读同一份任务真相
 - 多 channel 需要在同一 contract 下工作
 
+## 1.1 重要约束：它是监工，不是执行者替身
+
+`openclaw-task-system` 的主要职责不是替代 LLM，也不是替代原有任务执行架构。
+
+它的主要职责是：
+
+1. 告诉用户系统已经收到任务
+2. 监督后续执行直到拿到结果
+3. 在执行过程中持续提供有价值的控制面信息，避免用户空等
+4. 在重启、恢复、超时、异常时，把真实状态如实告诉用户
+5. 把聊天驱动的任务执行过程变得透明，而不是黑盒
+
+所以它首先是：
+
+- `supervisor`
+- `control-plane runtime`
+- `task truth source`
+
+而不是：
+
+- 任务执行引擎本身
+- LLM 的替代品
+- 一个想要接管所有语义判断的 orchestrator
+
+当前代码与这条约束的关系是：
+
+- 大方向已经符合：
+  - `[wd]`
+  - follow-up
+  - watchdog / continuity
+  - restart recovery
+  - dashboard / triage
+  - truth source
+- 但还存在一个明确偏离点：
+  - runtime 仍然对 delayed / compound 请求做了一部分语义判断与 stopgap 拆解
+  - 这部分是当前兼容桥接，不应被视为长期职责边界
+
 ## 2. 一张图看整体
 
 ```mermaid
@@ -119,6 +156,7 @@ producer 层的职责：
 这层存在的意义是：
 
 - 不让 `[wd]`、`/tasks`、`dashboard`、`queues`、`lanes` 各自重新计算一份状态
+- 不让“用户现在到底该知道什么”退化成黑盒执行后的猜测
 
 ### 3.3 Control-Plane Lane
 
@@ -137,6 +175,7 @@ control-plane lane 是本项目最关键的设计。
 - 优先级高于普通 reply
 - 不应被普通 reply 阻塞
 - 必须具备结构化证据链
+- 其核心目标是让用户持续知道“系统现在正在做什么”和“系统是否还活着”
 
 ### 3.4 Reply Lane
 
@@ -247,6 +286,14 @@ flowchart TD
 - 到点时间和任务状态都已经持久化
 - 不依赖单次会话内存
 
+这里要注意职责边界：
+
+- task-system 负责把“已经确认存在的 delayed task”按时检查、执行、恢复、投影给用户
+- task-system 不应长期承担“替 LLM 猜复杂复合意图”的职责
+- 对复合 follow-up 的 planning，长期正确方向仍然是：
+  - LLM 做任务拆解
+  - task-system 做监督、验证、持久化与兜底
+
 ### 5.2 谁在什么时候检查
 
 系统里有两类自动检查器：
@@ -287,6 +334,13 @@ flowchart TD
   - `triage`
   - `continuity`
   - `queues / lanes`
+
+对用户来说，这意味着：
+
+- 如果系统正常，就持续告诉用户任务在推进
+- 如果系统重启，就告诉用户是否正在恢复
+- 如果 LLM planning 超时、异常或根本没有创建后续任务，也必须如实告诉用户
+- 能保留任务就保留；不能保留时，把失败直接抛给用户，而不是继续黑盒承诺
 
 ### 5.4 一张图看延迟任务闭环
 
@@ -376,6 +430,7 @@ flowchart TD
 - 所有 channel 都达到完全对等的 receive-time `[wd]`
 - 通过修改 OpenClaw core 或宿主来“硬接管” queue
 - 把项目扩成通用多 agent orchestrator
+- 让 task-system 长期承担复杂复合语义的主判断职责
 
 这个项目仍然是：
 
@@ -383,6 +438,7 @@ flowchart TD
 - 重点是消息到任务的提升
 - 重点是控制面独立成层
 - 重点是统一状态真相源
+- 重点是“监督执行并把真实状态告诉用户”，而不是替代原执行架构
 
 ## 9. 和路线图的关系
 

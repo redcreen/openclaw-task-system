@@ -46,6 +46,15 @@ This project solves that by giving OpenClaw:
 - restart recovery for accepted-but-not-finished work
 - one shared truth source for both users and operators
 
+Just as important, this plugin is meant to supervise execution, not replace the original executor.
+
+Its job is to:
+
+- confirm the system received the work
+- supervise progress until a result exists
+- keep users informed when work is still running
+- explain restart, recovery, timeout, or failure truthfully
+
 ### what you will see after installing it
 
 After installation, the normal user-visible flow becomes:
@@ -517,6 +526,15 @@ OpenClaw Task System 是给 OpenClaw 补上的一层正式 task runtime。
 - 控制面反馈
 - 中断后的恢复
 - 用户和运维共享的一份任务真相源
+
+同样重要的一点是：这个插件的职责是**监工**，不是替代原来的执行者。
+
+它最核心的工作是：
+
+- 告诉用户系统已经收到这件事
+- 监督后续执行直到有结果
+- 在用户空等时持续给出有价值的信息
+- 在重启、恢复、超时、异常时，如实解释发生了什么
 
 一句话说，它让 OpenClaw 更像“能正式接活并把活做完的系统”，而不只是“偶尔能完成工作的聊天流”。
 

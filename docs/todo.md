@@ -5,32 +5,35 @@
 
 ## 当前焦点
 
-- 总目标：
-  - 让 `[wd]` 和所有 task 管理消息在用户视角第一时间可见
-  - 让控制面消息始终最高优先级，不被普通 reply 排队
-  - 最终覆盖所有 channel
-- 当前阶段：
-  - `Phase 2 / 最小 control-plane lane / scheduler`
-- 当前子步骤：
-  - `Step 7 / 收剩余少量 runner / startup / lifecycle 裸日志出口`
+- 当前正式主线已完成，默认以 [roadmap.md](./roadmap.md) 记录的新候选方向为准。
+- 当前新增约束：
+  - task-system 的主要职责是监督执行与暴露真实状态，而不是替代 LLM 或原执行架构。
 
 ## 当前判断
 
-- `Phase 1` 的协议和真相源已经基本定稳
-- `Phase 2` 已经把 lane、优先级、terminal/preempt/supersede 冲突、sent/skipped/error 证据链搭起来了
-- 当前最主要工作不是继续发散新功能，而是把剩余零散出口继续收进统一 scheduler 证据链
+- 当前系统的大方向已经是 supervisor-first：
+  - `[wd]`
+  - follow-up
+  - watchdog / continuity
+  - restart recovery
+  - dashboard / triage
+  - truth source
+- 但还存在一个明确偏离点：
+  - runtime 仍然对 delayed / compound 请求做了一部分语义判断与 stopgap 拆解
+  - 这部分应被视为兼容桥接，而不是长期职责边界
 
 ## 最近进展
 
-- 删除了重复的 `docs/readme.md`，根目录 `README.md` 作为唯一项目入口
-- 把临时记录从根目录迁到 `docs/todo.md`
-- `continuation / host delivery / fulfilled shortcut / entered lifecycle` 已接进统一调度证据链
-- 文档口径已统一到：
-  - 项目是 OpenClaw 上的“任务运行时 + 控制面”
-  - `ROADMAP` 是正式主线
-  - `TODO` 只记临时事项
+- 新增了复合 delayed follow-up 的边界文档：
+  - [compound_followup_boundary.md](./compound_followup_boundary.md)
+- 新增了 LLM tool-assisted planning 设计稿：
+  - [llm_tool_task_planning.md](./llm_tool_task_planning.md)
+- 已把“task-system 是监工，不是执行者替身”写进 README、architecture、roadmap
 
 ## 下一个动作
 
-1. 继续清点并收口 `Phase 2 / Step 7` 剩余裸日志出口。
-2. 当 `Phase 2` 退出条件满足后，切到 `Phase 3` 做统一用户状态投影的最后收口。
+1. 评估并实现 `LLM planning health` 信号。
+2. 设计 `promise-without-task` 检测与 anomaly 投影。
+3. 把当前 runtime 中的 compound/delayed 语义 stopgap 逐步收敛成：
+   - 明确的兼容桥接
+   - 而不是长期主判断路径。

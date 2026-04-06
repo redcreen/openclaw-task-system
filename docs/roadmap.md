@@ -103,7 +103,31 @@
 
 > 用统一任务真相源 + 高优先级控制面通道，逐步把用户第一时间可见反馈、任务管理和多 channel 一致性收回来。
 
-## 4.1 外部借鉴原则
+## 4.1 重要约束：task-system 的主要职责是监督，不是替代执行
+
+后续所有设计都应遵守这条约束：
+
+- task-system 负责接单、控制面反馈、监督执行、恢复、投影状态
+- 真正任务执行仍然在原有执行架构上完成
+- task-system 的价值在于让聊天驱动任务变透明，而不是把自身做成新的执行中心
+
+所以它最核心的职责是：
+
+1. 告诉用户系统已经收到任务
+2. 监督任务持续执行，直到拿到结果
+3. 在用户空等时提供有价值的控制面信息
+4. 在重启、恢复、超时、异常时，如实告诉用户发生了什么
+5. 让用户和运维看到同一份透明状态，而不是黑盒
+
+这也意味着：
+
+- `[wd]`、follow-up、watchdog、continuity、dashboard、triage 是主职责
+- 替 LLM 长期判断复杂复合语义，不是主职责
+- 对复杂 follow-up 的长期方向，应该是：
+  - LLM 做 planning
+  - task-system 做监督、验证、持久化与兜底
+
+## 4.2 外部借鉴原则
 
 这条 roadmap 不以“照搬现成 agent framework”为前提，而是只吸收那些真正对当前问题有帮助的设计原则。
 
@@ -208,6 +232,7 @@
 - clear single-intent delayed replies: shipped and supported
 - simple compound follow-up phrases: compatibility stopgap only
 - long-term solution: structured planning or tool-assisted task decomposition
+- task-system should remain supervisor-first, not planner-first
 
 推荐设计稿见：
 
