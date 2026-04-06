@@ -148,6 +148,7 @@ test("registered planning tools call runtime hooks", async () => {
 
     const commands = await readHookCommands(callsPath);
     assert.deepEqual(commands, [
+      "resolve-active",
       "attach-promise-guard",
       "create-followup-plan",
       "schedule-followup-from-plan",
@@ -222,6 +223,66 @@ test("finalizing planned follow-up sends runtime-owned wd scheduling confirmatio
     const delivered = debugEvents.find((entry) => entry.event === "followup-scheduled:sent");
     assert.equal(delivered?.payload?.schedulerDecision, "sent");
     const commands = await readHookCommands(callsPath);
+    assert.ok(commands.includes("sync-followup-reply-target"));
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("finalizing planned follow-up sends scheduling confirmation after binding is recovered from truth source", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot({
+    finalizePlannedFollowupResponse: {
+      ok: true,
+      promise_fulfilled: true,
+      status: "linked",
+      followup_task_id: "task-followup-123",
+      followup_due_at: "2026-04-06T12:05:00+08:00",
+      original_time_expression: "5分钟后",
+      followup_summary: "5分钟后同步天气结果",
+    },
+    resolveActiveResponse: {
+      found: true,
+      task_id: "task-123",
+      status: "running",
+      channel: "feishu",
+      account_id: "acct-1",
+      chat_id: "chat-1",
+      reply_to_id: "om_source_message",
+      thread_id: "thread_source_message",
+      require_structured_user_content: true,
+      main_user_content_mode: "none",
+      task: {
+        task_id: "task-123",
+        channel: "feishu",
+        account_id: "acct-1",
+        chat_id: "chat-1",
+      },
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    const finalizeResult = await plugin.registeredTools.get("ts_finalize_planned_followup").execute("run-1", {
+      source_task_id: "task-123",
+      session_key: "agent:main:feishu:acct-1:user-1",
+      plan_id: "plan-123",
+    });
+
+    assert.match(finalizeResult.content[0].text, /"promise_fulfilled": true/);
+    assert.equal(sentMessages.length, 1);
+    assert.equal(sentMessages[0]?.text, "[wd] 已安排妥当：5分钟后同步天气结果。");
+    assert.equal(sentMessages[0]?.replyToId, "om_source_message");
+    assert.equal(sentMessages[0]?.threadId, "thread_source_message");
+
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    const recovered = debugEvents.find((entry) => entry.event === "active-task-binding:recovered");
+    assert.equal(recovered?.payload?.taskId, "task-123");
+    const delivered = debugEvents.find((entry) => entry.event === "followup-scheduled:sent");
+    assert.equal(delivered?.payload?.schedulerDecision, "sent");
+    const commands = await readHookCommands(callsPath);
+    assert.ok(commands.includes("resolve-active"));
     assert.ok(commands.includes("sync-followup-reply-target"));
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
@@ -395,6 +456,60 @@ test("attach_promise_guard suppresses immediate business content until planning 
     const progressCall = calls.find((entry) => entry.command === "progress-active");
     assert.equal(progressCall, undefined);
     const debugEvents = await readDebugEvents(runtimeRoot);
+    const suppressed = debugEvents.find((entry) => entry.event === "message_sending:user-content-suppressed");
+    assert.equal(suppressed?.payload?.reason, "main-user-content-mode-none");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("message_sending suppresses immediate business content after binding is recovered from truth source", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot({
+    resolveActiveResponse: {
+      found: true,
+      task_id: "task-123",
+      status: "running",
+      channel: "feishu",
+      account_id: "acct-1",
+      chat_id: "chat-1",
+      reply_to_id: "om_source_message",
+      thread_id: "thread_source_message",
+      require_structured_user_content: true,
+      main_user_content_mode: "none",
+      task: {
+        task_id: "task-123",
+        channel: "feishu",
+        account_id: "acct-1",
+        chat_id: "chat-1",
+      },
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    const event = {
+      content: "<task_user_content>目的地按宁波算，明天天气大致 14°C~21°C。</task_user_content>",
+    };
+    await plugin.messageSending(event, {
+      sessionKey: "agent:main:feishu:acct-1:user-1",
+      channelId: "feishu",
+      conversationId: "chat-1",
+      accountId: "acct-1",
+      senderId: "user-1",
+      agentId: "main",
+    });
+
+    assert.equal(event.content, "");
+    const calls = await readHookCalls(callsPath);
+    const progressCall = calls.find((entry) => entry.command === "progress-active");
+    assert.equal(progressCall, undefined);
+    const commands = await readHookCommands(callsPath);
+    assert.ok(commands.includes("resolve-active"));
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    const recovered = debugEvents.find((entry) => entry.event === "active-task-binding:recovered");
+    assert.equal(recovered?.payload?.taskId, "task-123");
     const suppressed = debugEvents.find((entry) => entry.event === "message_sending:user-content-suppressed");
     assert.equal(suppressed?.payload?.reason, "main-user-content-mode-none");
   } finally {

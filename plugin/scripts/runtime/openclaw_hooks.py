@@ -793,10 +793,32 @@ def resolve_active_task_from_payload(
     runtime_config = load_task_system_config(config_path=config_path)
     store = TaskStore(paths=runtime_config.build_paths())
     task = _resolve_target_task(store, payload)
+    if task is None:
+        return {
+            "task_id": None,
+            "found": False,
+            "status": None,
+        }
+    tool_followup_plan = task.meta.get("tool_followup_plan")
+    promise_guard = task.meta.get("planning_promise_guard")
+    require_structured_user_content = isinstance(tool_followup_plan, dict) or isinstance(promise_guard, dict)
+    main_user_content_mode = None
+    if isinstance(tool_followup_plan, dict):
+        main_user_content_mode = str(tool_followup_plan.get("main_user_content_mode") or "none")
+    elif isinstance(promise_guard, dict):
+        main_user_content_mode = "none"
     return {
-        "task_id": task.task_id if task else None,
-        "found": task is not None,
-        "status": task.status if task else None,
+        "task_id": task.task_id,
+        "found": True,
+        "status": task.status,
+        "task": task.to_dict(),
+        "channel": task.channel,
+        "account_id": task.account_id,
+        "chat_id": task.chat_id,
+        "reply_to_id": str(task.meta.get("source_reply_to_id") or "").strip() or None,
+        "thread_id": str(task.meta.get("source_thread_id") or "").strip() or None,
+        "require_structured_user_content": require_structured_user_content,
+        "main_user_content_mode": main_user_content_mode,
     }
 
 

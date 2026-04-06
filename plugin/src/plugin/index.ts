@@ -939,6 +939,56 @@ function buildToolTextResult(payload: Record<string, unknown>): { content: Array
   };
 }
 
+function mergeActiveTaskBinding(
+  existing: ActiveTaskBinding | undefined,
+  recovered: Partial<RecoveredActiveTaskBinding> | null | undefined,
+): ActiveTaskBinding | null {
+  if (!existing && !recovered?.taskId) {
+    return null;
+  }
+  const merged: ActiveTaskBinding = {
+    taskId: normalizeText(recovered?.taskId) || existing?.taskId || "",
+    channel: normalizeText(recovered?.channel) || existing?.channel,
+    accountId: normalizeText(recovered?.accountId) || existing?.accountId,
+    chatId: normalizeText(recovered?.chatId) || existing?.chatId,
+    replyToId: normalizeText(recovered?.replyToId) || existing?.replyToId,
+    threadId: normalizeText(recovered?.threadId) || existing?.threadId,
+    requireStructuredUserContent:
+      typeof recovered?.requireStructuredUserContent === "boolean"
+        ? recovered.requireStructuredUserContent
+        : existing?.requireStructuredUserContent,
+    mainUserContentMode:
+      normalizeMainUserContentMode(recovered?.mainUserContentMode) ||
+      normalizeMainUserContentMode(existing?.mainUserContentMode),
+  };
+  if (!merged.taskId) {
+    return null;
+  }
+  return merged;
+}
+
+function bindingFromResolveActiveResult(result: Record<string, unknown> | null | undefined): RecoveredActiveTaskBinding | null {
+  if (!result || result.found !== true) {
+    return null;
+  }
+  const taskId = normalizeText(result.task_id);
+  if (!taskId) {
+    return null;
+  }
+  const task = result.task && typeof result.task === "object" ? (result.task as Record<string, unknown>) : null;
+  return {
+    taskId,
+    channel: normalizeText(result.channel) || normalizeText(task?.channel),
+    accountId: normalizeText(result.account_id) || normalizeText(task?.account_id),
+    chatId: normalizeText(result.chat_id) || normalizeText(task?.chat_id),
+    replyToId: normalizeText(result.reply_to_id),
+    threadId: normalizeText(result.thread_id),
+    requireStructuredUserContent: result.require_structured_user_content === true,
+    mainUserContentMode: normalizeMainUserContentMode(result.main_user_content_mode),
+    recoveredFromTruthSource: true,
+  };
+}
+
 async function resolveActiveTaskIdForPlanning(
   api: OpenClawPluginApi,
   config: Required<TaskSystemPluginConfig>,
@@ -1516,6 +1566,10 @@ type ActiveTaskBinding = {
   threadId?: string;
   requireStructuredUserContent?: boolean;
   mainUserContentMode?: "none" | "immediate-summary" | "full-answer";
+};
+
+type RecoveredActiveTaskBinding = ActiveTaskBinding & {
+  recoveredFromTruthSource?: boolean;
 };
 
 type ControlPlanePriority = "p0-receive-ack" | "p1-task-management" | "p2-progress-followup" | "p3-advisory";
@@ -2107,7 +2161,12 @@ const taskSystemPlugin = {
       async execute(_id, params) {
         const payload = params as Record<string, unknown>;
         const sessionKey = normalizeText(payload.session_key);
-        const binding = activeTaskBindings.get(sessionKey);
+        const binding =
+          (await ensureActiveTaskBinding(sessionKey, {
+            channel: undefined,
+            accountId: undefined,
+            chatId: undefined,
+          })) || activeTaskBindings.get(sessionKey);
         if (binding) {
           binding.requireStructuredUserContent = true;
           if (!binding.mainUserContentMode) {
@@ -2152,7 +2211,7 @@ const taskSystemPlugin = {
       async execute(_id, params) {
         const payload = params as Record<string, unknown>;
         const sessionKey = normalizeText(payload.session_key);
-        const binding = activeTaskBindings.get(sessionKey);
+        const binding = await ensureActiveTaskBinding(sessionKey);
         const mainUserContentMode = normalizeMainUserContentMode(payload.main_user_content_mode);
         if (binding) {
           binding.requireStructuredUserContent = true;
@@ -2192,7 +2251,7 @@ const taskSystemPlugin = {
       async execute(_id, params) {
         const payload = params as Record<string, unknown>;
         const sessionKey = normalizeText(payload.session_key);
-        const binding = activeTaskBindings.get(sessionKey);
+        const binding = await ensureActiveTaskBinding(sessionKey);
         if (binding) {
           binding.requireStructuredUserContent = true;
           activeTaskBindings.set(sessionKey, binding);
@@ -2223,7 +2282,7 @@ const taskSystemPlugin = {
       async execute(_id, params) {
         const payload = params as Record<string, unknown>;
         const sessionKey = normalizeText(payload.session_key);
-        const binding = activeTaskBindings.get(sessionKey);
+        const binding = await ensureActiveTaskBinding(sessionKey);
         if (binding) {
           binding.requireStructuredUserContent = true;
           activeTaskBindings.set(sessionKey, binding);
@@ -2713,6 +2772,57 @@ const taskSystemPlugin = {
       }
     }
 
+    async function ensureActiveTaskBinding(
+      sessionKey: string,
+      fallback?: {
+        agentId?: string;
+        channel?: string;
+        accountId?: string;
+        chatId?: string;
+        replyToId?: string;
+        threadId?: string;
+      },
+    ): Promise<ActiveTaskBinding | null> {
+      const normalizedSessionKey = normalizeSessionKey(sessionKey);
+      const existing = activeTaskBindings.get(normalizedSessionKey);
+      if (existing) {
+        return existing;
+      }
+      const resolved = bindingFromResolveActiveResult(
+        await callHook(api, config, "resolve-active", {
+          agent_id: fallback?.agentId || config.defaultAgentId,
+          session_key: normalizedSessionKey,
+        }),
+      );
+      const merged = mergeActiveTaskBinding(
+        undefined,
+        resolved
+          ? {
+              ...resolved,
+              channel: resolved.channel || fallback?.channel,
+              accountId: resolved.accountId || fallback?.accountId,
+              chatId: resolved.chatId || fallback?.chatId,
+              replyToId: resolved.replyToId || fallback?.replyToId,
+              threadId: resolved.threadId || fallback?.threadId,
+            }
+          : null,
+      );
+      if (!merged) {
+        return null;
+      }
+      activeTaskBindings.set(normalizedSessionKey, merged);
+      await appendDebugLog(config, "active-task-binding:recovered", {
+        agentId: fallback?.agentId || config.defaultAgentId,
+        sessionKey: normalizedSessionKey,
+        taskId: merged.taskId,
+        schedulerDecision: "recovered",
+        reason: "truth-source-rehydrate",
+        requireStructuredUserContent: Boolean(merged.requireStructuredUserContent),
+        mainUserContentMode: merged.mainUserContentMode || null,
+      });
+      return merged;
+    }
+
     api.on("before_dispatch", async (event, ctx) => {
       if (!config.registerOnBeforeDispatch || !event.content?.trim()) {
         return;
@@ -3196,7 +3306,13 @@ const taskSystemPlugin = {
         });
         return;
       }
-      const activeTaskBinding = activeTaskBindings.get(normalizeSessionKey(sessionKey));
+      const activeTaskBinding =
+        (await ensureActiveTaskBinding(normalizeSessionKey(sessionKey), {
+          agentId,
+          channel: ctx.channelId,
+          accountId: ctx.accountId,
+          chatId: ctx.conversationId,
+        })) || undefined;
       const planningTaskId = await resolveActiveTaskIdForPlanning(api, config, {
         agentId,
         sessionKey,
@@ -3240,7 +3356,13 @@ const taskSystemPlugin = {
         return;
       }
       const sessionKey = normalizeSessionKey(ctx.sessionKey?.trim() || buildSessionKey(ctx.channelId, ctx.conversationId));
-      const activeTaskBinding = activeTaskBindings.get(sessionKey);
+      const activeTaskBinding =
+        (await ensureActiveTaskBinding(sessionKey, {
+          agentId: ctx.agentId || config.defaultAgentId,
+          channel: ctx.channelId,
+          accountId: ctx.accountId,
+          chatId: ctx.conversationId,
+        })) || undefined;
       const mainUserContentMode = normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode);
       const resolvedContent = resolveUserFacingContent(event.content, {
         requireStructured: Boolean(activeTaskBinding?.requireStructuredUserContent),
@@ -3335,7 +3457,13 @@ const taskSystemPlugin = {
         });
         return;
       }
-      const activeTaskBinding = activeTaskBindings.get(sessionKey);
+      const activeTaskBinding =
+        (await ensureActiveTaskBinding(sessionKey, {
+          agentId: ctx.agentId || config.defaultAgentId,
+          channel: ctx.channelId,
+          accountId: ctx.accountId,
+          chatId: ctx.conversationId,
+        })) || undefined;
       const mainUserContentMode = normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode);
       if (Boolean(activeTaskBinding?.requireStructuredUserContent) && mainUserContentMode === "none") {
         await appendDebugLog(config, "llm_output:user-content-suppressed", {
@@ -3410,7 +3538,13 @@ const taskSystemPlugin = {
         clearSessionTaskArtifacts(normalizedSessionKey);
         return;
       }
-      const activeTaskBinding = activeTaskBindings.get(normalizedSessionKey);
+      const activeTaskBinding =
+        (await ensureActiveTaskBinding(normalizedSessionKey, {
+          agentId: ctx.agentId || config.defaultAgentId,
+          channel: ctx.channelId,
+          accountId: ctx.accountId,
+          chatId: ctx.conversationId,
+        })) || undefined;
       if (activeTaskBinding?.taskId) {
         controlPlaneTerminalByTask.set(activeTaskBinding.taskId, {
           eventName: event.success ? "agent-settled" : "agent-failed",
