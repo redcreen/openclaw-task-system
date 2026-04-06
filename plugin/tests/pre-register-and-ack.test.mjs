@@ -394,6 +394,52 @@ test("feishu wd ack replies to the original message", async () => {
   }
 });
 
+test("feishu wd ack falls back to pre-register snapshot reply target when dispatch lacks message ids", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot();
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  globalThis[PRE_REGISTER_STATE_KEY].set(buildStateKey("feishu", "acct-1", "user-1"), [
+    buildCanonicalSnapshotEntry({
+      content: "在么",
+      earlyAckSent: false,
+      registerDecision: buildRegisterDecision({
+        classification_reason: "long-task",
+        task_id: "task-from-snapshot",
+        task_status: "queued",
+      }),
+      messageId: "om_snapshot_1",
+      threadId: "thread-snapshot-1",
+    }),
+  ]);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "在么",
+        body: "在么",
+        channel: "feishu",
+        senderId: "user-1",
+      },
+      {
+        sessionKey: "agent:health:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "health",
+      },
+    );
+
+    assert.equal(sentMessages.length, 1);
+    assert.equal(sentMessages[0].replyToId, "om_snapshot_1");
+    assert.equal(sentMessages[0].threadId, "thread-snapshot-1");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("feishu short-task followup keeps replying to the original message", async () => {
   resetGlobalState();
   const { runtimeRoot } = await createFakeRuntimeRoot({

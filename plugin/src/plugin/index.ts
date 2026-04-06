@@ -274,6 +274,8 @@ type RawPreRegisterEntry = {
   content?: string;
   contentFingerprint?: string;
   senderId?: string;
+  messageId?: string;
+  threadId?: string;
   arrivalTs?: number;
   snapshotTs?: number;
   timestamp?: number;
@@ -294,6 +296,8 @@ type PreRegisterSnapshot = {
   content: string;
   contentFingerprint?: string;
   senderId: string;
+  messageId?: string;
+  threadId?: string;
   arrivalTs?: number;
   snapshotTs?: number;
   registerDecision?: Record<string, unknown>;
@@ -409,6 +413,8 @@ function normalizeRawPreRegisterState(entry: RawPreRegisterEntry): NormalizedPre
       ...snapshot,
       content,
       senderId,
+      messageId: normalizeText(snapshot.messageId),
+      threadId: normalizeText(snapshot.threadId),
       queueKey: extractRawPreRegisterQueueKey(entry),
       contentFingerprint: fingerprintContent(snapshot.contentFingerprint || content),
       ack: extractRawPreRegisterAck(entry),
@@ -2383,6 +2389,8 @@ const taskSystemPlugin = {
           observe_only: true,
         }));
       const registerDecision = resolveRegisterDecision(registerResult);
+      const effectiveReplyToId = replyToId || preRegistered?.snapshot.messageId || undefined;
+      const effectiveThreadId = threadId || preRegistered?.snapshot.threadId || undefined;
       enqueueDebugLog(config, "immediate-ack:decision", {
         sessionKey,
         channel: channelName,
@@ -2456,8 +2464,8 @@ const taskSystemPlugin = {
             channel: channelName,
             accountId,
             chatId,
-            replyToId,
-            threadId,
+            replyToId: effectiveReplyToId,
+            threadId: effectiveThreadId,
             taskId: registerDecision.task_id,
             sessionKey,
             message: immediateAckMessage,
@@ -2467,8 +2475,8 @@ const taskSystemPlugin = {
             channel: channelName,
             accountId,
             chatId,
-            replyToId,
-            threadId,
+            replyToId: effectiveReplyToId,
+            threadId: effectiveThreadId,
             sessionKey,
             message: immediateAckMessage,
             eventName: "immediate-ack",
@@ -2529,8 +2537,8 @@ const taskSystemPlugin = {
             channel: event.channel ?? ctx.channelId ?? "unknown",
             accountId: ctx.accountId ?? "",
             chatId: ctx.conversationId ?? sessionKey,
-            replyToId,
-            threadId,
+            replyToId: effectiveReplyToId,
+            threadId: effectiveThreadId,
             taskKind: "short",
             timer,
           });

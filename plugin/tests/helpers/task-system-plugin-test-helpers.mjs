@@ -46,6 +46,8 @@ export function buildCanonicalSnapshotEntry({
   content = "在么",
   registerDecision = buildRegisterDecision(),
   earlyAckSent = false,
+  messageId = "",
+  threadId = "",
 } = {}) {
   const ts = Date.now();
   const queueIdentity = buildQueueIdentity({ channel, accountId, conversationId, senderId });
@@ -59,6 +61,8 @@ export function buildCanonicalSnapshotEntry({
       content,
       contentFingerprint: content,
       senderId,
+      messageId,
+      threadId,
       arrivalTs: ts,
       snapshotTs: ts,
       registerDecision,
