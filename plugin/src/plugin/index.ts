@@ -1303,6 +1303,8 @@ type PendingReceipt = {
   channel: string;
   accountId?: string;
   chatId: string;
+  replyToId?: string;
+  threadId?: string;
   taskKind: "short" | "long";
   timer: ReturnType<typeof setTimeout> | null;
 };
@@ -1319,6 +1321,8 @@ type ControlPlaneMessage = {
   channel: string;
   accountId?: string;
   chatId: string;
+  replyToId?: string;
+  threadId?: string;
   sessionKey: string;
   message: string;
   taskId?: string;
@@ -1421,6 +1425,40 @@ function shouldDropForTerminalControlPlaneState(
 
 function buildControlPlaneAudienceKey(channel: string, accountId: string | undefined, chatId: string): string {
   return `${normalizeText(channel).toLowerCase()}:${normalizeText(accountId)}:${normalizeText(chatId)}`;
+}
+
+function extractReplyToId(event: Record<string, unknown>, ctx: Record<string, unknown>): string | undefined {
+  const candidates = [
+    event.messageId,
+    event.message_id,
+    ctx.messageId,
+    ctx.message_id,
+    ctx.currentMessageId,
+    ctx.current_message_id,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeText(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return undefined;
+}
+
+function extractThreadId(event: Record<string, unknown>, ctx: Record<string, unknown>): string | undefined {
+  const candidates = [
+    event.threadId,
+    event.thread_id,
+    ctx.threadId,
+    ctx.thread_id,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeText(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return undefined;
 }
 
 function isPreemptingControlPlanePriority(priority: ControlPlanePriority): boolean {
@@ -1619,6 +1657,8 @@ async function deliverControlPlaneMessage(
       to: chatId,
       text: message,
       accountId: payload.accountId || "",
+      replyToId: payload.replyToId,
+      threadId: payload.threadId,
     });
     const sendMs = Date.now() - sendStartedAt;
     await appendDebugLog(config, `${payload.eventName}:sent`, {
@@ -2221,6 +2261,8 @@ const taskSystemPlugin = {
       const channelName = event.channel ?? ctx.channelId ?? "unknown";
       const accountId = ctx.accountId ?? "";
       const chatId = ctx.conversationId ?? sessionKey;
+      const replyToId = extractReplyToId(event as Record<string, unknown>, ctx as Record<string, unknown>);
+      const threadId = extractThreadId(event as Record<string, unknown>, ctx as Record<string, unknown>);
       if (taskMonitorCommand) {
         const taskMonitorResult = await callHook(api, config, "taskmonitor-control", {
           session_key: sessionKey,
@@ -2235,6 +2277,8 @@ const taskSystemPlugin = {
           channel: channelName,
           accountId,
           chatId,
+          replyToId,
+          threadId,
           sessionKey,
           message:
             normalizeText(String(taskMonitorResult?.message || "")) ||
@@ -2256,6 +2300,8 @@ const taskSystemPlugin = {
           channel: channelName,
           accountId,
           chatId,
+          replyToId,
+          threadId,
           sessionKey,
           message:
             normalizeText(String(continuityResult?.control_plane_message?.text || "")) ||
@@ -2281,6 +2327,8 @@ const taskSystemPlugin = {
           channel: channelName,
           accountId,
           chatId,
+          replyToId,
+          threadId,
           sessionKey,
           message:
             normalizeText(String(tasksSummaryResult?.control_plane_message?.text || "")) ||
@@ -2408,6 +2456,8 @@ const taskSystemPlugin = {
             channel: channelName,
             accountId,
             chatId,
+            replyToId,
+            threadId,
             taskId: registerDecision.task_id,
             sessionKey,
             message: immediateAckMessage,
@@ -2417,6 +2467,8 @@ const taskSystemPlugin = {
             channel: channelName,
             accountId,
             chatId,
+            replyToId,
+            threadId,
             sessionKey,
             message: immediateAckMessage,
             eventName: "immediate-ack",
@@ -2458,6 +2510,8 @@ const taskSystemPlugin = {
                 channel: current.channel,
                 accountId: current.accountId ?? "",
                 chatId: current.chatId,
+                replyToId: current.replyToId,
+                threadId: current.threadId,
                 sessionKey: current.sessionKey,
                 message:
                   hookControlPlaneMessage?.message ||
@@ -2475,6 +2529,8 @@ const taskSystemPlugin = {
             channel: event.channel ?? ctx.channelId ?? "unknown",
             accountId: ctx.accountId ?? "",
             chatId: ctx.conversationId ?? sessionKey,
+            replyToId,
+            threadId,
             taskKind: "short",
             timer,
           });

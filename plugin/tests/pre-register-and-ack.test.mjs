@@ -14,6 +14,7 @@ import {
   readDebugEvents,
   readHookCommands,
   resetGlobalState,
+  waitForDebugEvent,
 } from "./helpers/task-system-plugin-test-helpers.mjs";
 
 // 这组测试覆盖 pre-register、early ack、queueKey 命中与 Telegram slash 回执归一化。
@@ -345,6 +346,104 @@ test("before_dispatch normalizes telegram slash recipient for long-task wd ack d
     assert.equal(sentMessages.length, 1);
     assert.equal(sentMessages[0].to, "8705812936");
     assert.match(sentMessages[0].text, /^\[wd\]/);
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("feishu wd ack replies to the original message", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    registerResponse: buildRegisterDecision({
+      classification_reason: "long-task",
+      task_id: "task-feishu-reply",
+      task_status: "queued",
+    }),
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "在么",
+        body: "在么",
+        channel: "feishu",
+        senderId: "user-1",
+        messageId: "om_reply_1",
+        threadId: "thread-1",
+      },
+      {
+        sessionKey: "agent:health:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "health",
+        messageId: "om_reply_1",
+        threadId: "thread-1",
+      },
+    );
+
+    assert.equal(sentMessages.length, 1);
+    assert.equal(sentMessages[0].to, "chat-1");
+    assert.equal(sentMessages[0].replyToId, "om_reply_1");
+    assert.equal(sentMessages[0].threadId, "thread-1");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("feishu short-task followup keeps replying to the original message", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    registerResponse: buildRegisterDecision({
+      classification_reason: "observed-task",
+      task_id: "task-short-followup-reply",
+      task_status: "running",
+      queue_position: 1,
+      ahead_count: 0,
+      running_count: 1,
+      active_count: 1,
+    }),
+    followupResponse: {
+      should_send: true,
+      followup_message: "已收到你的消息，当前仍在处理中；稍后给你正式结果。",
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages, {
+    shortTaskFollowupTimeoutMs: 10,
+  });
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "帮我看一下",
+        body: "帮我看一下",
+        channel: "feishu",
+        senderId: "user-1",
+        messageId: "om_followup_1",
+        threadId: "thread-2",
+      },
+      {
+        sessionKey: "agent:health:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "health",
+        messageId: "om_followup_1",
+        threadId: "thread-2",
+      },
+    );
+
+    await waitForDebugEvent(runtimeRoot, (entry) => entry.event === "short-task-followup:sent");
+    assert.equal(sentMessages.length, 2);
+    assert.equal(sentMessages[0].replyToId, "om_followup_1");
+    assert.equal(sentMessages[0].threadId, "thread-2");
+    assert.equal(sentMessages[1].replyToId, "om_followup_1");
+    assert.equal(sentMessages[1].threadId, "thread-2");
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }
