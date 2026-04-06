@@ -441,6 +441,16 @@ ownership 说明：
 - 这不是 OpenClaw core 原生的 delayed-task runner
 - OpenClaw host 提供的是插件运行环境与消息/agent 生命周期
 
+### continuation lane
+
+delayed follow-ups stay in the same user-facing session context, but they no longer share the same blocking lane semantics as the main task path.
+
+- `openclaw_host` and `agent_llm_path` own the main execution lane
+- `task_continuation_runner` owns the continuation lane
+- due follow-ups are claimed in absolute `due_at` order
+- a running main task must not block a due continuation
+- one due continuation must not starve another due continuation in the same session
+
 ## 6. 为什么必须分 lane
 
 如果不分 lane，会出现这些退化：

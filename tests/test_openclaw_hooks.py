@@ -1229,7 +1229,7 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(claimed["claimed_count"], 3)
         self.assertEqual([item["reply_text"] for item in claimed["tasks"]], replies)
 
-    def test_claim_due_continuations_limits_to_one_task_per_session_lane(self) -> None:
+    def test_claim_due_continuations_claims_all_due_tasks_in_same_session_lane(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         due_at = "2020-01-01T00:00:00+00:00"
         observed_first = store.observe_task(
@@ -1265,55 +1265,76 @@ class OpenClawHooksTests(unittest.TestCase):
 
         claimed = openclaw_hooks.claim_due_continuations_from_payload({})
 
-        self.assertEqual(claimed["claimed_count"], 1)
-        self.assertEqual([item["reply_text"] for item in claimed["tasks"]], ["111"])
+        self.assertEqual(claimed["claimed_count"], 2)
+        self.assertEqual([item["reply_text"] for item in claimed["tasks"]], ["111", "222"])
         refreshed_second = store.load_task(second.task_id, allow_archive=False)
-        self.assertEqual(refreshed_second.status, task_state_module.STATUS_PAUSED)
+        self.assertEqual(refreshed_second.status, task_state_module.STATUS_RUNNING)
 
-    def test_claim_due_continuations_can_handoff_next_task_after_first_completion(self) -> None:
+    def test_claim_due_continuations_orders_tasks_by_due_time_within_same_session(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
-        due_at = "2020-01-01T00:00:00+00:00"
-        replies = ["111", "222"]
-        scheduled_ids: list[str] = []
-        for reply in replies:
+        plans = [
+            ("333", "2020-01-01T00:03:00+00:00"),
+            ("555", "2020-01-01T00:05:00+00:00"),
+            ("111", "2020-01-01T00:01:00+00:00"),
+        ]
+        for reply, due_at in plans:
             observed = store.observe_task(
                 agent_id="main",
-                session_key="session:delayed:handoff",
+                session_key="session:delayed:due-order",
                 channel="telegram",
                 account_id="telegram-main",
-                chat_id="chat:delayed:handoff",
+                chat_id="chat:delayed:due-order",
                 task_label=f"delayed task {reply}",
             )
-            scheduled = store.schedule_continuation(
+            store.schedule_continuation(
                 observed.task_id,
                 continuation_kind="delayed-reply",
                 due_at=due_at,
                 payload={"reply_text": reply, "wait_seconds": 1},
                 reason="scheduled continuation wait",
             )
-            scheduled_ids.append(scheduled.task_id)
 
-        first_claim = openclaw_hooks.claim_due_continuations_from_payload({})
+        claimed = openclaw_hooks.claim_due_continuations_from_payload({})
 
-        self.assertEqual(first_claim["claimed_count"], 1)
-        self.assertEqual([item["reply_text"] for item in first_claim["tasks"]], ["111"])
+        self.assertEqual(claimed["claimed_count"], 3)
+        self.assertEqual([item["reply_text"] for item in claimed["tasks"]], ["111", "333", "555"])
 
-        completed = openclaw_hooks.completed_from_payload(
-            {
-                "task_id": first_claim["tasks"][0]["task_id"],
-                "result_summary": "continuation reply delivered: 111",
-            }
+    def test_claim_due_continuations_is_not_blocked_by_running_main_task_in_same_session(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        session_key = "session:delayed:running-main"
+        running = store.observe_task(
+            agent_id="main",
+            session_key=session_key,
+            channel="telegram",
+            account_id="telegram-main",
+            chat_id="chat:delayed:running-main",
+            task_label="long running main task",
         )
-        self.assertEqual(completed["status"], task_state_module.STATUS_DONE)
+        running.status = task_state_module.STATUS_RUNNING
+        store.save_task(running)
 
-        second_claim = openclaw_hooks.claim_due_continuations_from_payload({})
+        observed = store.observe_task(
+            agent_id="main",
+            session_key=session_key,
+            channel="telegram",
+            account_id="telegram-main",
+            chat_id="chat:delayed:running-main",
+            task_label="delayed follow-up",
+        )
+        scheduled = store.schedule_continuation(
+            observed.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2020-01-01T00:00:00+00:00",
+            payload={"reply_text": "111", "wait_seconds": 1},
+            reason="scheduled continuation wait",
+        )
 
-        self.assertEqual(second_claim["claimed_count"], 1)
-        self.assertEqual([item["reply_text"] for item in second_claim["tasks"]], ["222"])
-        refreshed_first = store.load_task(scheduled_ids[0])
-        refreshed_second = store.load_task(scheduled_ids[1], allow_archive=False)
-        self.assertEqual(refreshed_first.status, task_state_module.STATUS_DONE)
-        self.assertEqual(refreshed_second.status, task_state_module.STATUS_RUNNING)
+        claimed = openclaw_hooks.claim_due_continuations_from_payload({})
+
+        self.assertEqual(claimed["claimed_count"], 1)
+        self.assertEqual([item["reply_text"] for item in claimed["tasks"]], ["111"])
+        refreshed = store.load_task(scheduled.task_id, allow_archive=False)
+        self.assertEqual(refreshed.status, task_state_module.STATUS_RUNNING)
 
 
 if __name__ == "__main__":

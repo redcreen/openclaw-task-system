@@ -668,3 +668,12 @@ Phase 6 不应该一上来把全量 testsuite 都绑进来。
 3. overdue follow-up 有自动化验证
 4. 首条 `[wd]`、30 秒 follow-up、fallback / recovery 仍然不依赖 LLM
 5. roadmap、testsuite、architecture、planning design 文档都已同步
+
+### 12.6 Continuation lane constraints
+
+For planned delayed follow-ups, the accepted runtime contract is now:
+
+- continuation claiming is ordered by absolute `due_at`
+- main-lane activity must not block due continuations
+- one due continuation must not block another continuation in the same session
+- the user-facing session context stays shared, but continuation scheduling uses task-system continuation-lane semantics rather than main-lane busy locks

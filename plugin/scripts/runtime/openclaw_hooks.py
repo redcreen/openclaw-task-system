@@ -593,11 +593,8 @@ def claim_due_continuations_from_payload(
     now_dt = datetime.now(timezone.utc).astimezone()
     claimable: list[tuple[datetime, str, Any]] = []
     due_tasks: list[dict[str, Any]] = []
-    busy_sessions: set[tuple[str, str]] = set()
     for path in store.list_inflight():
         task = store.load_task(path.stem, allow_archive=False)
-        if task.status == "running":
-            busy_sessions.add((task.agent_id, task.session_key))
         if task.status != "paused":
             continue
         if str(task.meta.get("continuation_kind") or "") != "delayed-reply":
@@ -617,18 +614,13 @@ def claim_due_continuations_from_payload(
 
     claimable.sort(key=lambda item: (item[0], item[1], item[2].task_id))
 
-    claimed_sessions: set[tuple[str, str]] = set()
     for _, _, task in claimable:
-        session_lane = (task.agent_id, task.session_key)
-        if session_lane in busy_sessions or session_lane in claimed_sessions:
-            continue
         task.status = "running"
         task.meta["continuation_state"] = "claimed"
         task.meta["continuation_claimed_at"] = now_dt.isoformat()
         task.updated_at = now_dt.isoformat()
         task.last_internal_touch_at = now_dt.isoformat()
         store.save_task(task)
-        claimed_sessions.add(session_lane)
         due_tasks.append(
             {
                 "task_id": task.task_id,
