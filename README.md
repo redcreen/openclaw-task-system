@@ -115,12 +115,20 @@ Current shipped capabilities include:
 
 - immediate `[wd]` acknowledgements and control-plane messages
 - unified task registration, status, and queue identity
+- same-session follow-up routing across `steering / queueing / control-plane / collect-more`
 - delayed reply / continuation tasks
 - watchdog and continuity recovery flows
 - restart recovery for accepted-but-not-finished tasks
 - unified user-facing status projection
 - operator views such as `dashboard`, `triage`, `queues`, `lanes`, and `continuity`
 - producer contract and channel acceptance truth sources
+
+This includes the shipped same-session routing behavior:
+
+- later messages in the same session can merge into the current task before start
+- safe running-stage follow-ups can trigger `interrupt-and-restart`
+- clearly independent new requests still queue as separate tasks
+- every routing decision returns a runtime-owned `[wd]` receipt
 
 There is one important current boundary:
 
@@ -169,6 +177,7 @@ Useful secondary references:
 - [`docs/plugin_installation.md`](./docs/plugin_installation.md): install and configuration details
 - [`docs/usage_guide.md`](./docs/usage_guide.md): operator commands and runtime workflows
 - [`docs/testsuite.md`](./docs/testsuite.md): detailed test inventory
+- [`docs/reference/session_message_routing/README.md`](./docs/reference/session_message_routing/README.md): shipped same-session routing contract and acceptance scope
 - [`docs/archive/README.md`](./docs/archive/README.md): historical planning, acceptance, and temporary notes
 
 Runtime and source directories:

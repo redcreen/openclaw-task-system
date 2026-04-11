@@ -128,12 +128,20 @@ openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.gi
 
 - 首条 `[wd]` 与控制面消息
 - 统一任务登记、状态与 queue identity
+- 同一 session 连续输入的自动路由：`steering / queueing / control-plane / collect-more`
 - delayed reply / continuation
 - watchdog 与 continuity 恢复链路
 - 已接收但未完成任务的重启恢复
 - 统一用户状态投影
 - `dashboard`、`triage`、`queues`、`lanes`、`continuity` 等运维视图
 - producer contract 与 channel acceptance 真相源
+
+这里也包括已经交付的 same-session routing 能力：
+
+- 同一 session 的后续消息可以在任务未开始前并入当前任务
+- 运行中且仍可安全重启的 follow-up 会走 `interrupt-and-restart`
+- 明显独立的新请求仍会单独排队
+- 每次 routing decision 都会返回 runtime-owned `[wd]` 回执
 
 还有一个需要明确记录的当前边界：
 
@@ -182,6 +190,7 @@ openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.gi
 - [docs/plugin_installation.zh-CN.md](./docs/plugin_installation.zh-CN.md)：安装与配置细节
 - [docs/usage_guide.zh-CN.md](./docs/usage_guide.zh-CN.md)：运维命令与日常流程
 - [docs/testsuite.zh-CN.md](./docs/testsuite.zh-CN.md)：详细测试清单
+- [docs/reference/session_message_routing/README.zh-CN.md](./docs/reference/session_message_routing/README.zh-CN.md)：same-session routing 的正式 contract 与验收范围
 - [docs/reference/README.zh-CN.md](./docs/reference/README.zh-CN.md)：稳定参考资料
 - [docs/archive/README.zh-CN.md](./docs/archive/README.zh-CN.md)：历史验收记录、交接和旧整理文档
 
