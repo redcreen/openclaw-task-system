@@ -16,8 +16,10 @@ from openclaw_hooks import (
     create_followup_plan_from_payload,
     finalize_planned_followup_from_payload,
     register_from_payload,
+    resolve_active_task_from_payload,
     schedule_followup_from_plan_from_payload,
 )
+from task_status import build_status_summary
 from task_state import TaskStore
 from task_state import TaskPaths
 
@@ -109,6 +111,37 @@ def run_planning_acceptance() -> dict[str, Any]:
                     {
                         "guarded": guarded,
                         "created": created,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        )
+
+        active_projection = resolve_active_task_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "feishu:main:planning-acceptance:test",
+                "task_id": source_task_id,
+            },
+            config_path=config_path,
+        )
+        source_status = build_status_summary(source_task_id, config_path=config_path)
+        steps.append(
+            AcceptanceStep(
+                step="project-future-first-immediate-output-contract",
+                ok=(
+                    bool(active_projection.get("found"))
+                    and bool(active_projection.get("require_structured_user_content"))
+                    and str(active_projection.get("main_user_content_mode") or "") == "none"
+                    and str(((source_status.get("planning") or {}).get("main_user_content_mode")) or "") == "none"
+                ),
+                detail=json.dumps(
+                    {
+                        "active_projection": active_projection,
+                        "source_status": {
+                            "task_id": source_status.get("task_id"),
+                            "planning": source_status.get("planning"),
+                        },
                     },
                     ensure_ascii=False,
                 ),

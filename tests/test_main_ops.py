@@ -276,6 +276,7 @@ class MainOpsTests(unittest.TestCase):
             "status": "anomaly",
             "followup_due_at": "2020-01-01T00:00:00+00:00",
             "followup_summary": "5分钟后同步结果",
+            "main_user_content_mode": "none",
         }
         source.meta["planning_promise_guard"] = {
             "status": "anomaly",
@@ -336,11 +337,15 @@ class MainOpsTests(unittest.TestCase):
         planning = main_ops.get_main_planning_summary(config_path=self._config_path(), paths=self.paths)
         rendered_planning = main_ops.render_main_planning(config_path=self._config_path(), paths=self.paths)
         self.assertEqual(planning["primary_recovery_action"]["kind"], "inspect-promise-without-task")
+        self.assertEqual(planning["future_first_task_count"], 1)
+        self.assertEqual(planning["primary_main_user_content_mode"], "none")
+        self.assertEqual(planning["main_user_content_mode_counts"], {"none": 1})
         self.assertEqual(
             planning["planning_recovery_action_counts"],
             {"inspect-overdue-followup": 1, "inspect-promise-without-task": 1},
         )
         self.assertIn("- planning_primary_recovery_action_kind: inspect-promise-without-task", rendered_planning)
+        self.assertIn("- planning_future_first_task_count: 1", rendered_planning)
 
     def test_render_main_dashboard_can_focus_one_session(self) -> None:
         task = self.store.register_task(
@@ -395,6 +400,7 @@ class MainOpsTests(unittest.TestCase):
             "status": "planned",
             "followup_due_at": "2099-01-01T00:05:00+00:00",
             "followup_summary": "5分钟后同步结果",
+            "main_user_content_mode": "none",
         }
         self.store.save_task(source)
 
@@ -410,6 +416,7 @@ class MainOpsTests(unittest.TestCase):
             "status": "anomaly",
             "followup_due_at": "2020-01-01T00:00:00+00:00",
             "followup_summary": "10分钟后提醒看结果",
+            "main_user_content_mode": "immediate-summary",
         }
         anomaly.meta["planning_anomaly"] = "promise-without-task"
         self.store.save_task(anomaly)
@@ -421,6 +428,9 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["planning_task_count"], 2)
         self.assertEqual(summary["planning_pending_task_count"], 1)
         self.assertEqual(summary["planning_anomaly_task_count"], 1)
+        self.assertEqual(summary["future_first_task_count"], 1)
+        self.assertEqual(summary["main_user_content_mode_counts"], {"immediate-summary": 1, "none": 1})
+        self.assertEqual(summary["primary_main_user_content_mode"], "none")
         self.assertEqual(summary["planning_health"]["status"], "error")
         self.assertEqual(summary["planning_health"]["promise_without_task_rate"], 0.5)
         self.assertEqual(summary["primary_action_kind"], "inspect-promise-without-task")
@@ -432,6 +442,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("materialize a replacement follow-up", summary["primary_action_summary"])
         self.assertIn("# Main Planning", rendered)
         self.assertIn("- planning_task_count: 2", rendered)
+        self.assertIn("- planning_future_first_task_count: 1", rendered)
+        self.assertIn('- planning_main_user_content_mode_counts: {"immediate-summary": 1, "none": 1}', rendered)
         self.assertIn("- planning_health_status: error", rendered)
         self.assertIn("- planning_primary_recovery_action_kind: inspect-promise-without-task", rendered)
         self.assertIn("plan_status=anomaly", rendered)
@@ -449,6 +461,7 @@ class MainOpsTests(unittest.TestCase):
             "status": "scheduled",
             "followup_due_at": "2099-01-01T00:05:00+00:00",
             "followup_summary": "5分钟后同步结果",
+            "main_user_content_mode": "none",
         }
         self.store.save_task(task)
 
@@ -460,6 +473,8 @@ class MainOpsTests(unittest.TestCase):
 
         self.assertEqual(summary["session_filter"], "session:main:planning-focus")
         self.assertEqual(summary["planning_task_count"], 1)
+        self.assertEqual(summary["future_first_task_count"], 1)
+        self.assertEqual(summary["primary_main_user_content_mode"], "none")
         self.assertEqual(summary["tasks"][0]["task_id"], task.task_id)
 
     def test_get_main_plugin_install_drift_summary_reports_missing_files(self) -> None:
@@ -782,6 +797,31 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["health"]["planning_primary_recovery_action"]["kind"], "inspect-planner-timeout")
         self.assertIn("planner-owned follow-up", summary["action_hint"])
         self.assertEqual(summary["action_hint_command"], f"python3 scripts/runtime/main_ops.py show {task.task_id}")
+
+    def test_get_main_health_summary_projects_future_first_mode_counts(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:future-first-health",
+            channel="telegram",
+            chat_id="chat:main:future-first-health",
+            task_label="future first planning",
+        )
+        task.meta["tool_followup_plan"] = {
+            "plan_id": "plan_future_first",
+            "status": "planned",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+            "main_user_content_mode": "none",
+        }
+        self.store.save_task(task)
+
+        summary = main_ops.get_main_health_summary(config_path=self._config_path(), paths=self.paths)
+        rendered = main_ops.render_main_health(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(summary["planning_future_first_task_count"], 1)
+        self.assertEqual(summary["planning_primary_main_user_content_mode"], "none")
+        self.assertEqual(summary["planning_main_user_content_mode_counts"], {"none": 1})
+        self.assertIn("- planning_future_first_task_count: 1", rendered)
+        self.assertIn("- planning_primary_main_user_content_mode: none", rendered)
 
     def test_get_main_dashboard_summary_hints_pending_plan_recovery_when_active(self) -> None:
         task = self.store.register_task(

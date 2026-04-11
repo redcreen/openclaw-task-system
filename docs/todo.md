@@ -46,6 +46,9 @@
 - 已把 `overdue follow-up / pending plan` 的恢复动作对齐到 health 与 triage：
   - 不再只给泛化运维提示
   - 会直接给 source task / follow-up task 的检查命令
+- 已把 future-first 的 `main_user_content_mode` contract 补进 acceptance 与 ops 投影：
+  - `planning_acceptance.py` 会正式验证 `main_user_content_mode=none` 的 immediate-output contract
+  - `task_status / main_ops health / planning` 会投影 future-first 计数与主要 mode
 
 ## 下一个动作
 

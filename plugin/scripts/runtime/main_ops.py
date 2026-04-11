@@ -94,13 +94,19 @@ def render_main_health(
         f"- main_active_task_count: {summary['main_active_task_count']}",
         f"- main_blocked_task_count: {summary['main_blocked_task_count']}",
         f"- planning_pending_task_count: {summary['planning_pending_task_count']}",
+        f"- planning_future_first_task_count: {summary['planning_future_first_task_count']}",
         f"- planning_promise_without_task_count: {summary['planning_promise_without_task_count']}",
         f"- planning_overdue_followup_count: {summary['planning_overdue_followup_count']}",
+        f"- planning_primary_main_user_content_mode: {summary['planning_primary_main_user_content_mode'] or 'none'}",
         f"- planning_health_status: {summary['planning_health_status']}",
         f"- planning_health_timeout_count: {summary['planning_health_timeout_count']}",
         f"- failed_instruction_count: {summary['failed_instruction_count']}",
         f"- active_stale_delivery_task_count: {summary['active_stale_delivery_task_count']}",
     ]
+    if summary["planning_main_user_content_mode_counts"]:
+        lines.append(
+            f"- planning_main_user_content_mode_counts: {json.dumps(summary['planning_main_user_content_mode_counts'], ensure_ascii=False)}"
+        )
     if isinstance(summary.get("planning_primary_recovery_action"), dict):
         lines.append(
             f"- planning_primary_recovery_action_kind: {summary['planning_primary_recovery_action'].get('kind')}"
@@ -135,8 +141,11 @@ def get_main_health_summary(
         ),
         "main_blocked_task_count": len(blocked_main),
         "planning_pending_task_count": int(planning.get("planning_pending_task_count", 0) or 0),
+        "planning_future_first_task_count": int(planning.get("future_first_task_count", 0) or 0),
         "planning_promise_without_task_count": int(planning.get("promise_without_task_count", 0) or 0),
         "planning_overdue_followup_count": int(planning.get("overdue_followup_count", 0) or 0),
+        "planning_main_user_content_mode_counts": dict(planning.get("main_user_content_mode_counts") or {}),
+        "planning_primary_main_user_content_mode": str(planning.get("primary_main_user_content_mode") or "").strip() or None,
         "planning_health_status": str((planning.get("health") or {}).get("status") or "unknown"),
         "planning_health_timeout_count": int(((planning.get("health") or {}).get("timeout_count") or 0)),
         "planning_health_sample_task_count": int(((planning.get("health") or {}).get("sample_task_count") or 0)),
@@ -258,13 +267,34 @@ def get_main_planning_summary(
         if command and command not in deduped_commands:
             deduped_commands.append(command)
     planning_health = build_planning_health_summary(planning_items)
+    main_user_content_mode_counts = Counter(
+        str(((item.get("planning") or {}).get("main_user_content_mode")) or "")
+        for item in planning_items
+        if str(((item.get("planning") or {}).get("main_user_content_mode")) or "").strip()
+    )
     return {
         "session_filter": normalized_session_key or "all",
         "status": status,
         "planning_task_count": len(planning_items),
         "planning_pending_task_count": len(pending_items),
+        "future_first_task_count": sum(
+            1 for item in planning_items if str(((item.get("planning") or {}).get("main_user_content_mode")) or "") == "none"
+        ),
         "planning_anomaly_task_count": len(anomaly_items),
         "overdue_planned_followup_count": len(overdue_items),
+        "main_user_content_mode_counts": dict(sorted(main_user_content_mode_counts.items())),
+        "primary_main_user_content_mode": (
+            sorted(
+                main_user_content_mode_counts.items(),
+                key=lambda entry: (
+                    -entry[1],
+                    {"none": 0, "immediate-summary": 1, "full-answer": 2}.get(entry[0], 99),
+                    entry[0],
+                ),
+            )[0][0]
+            if main_user_content_mode_counts
+            else None
+        ),
         "planning_health": planning_health,
         "planning_recovery_action_counts": dict(
             sorted(
@@ -300,8 +330,10 @@ def render_main_planning(
         f"- status: {summary['status']}",
         f"- planning_task_count: {summary['planning_task_count']}",
         f"- planning_pending_task_count: {summary['planning_pending_task_count']}",
+        f"- planning_future_first_task_count: {summary['future_first_task_count']}",
         f"- planning_anomaly_task_count: {summary['planning_anomaly_task_count']}",
         f"- overdue_planned_followup_count: {summary['overdue_planned_followup_count']}",
+        f"- planning_primary_main_user_content_mode: {summary['primary_main_user_content_mode'] or 'none'}",
         f"- planning_health_status: {summary['planning_health']['status']}",
         f"- planning_health_primary_reason: {summary['planning_health']['primary_reason']}",
         f"- planning_health_sample_task_count: {summary['planning_health']['sample_task_count']}",
@@ -315,6 +347,10 @@ def render_main_planning(
         f"- primary_action_summary: {summary['primary_action_summary']}",
         f"- primary_action_command: {summary['primary_action_command'] or 'none'}",
     ]
+    if summary["main_user_content_mode_counts"]:
+        lines.append(
+            f"- planning_main_user_content_mode_counts: {json.dumps(summary['main_user_content_mode_counts'], ensure_ascii=False)}"
+        )
     tasks = summary.get("tasks", [])
     if isinstance(tasks, list) and tasks:
         lines.extend(["", "## Tasks", ""])

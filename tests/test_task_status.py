@@ -446,7 +446,10 @@ class TaskStatusTests(unittest.TestCase):
         self.assertTrue(followup_summary["planning"]["overdue_followup"])
         self.assertEqual(overview["planning"]["promise_without_task_count"], 1)
         self.assertEqual(overview["planning"]["overdue_followup_count"], 1)
+        self.assertEqual(overview["planning"]["future_first_task_count"], 1)
         self.assertEqual(overview["planning"]["anomaly_counts"], {"promise-without-task": 1})
+        self.assertEqual(overview["planning"]["main_user_content_mode_counts"], {"none": 1})
+        self.assertEqual(overview["planning"]["primary_main_user_content_mode"], "none")
         self.assertEqual(
             overview["planning"]["recovery_action_counts"],
             {"inspect-overdue-followup": 1, "inspect-promise-without-task": 1},
@@ -459,6 +462,8 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(overview["planning"]["health"]["primary_reason"], "promise-without-task-present")
         self.assertIn("- planning_promise_without_task_count: 1", markdown)
         self.assertIn("- planning_overdue_followup_count: 1", markdown)
+        self.assertIn("- planning_future_first_task_count: 1", markdown)
+        self.assertIn("- planning_primary_main_user_content_mode: none", markdown)
         self.assertIn("- planning_health_status: error", markdown)
         self.assertIn("- planning_primary_recovery_action_kind: inspect-promise-without-task", markdown)
 

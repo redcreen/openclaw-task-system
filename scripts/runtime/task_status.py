@@ -342,6 +342,16 @@ def _planning_recovery_priority(action: dict[str, object]) -> tuple[int, str, st
     )
 
 
+def _planning_main_user_content_mode_priority(item: tuple[str, int]) -> tuple[int, int, str]:
+    mode, count = item
+    priority = {
+        "none": 0,
+        "immediate-summary": 1,
+        "full-answer": 2,
+    }.get(mode, 99)
+    return (-count, priority, mode)
+
+
 def _rate(count: int, total: int) -> Optional[float]:
     if total <= 0:
         return None
@@ -548,6 +558,11 @@ def build_system_overview(
         for item in planning_items
         if str(item.get("plan_status") or "").strip()
     )
+    main_user_content_mode_counts = Counter(
+        str(item.get("main_user_content_mode") or "")
+        for item in planning_items
+        if str(item.get("main_user_content_mode") or "").strip()
+    )
     active_stale_delivery_task_count = sum(
         1 for status in inflight_statuses if status["delivery"]["stale_intermediate_exists"]
     )
@@ -626,6 +641,7 @@ def build_system_overview(
             "tool_path_task_count": sum(1 for item in planning_items if bool(item.get("tool_path_used"))),
             "planning_expected_task_count": sum(1 for item in planning_items if bool(item.get("planning_expected"))),
             "planning_pending_task_count": sum(1 for item in planning_items if bool(item.get("planning_pending"))),
+            "future_first_task_count": sum(1 for item in planning_items if str(item.get("main_user_content_mode") or "") == "none"),
             "promise_guard_armed_count": sum(1 for item in planning_items if bool(item.get("promise_guard_armed"))),
             "promise_without_task_count": sum(1 for item in planning_items if bool(item.get("promise_without_task"))),
             "overdue_followup_count": sum(1 for item in planning_items if bool(item.get("overdue_followup"))),
@@ -633,6 +649,12 @@ def build_system_overview(
             "anomaly_counts": dict(sorted(planning_anomaly_counts.items())),
             "promise_guard_status_counts": dict(sorted(promise_guard_counts.items())),
             "plan_status_counts": dict(sorted(plan_status_counts.items())),
+            "main_user_content_mode_counts": dict(sorted(main_user_content_mode_counts.items())),
+            "primary_main_user_content_mode": (
+                sorted(main_user_content_mode_counts.items(), key=_planning_main_user_content_mode_priority)[0][0]
+                if main_user_content_mode_counts
+                else None
+            ),
             "recovery_action_counts": dict(sorted(planning_recovery_counts.items())),
             "primary_recovery_action": planning_recovery_actions[0] if planning_recovery_actions else None,
             "health": planning_health,
@@ -782,8 +804,12 @@ def render_overview_markdown(
         lines.append(f"- planning_tool_path_task_count: {planning['tool_path_task_count']}")
         lines.append(f"- planning_expected_task_count: {planning['planning_expected_task_count']}")
         lines.append(f"- planning_pending_task_count: {planning['planning_pending_task_count']}")
+        lines.append(f"- planning_future_first_task_count: {planning['future_first_task_count']}")
         lines.append(f"- planning_promise_without_task_count: {planning['promise_without_task_count']}")
         lines.append(f"- planning_overdue_followup_count: {planning['overdue_followup_count']}")
+        lines.append(
+            f"- planning_primary_main_user_content_mode: {planning.get('primary_main_user_content_mode') or 'none'}"
+        )
         health = planning.get("health") if isinstance(planning.get("health"), dict) else None
         if isinstance(health, dict):
             lines.append(f"- planning_health_status: {health['status']}")
@@ -807,6 +833,10 @@ def render_overview_markdown(
             )
         if planning["anomaly_counts"]:
             lines.append(f"- planning_anomaly_counts: {json.dumps(planning['anomaly_counts'], ensure_ascii=False)}")
+        if planning.get("main_user_content_mode_counts"):
+            lines.append(
+                f"- planning_main_user_content_mode_counts: {json.dumps(planning['main_user_content_mode_counts'], ensure_ascii=False)}"
+            )
     if overview["active_tasks"]:
         lines.append("")
         lines.append("## Active Tasks")
