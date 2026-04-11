@@ -1,54 +1,114 @@
 [English](usage_guide.md) | [中文](usage_guide.zh-CN.md)
 
-# OpenClaw Task System 使用指南
+# 使用指南
 
-## 日常节奏
+这份文档只回答两类问题：
 
-装好之后，系统的典型节奏是：
+- 装好之后，日常怎么用
+- 出问题时，最常用的命令入口是什么
+
+项目范围与已交付状态统一看：
+
+- [../README.zh-CN.md](../README.zh-CN.md)
+- [roadmap.zh-CN.md](roadmap.zh-CN.md)
+
+## 日常运行模型
+
+当前系统的标准节奏是：
 
 1. 用户消息进入 task-system 管理范围
-2. 系统登记或附着到已有任务
-3. runtime 先返回首条 `[wd]`
-4. 原执行链继续工作
-5. 有需要时同步进展、follow-up 或 continuity
-6. 最终以 `done / failed / blocked / paused / recovered` 收口
+2. runtime 登记或复用 task
+3. runtime 返回首条 `[wd]`
+4. 底层 agent 执行继续推进
+5. runtime 视情况发送进展、follow-up 或 recovery 控制面消息
+6. 最终以 `done / failed / blocked / paused` 等受控终态收口
 
-## 常用运维入口
+这套模型现在覆盖：
 
-健康和总览：
+- 普通长任务
+- delayed reply / continuation
+- same-session routing
+- watchdog / continuity 恢复
+- future-first planning contract
+
+## 运维命令
+
+### 健康与总览
 
 ```bash
 python3 scripts/runtime/main_ops.py health
+python3 scripts/runtime/main_ops.py dashboard
 python3 scripts/runtime/main_ops.py dashboard --json
+python3 scripts/runtime/main_ops.py dashboard --only-issues
+python3 scripts/runtime/main_ops.py triage
 python3 scripts/runtime/main_ops.py triage --json
 ```
 
-队列和 lane：
+### 队列与 Lane
 
 ```bash
+python3 scripts/runtime/main_ops.py queues
 python3 scripts/runtime/main_ops.py queues --json
+python3 scripts/runtime/main_ops.py lanes
 python3 scripts/runtime/main_ops.py lanes --json
 ```
 
-continuity 与恢复：
+### Continuity 与恢复
 
 ```bash
+python3 scripts/runtime/main_ops.py continuity
 python3 scripts/runtime/main_ops.py continuity --json
 python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe --dry-run --json
+python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run
 ```
 
-planning / acceptance：
+### Planning 与 Phase 6 运维
 
 ```bash
+python3 scripts/runtime/main_ops.py planning
+python3 scripts/runtime/main_ops.py planning --json
+python3 scripts/runtime/planning_acceptance.py --json
 python3 scripts/runtime/planning_acceptance_suite.py --json
+python3 scripts/runtime/main_ops.py plugin-install-drift --json
+```
+
+验收与历史记录入口：
+
+- [planning_acceptance_runbook.zh-CN.md](planning_acceptance_runbook.zh-CN.md)
+- [planning_acceptance_record_template.zh-CN.md](planning_acceptance_record_template.zh-CN.md)
+- [archive/planning_acceptance_record_2026-04-09.zh-CN.md](archive/planning_acceptance_record_2026-04-09.zh-CN.md)
+
+### Same-Session Routing
+
+```bash
 python3 scripts/runtime/same_session_routing_acceptance.py --json
 python3 scripts/runtime/stable_acceptance.py --json
 ```
 
-历史验收记录、交接和旧整理资料统一看：
+### Task 查询与控制
 
-- [archive/README.zh-CN.md](archive/README.zh-CN.md)
+```bash
+python3 scripts/runtime/task_cli.py tasks
+python3 scripts/runtime/task_cli.py task <task_id>
+python3 scripts/runtime/task_cli.py session '<session_key>'
+python3 scripts/runtime/main_ops.py list
+python3 scripts/runtime/main_ops.py show <task_id>
+python3 scripts/runtime/main_ops.py cancel --task-id <task_id>
+python3 scripts/runtime/main_ops.py stop
+python3 scripts/runtime/main_ops.py stop-all
+python3 scripts/runtime/main_ops.py purge --session-key '<session_key>'
+```
 
-## 什么时候读英文原文
+## 验证快捷入口
 
-如果你要看完整的命令清单、运维问题示例和 acceptance 工具链说明，继续读 [usage_guide.md](usage_guide.md)。
+完整自动化回归：
+
+```bash
+bash scripts/run_tests.sh
+```
+
+稳定验收：
+
+```bash
+python3 scripts/runtime/stable_acceptance.py --json
+```

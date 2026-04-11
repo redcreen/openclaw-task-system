@@ -12,3 +12,6 @@
 - 更深的架构说明
 - 过于细节化、不适合放进顶层主栈的长期设计参考
 
+## 当前参考入口
+
+- [session_message_routing/README.zh-CN.md](session_message_routing/README.zh-CN.md)：same-session routing 的正式 contract、阶段结论与验收范围
