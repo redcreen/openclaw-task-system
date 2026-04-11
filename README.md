@@ -413,6 +413,9 @@ python3 scripts/runtime/main_ops.py channel-acceptance --json
 Task control:
 
 ```bash
+python3 scripts/runtime/task_cli.py tasks
+python3 scripts/runtime/task_cli.py task <task_id>
+python3 scripts/runtime/task_cli.py session '<session_key>'
 python3 scripts/runtime/main_ops.py list
 python3 scripts/runtime/main_ops.py show <task_id>
 python3 scripts/runtime/main_ops.py cancel --task-id <task_id>
@@ -914,6 +917,9 @@ python3 scripts/runtime/main_ops.py channel-acceptance --json
 任务控制：
 
 ```bash
+python3 scripts/runtime/task_cli.py tasks
+python3 scripts/runtime/task_cli.py task <task_id>
+python3 scripts/runtime/task_cli.py session '<session_key>'
 python3 scripts/runtime/main_ops.py list
 python3 scripts/runtime/main_ops.py show <task_id>
 python3 scripts/runtime/main_ops.py cancel --task-id <task_id>

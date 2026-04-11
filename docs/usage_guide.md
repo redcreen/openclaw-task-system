@@ -147,6 +147,9 @@ python3 scripts/runtime/stable_acceptance.py --json
 ### 2.7 任务控制
 
 ```bash
+python3 scripts/runtime/task_cli.py tasks
+python3 scripts/runtime/task_cli.py task <task_id>
+python3 scripts/runtime/task_cli.py session '<session_key>'
 python3 scripts/runtime/main_ops.py list
 python3 scripts/runtime/main_ops.py show <task_id>
 python3 scripts/runtime/main_ops.py cancel --task-id <task_id>
@@ -157,8 +160,10 @@ python3 scripts/runtime/main_ops.py purge --session-key '<session_key>'
 
 适合回答：
 
+- 我现在想用最短命令查任务/会话
 - 当前有哪些 active main tasks
 - 某一条任务具体处于什么状态
+- 某个 session 当前的 continuity / queue / lane 是什么
 - 是否要取消、停止或清理测试残留
 
 ## 3. 外发与指令执行
