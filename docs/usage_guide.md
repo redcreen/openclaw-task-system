@@ -120,6 +120,7 @@ python3 scripts/runtime/main_ops.py plugin-install-drift --json
 - 当前 planning anomaly 的 recovery action 是什么，第一条应该先看哪个 task
 - planner timeout 是否已经被单独投影成 source-task recovery action
 - `planning_acceptance.py --json` 是否已经正式验证 `main_user_content_mode=none` 的 immediate-output contract
+- `planning_acceptance.py --json` 是否已经正式验证 compound delayed 请求不会偷偷物化 hidden follow-up
 - Phase 6 最小闭环是否仍然成立
 - 如何快速新建一份当天的验收记录
 - 如何把记录入口接给其他脚本或自动化

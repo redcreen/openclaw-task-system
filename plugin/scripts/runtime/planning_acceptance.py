@@ -148,6 +148,69 @@ def run_planning_acceptance() -> dict[str, Any]:
             )
         )
 
+        compound_registration = register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "feishu:main:planning-acceptance:compound",
+                "channel": "feishu",
+                "account_id": "feishu-main",
+                "chat_id": "chat:planning-acceptance:compound",
+                "user_id": "ou_acceptance",
+                "user_request": "你先查一下天气，然后5分钟后回复我信息；",
+                "estimated_steps": 2,
+            },
+            config_path=config_path,
+        )
+        compound_task_id = str(compound_registration.get("task_id") or "")
+        compound_task = None
+        compound_projection: dict[str, Any] = {}
+        compound_status: dict[str, Any] = {}
+        if compound_task_id:
+            try:
+                compound_task = TaskStore(paths=TaskPaths.from_root(temp_dir, data_dir)).load_task(
+                    compound_task_id,
+                    allow_archive=False,
+                )
+            except FileNotFoundError:
+                compound_task = None
+            compound_projection = resolve_active_task_from_payload(
+                {
+                    "agent_id": "main",
+                    "session_key": "feishu:main:planning-acceptance:compound",
+                    "task_id": compound_task_id,
+                },
+                config_path=config_path,
+            )
+            compound_status = build_status_summary(compound_task_id, config_path=config_path)
+        compound_meta = compound_task.meta if compound_task is not None else {}
+        compound_planning = (compound_status.get("planning") or {}) if isinstance(compound_status, dict) else {}
+        steps.append(
+            AcceptanceStep(
+                step="compound-request-requires-structured-plan",
+                ok=(
+                    bool(compound_registration.get("should_register_task"))
+                    and str(compound_registration.get("classification_reason") or "") == "observed-task"
+                    and not compound_registration.get("continuation_due_at")
+                    and "tool_followup_plan" not in compound_meta
+                    and "post_run_continuation_plan" not in compound_meta
+                    and not bool(compound_projection.get("require_structured_user_content"))
+                    and not str(compound_projection.get("main_user_content_mode") or "").strip()
+                    and not bool(compound_planning.get("has_followup_plan"))
+                    and not bool(compound_planning.get("promise_guard_armed"))
+                    and not str(compound_planning.get("followup_due_at") or "").strip()
+                ),
+                detail=json.dumps(
+                    {
+                        "registration": compound_registration,
+                        "task_meta": compound_meta,
+                        "active_projection": compound_projection,
+                        "planning": compound_planning,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        )
+
         scheduled = schedule_followup_from_plan_from_payload(
             {
                 "source_task_id": source_task_id,

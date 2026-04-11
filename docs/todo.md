@@ -52,6 +52,8 @@
 - 已删除 legacy `post_run_continuation_plan` 的静默物化执行路径：
   - compound/delayed 边界不再假装 runtime 会从旧式 post-run 短语里自动补出 follow-up task
   - 后续只认可 structured tool plan 或已存在的真实 continuation task
+- 已把 compound delayed 请求的“不得伪造 hidden follow-up”补进 planning acceptance：
+  - `planning_acceptance.py` 会显式验证：没有 structured tool plan 时，只能保持普通任务/观察态，不得偷偷挂出 follow-up truth source
 
 ## 下一个动作
 

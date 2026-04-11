@@ -213,6 +213,11 @@ python3 scripts/runtime/stable_acceptance.py --json
 - runtime-owned classifier trigger
 - collecting-window materialization
 
+`planning_acceptance.py` 当前还会额外覆盖：
+
+- `main_user_content_mode=none` 的 future-first immediate-output contract
+- compound delayed 请求在缺少 structured tool plan 时，不会伪装成已有 follow-up truth source
+
 ## 5. Node plugin 测试分组
 
 - [plugin/tests/pre-register-and-ack.test.mjs](../plugin/tests/pre-register-and-ack.test.mjs)

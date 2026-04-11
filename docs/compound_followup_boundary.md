@@ -97,6 +97,7 @@ Current boundary:
 - clear single-intent delayed replies are fully supported
 - simple compound follow-up phrases remain a design boundary, not an auto-materialized runtime path
 - complex or ambiguous compound requests should not rely on hardcoded phrase growth forever
+- planning acceptance now explicitly verifies that a compound request can remain a normal task without any hidden follow-up state until a structured tool plan exists
 
 Therefore:
 
@@ -228,6 +229,7 @@ This question is intentionally left open for the next roadmap discussion.
 - 单一意图、表达清晰的 delayed reply：完全支持
 - 简单复合短语：仍然只是设计边界，不再由 runtime 静默自动物化 follow-up
 - 复杂或模糊的复合请求：不能长期依赖硬编码短语增长
+- `planning_acceptance.py` 现在会显式验证：复合请求在没有 structured tool plan 前，不能偷偷挂出 hidden follow-up state
 
 所以：
 
