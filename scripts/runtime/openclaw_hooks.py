@@ -1406,9 +1406,10 @@ def should_send_short_followup_from_payload(
         queue_position=queue_position,
         task_status=task.status,
     )
+    planning_status = (status_entry or {}).get("planning") if isinstance((status_entry or {}).get("planning"), dict) else {}
     plan = task.meta.get("tool_followup_plan") if isinstance(task.meta.get("tool_followup_plan"), dict) else {}
     guard = task.meta.get("planning_promise_guard") if isinstance(task.meta.get("planning_promise_guard"), dict) else {}
-    planning_anomaly = str(task.meta.get("planning_anomaly") or "").strip()
+    planning_anomaly = str(planning_status.get("anomaly") or task.meta.get("planning_anomaly") or "").strip()
     followup_summary = _render_followup_summary_text(plan)
     plan_status = str(plan.get("status") or "").strip()
     promise_summary = str(guard.get("promise_summary") or "").strip()
@@ -1450,6 +1451,12 @@ def should_send_short_followup_from_payload(
             followup_message = (
                 f"已收到你的消息，当前仍在处理中；但 {target} 这条 planning 路径刚才超时了，"
                 "我会优先核对源任务，决定是补建 follow-up 还是明确要求你重发 delayed 部分。"
+            )
+        elif planning_anomaly == "followup-task-missing":
+            target = followup_summary or promise_summary or "后续安排"
+            followup_message = (
+                f"已收到你的消息，当前仍在处理中；但 {target} 这条后续安排的真实任务记录缺失了，"
+                "我会先补建或重新关联这条 follow-up，再继续依赖这条 planning 状态。"
             )
         elif plan_status == "planned":
             target = followup_summary or promise_summary or "后续同步"
@@ -1505,6 +1512,8 @@ def should_send_short_followup_from_payload(
                 "planning_recovery_hint": (
                     "inspect-source-task-and-recreate-or-clear-promise"
                     if planning_anomaly == "promise-without-task"
+                    else "inspect-source-task-and-relink-followup-task"
+                    if planning_anomaly == "followup-task-missing"
                     else "inspect-source-task-after-planner-timeout"
                     if planning_anomaly == "planner-timeout"
                     else None

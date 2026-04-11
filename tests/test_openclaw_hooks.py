@@ -839,6 +839,44 @@ class OpenClawHooksTests(unittest.TestCase):
             "inspect-source-task-after-planner-timeout",
         )
 
+    def test_should_send_short_followup_for_running_task_reports_missing_followup_task(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:running-missing-followup-task",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:running-missing-followup-task",
+            task_label="running missing follow-up task",
+        )
+        store.start_task(task.task_id)
+        store.touch_task(
+            task.task_id,
+            user_visible=False,
+            meta={
+                "planning_promise_guard": {
+                    "promise_summary": "10分钟后同步结果",
+                    "status": "scheduled",
+                },
+                "tool_followup_plan": {
+                    "status": "scheduled",
+                    "followup_summary": "10分钟后同步结果",
+                    "followup_task_id": "task_missing_followup_record",
+                },
+            },
+        )
+
+        result = openclaw_hooks.should_send_short_followup_from_payload({"task_id": task.task_id})
+
+        self.assertTrue(result["should_send"])
+        self.assertIn("真实任务记录缺失了", result["followup_message"])
+        self.assertIn("补建或重新关联", result["followup_message"])
+        self.assertEqual(result["control_plane_message"]["metadata"]["planning_anomaly"], "followup-task-missing")
+        self.assertEqual(
+            result["control_plane_message"]["metadata"]["planning_recovery_hint"],
+            "inspect-source-task-and-relink-followup-task",
+        )
+
     def test_should_send_short_followup_for_running_task_reports_current_stage(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         task = store.register_task(

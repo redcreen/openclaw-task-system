@@ -174,7 +174,21 @@ def _task_sort_key(task: dict[str, object]) -> tuple[str, str]:
     )
 
 
-def _build_planning_summary(task: dict[str, object], *, now_dt: Optional[datetime] = None) -> dict[str, object]:
+def _task_record_exists(task_id: Optional[str], *, paths: Optional[TaskPaths]) -> bool:
+    normalized_task_id = str(task_id or "").strip()
+    if not normalized_task_id or paths is None:
+        return False
+    inflight_path = paths.inflight_dir / f"{normalized_task_id}.json"
+    archived_path = paths.archive_dir / f"{normalized_task_id}.json"
+    return inflight_path.exists() or archived_path.exists()
+
+
+def _build_planning_summary(
+    task: dict[str, object],
+    *,
+    now_dt: Optional[datetime] = None,
+    paths: Optional[TaskPaths] = None,
+) -> dict[str, object]:
     meta = task.get("meta") if isinstance(task.get("meta"), dict) else {}
     now_dt = now_dt or datetime.now(timezone.utc).astimezone()
     tool_plan = meta.get("tool_followup_plan") if isinstance(meta.get("tool_followup_plan"), dict) else None
@@ -190,6 +204,14 @@ def _build_planning_summary(task: dict[str, object], *, now_dt: Optional[datetim
     plan_due_dt = _parse_iso8601(plan_due_at)
     plan_status = str((tool_plan or {}).get("status") or "").strip() or None
     followup_task_id = str((tool_plan or {}).get("followup_task_id") or "").strip() or None
+    followup_task_exists = _task_record_exists(followup_task_id, paths=paths)
+    followup_task_missing = bool(
+        followup_task_id
+        and plan_status in {"scheduled", "fulfilled"}
+        and not followup_task_exists
+    )
+    if followup_task_missing and not anomaly:
+        anomaly = "followup-task-missing"
     guard_status = str((promise_guard or {}).get("status") or "").strip() or None
 
     continuation_is_planned_followup = continuation_source == "tool-followup-plan" or bool(meta.get("plan_id"))
@@ -205,6 +227,7 @@ def _build_planning_summary(task: dict[str, object], *, now_dt: Optional[datetim
     planning_pending = bool(
         has_tool_path
         and not promise_without_task
+        and not followup_task_missing
         and (
             plan_status in {"planned", "scheduled"}
             or guard_status in {"armed", "scheduled"}
@@ -223,6 +246,8 @@ def _build_planning_summary(task: dict[str, object], *, now_dt: Optional[datetim
         "plan_status": plan_status,
         "followup_due_at": plan_due_at or continuation_due_at,
         "followup_task_id": followup_task_id,
+        "followup_task_exists": followup_task_exists,
+        "followup_task_missing": followup_task_missing,
         "followup_summary": str((tool_plan or {}).get("followup_summary") or "").strip() or None,
         "main_user_content_mode": str((tool_plan or {}).get("main_user_content_mode") or "").strip()
         or str((promise_guard or {}).get("main_user_content_mode") or "").strip()
@@ -244,6 +269,7 @@ def _planning_health_candidate(planning: dict[str, object]) -> bool:
         or str(planning.get("plan_status") or "").strip()
         or str(planning.get("promise_guard_status") or "").strip()
         or bool(planning.get("promise_without_task"))
+        or bool(planning.get("followup_task_missing"))
     )
 
 
@@ -255,6 +281,8 @@ def _planning_timeout_detected(planning: dict[str, object]) -> bool:
 
 
 def _planning_tool_path_completed(planning: dict[str, object]) -> bool:
+    if bool(planning.get("followup_task_missing")):
+        return False
     plan_status = str(planning.get("plan_status") or "").strip().lower()
     guard_status = str(planning.get("promise_guard_status") or "").strip().lower()
     return (
@@ -264,7 +292,12 @@ def _planning_tool_path_completed(planning: dict[str, object]) -> bool:
 
 
 def _planning_success(planning: dict[str, object]) -> bool:
-    if bool(planning.get("promise_without_task")) or _planning_timeout_detected(planning):
+    if (
+        bool(planning.get("promise_without_task"))
+        or bool(planning.get("followup_task_missing"))
+        or _planning_timeout_detected(planning)
+        or str(planning.get("anomaly") or "").strip()
+    ):
         return False
     plan_status = str(planning.get("plan_status") or "").strip().lower()
     guard_status = str(planning.get("promise_guard_status") or "").strip().lower()
@@ -283,6 +316,16 @@ def _build_planning_recovery_action(task: dict[str, object], planning: dict[str,
             "summary": (
                 f"Inspect the source task and either materialize a replacement follow-up for {target} "
                 "or clear the stale promise before treating the run as complete."
+            ),
+            "command": inspect_command,
+            "session_key": session_key,
+        }
+    if bool(planning.get("followup_task_missing")):
+        return {
+            "kind": "inspect-missing-followup-task",
+            "summary": (
+                f"Inspect the source task and either recreate or relink the missing follow-up task for {target} "
+                "before relying on the scheduled follow-up state."
             ),
             "command": inspect_command,
             "session_key": session_key,
@@ -330,10 +373,11 @@ def _planning_recovery_priority(action: dict[str, object]) -> tuple[int, str, st
     kind = str(action.get("kind") or "")
     priority = {
         "inspect-promise-without-task": 0,
-        "inspect-planner-timeout": 1,
-        "inspect-planning-anomaly": 2,
-        "inspect-overdue-followup": 3,
-        "inspect-pending-plan": 4,
+        "inspect-missing-followup-task": 1,
+        "inspect-planner-timeout": 2,
+        "inspect-planning-anomaly": 3,
+        "inspect-overdue-followup": 4,
+        "inspect-pending-plan": 5,
     }.get(kind, 99)
     return (
         priority,
@@ -385,12 +429,16 @@ def build_planning_health_summary(
     timeout_count = sum(1 for item in recent if _planning_timeout_detected(item["planning"]))
     tool_call_completion_count = sum(1 for item in recent if _planning_tool_path_completed(item["planning"]))
     promise_without_task_count = sum(1 for item in recent if bool(item["planning"].get("promise_without_task")))
+    followup_task_missing_count = sum(1 for item in recent if bool(item["planning"].get("followup_task_missing")))
     if sample_task_count == 0:
         status = "unknown"
         primary_reason = "no-recent-planning-sample"
     elif promise_without_task_count > 0:
         status = "error"
         primary_reason = "promise-without-task-present"
+    elif followup_task_missing_count > 0:
+        status = "error"
+        primary_reason = "followup-task-missing-present"
     elif timeout_count > 0:
         status = "warn"
         primary_reason = "planner-timeout-observed"
@@ -409,10 +457,12 @@ def build_planning_health_summary(
         "timeout_count": timeout_count,
         "tool_call_completion_count": tool_call_completion_count,
         "promise_without_task_count": promise_without_task_count,
+        "followup_task_missing_count": followup_task_missing_count,
         "success_rate": _rate(success_count, sample_task_count),
         "timeout_rate": _rate(timeout_count, sample_task_count),
         "tool_call_completion_rate": _rate(tool_call_completion_count, sample_task_count),
         "promise_without_task_rate": _rate(promise_without_task_count, sample_task_count),
+        "followup_task_missing_rate": _rate(followup_task_missing_count, sample_task_count),
         "sample_task_ids": [item["task_id"] for item in recent],
     }
 
@@ -513,7 +563,7 @@ def build_status_summary(
     task["user_facing_status_code"] = projection["code"]
     task["user_facing_status"] = projection["label"]
     task["user_facing_status_family"] = projection["family"]
-    task["planning"] = _build_planning_summary(task)
+    task["planning"] = _build_planning_summary(task, paths=resolved_paths)
     task["planning"]["recovery_action"] = _build_planning_recovery_action(task, task["planning"])
     task["same_session_routing"] = _build_same_session_routing_summary(task)
     return task
@@ -608,7 +658,7 @@ def build_system_overview(
     for archived_payload in archived_payloads:
         if not isinstance(archived_payload, dict):
             continue
-        archived_planning = _build_planning_summary(archived_payload)
+        archived_planning = _build_planning_summary(archived_payload, paths=resolved_paths)
         archived_recovery_action = _build_planning_recovery_action(archived_payload, archived_planning)
         if str(archived_recovery_action.get("kind") or "") != "none":
             planning_recovery_actions.append(archived_recovery_action)
@@ -644,6 +694,7 @@ def build_system_overview(
             "future_first_task_count": sum(1 for item in planning_items if str(item.get("main_user_content_mode") or "") == "none"),
             "promise_guard_armed_count": sum(1 for item in planning_items if bool(item.get("promise_guard_armed"))),
             "promise_without_task_count": sum(1 for item in planning_items if bool(item.get("promise_without_task"))),
+            "followup_task_missing_count": sum(1 for item in planning_items if bool(item.get("followup_task_missing"))),
             "overdue_followup_count": sum(1 for item in planning_items if bool(item.get("overdue_followup"))),
             "overdue_on_materialize_count": sum(1 for item in planning_items if bool(item.get("overdue_on_materialize"))),
             "anomaly_counts": dict(sorted(planning_anomaly_counts.items())),
@@ -729,6 +780,8 @@ def render_status_markdown(
         lines.append(f"- planning.tool_path_used: {planning['tool_path_used']}")
         lines.append(f"- planning.plan_status: {planning.get('plan_status')}")
         lines.append(f"- planning.followup_due_at: {planning.get('followup_due_at')}")
+        lines.append(f"- planning.followup_task_id: {planning.get('followup_task_id')}")
+        lines.append(f"- planning.followup_task_missing: {planning.get('followup_task_missing')}")
         lines.append(f"- planning.promise_guard_status: {planning.get('promise_guard_status')}")
         lines.append(f"- planning.overdue_followup: {planning.get('overdue_followup')}")
         lines.append(f"- planning.promise_without_task: {planning.get('promise_without_task')}")
@@ -806,6 +859,7 @@ def render_overview_markdown(
         lines.append(f"- planning_pending_task_count: {planning['planning_pending_task_count']}")
         lines.append(f"- planning_future_first_task_count: {planning['future_first_task_count']}")
         lines.append(f"- planning_promise_without_task_count: {planning['promise_without_task_count']}")
+        lines.append(f"- planning_followup_task_missing_count: {planning['followup_task_missing_count']}")
         lines.append(f"- planning_overdue_followup_count: {planning['overdue_followup_count']}")
         lines.append(
             f"- planning_primary_main_user_content_mode: {planning.get('primary_main_user_content_mode') or 'none'}"
@@ -819,6 +873,7 @@ def render_overview_markdown(
             lines.append(f"- planning_health_timeout_rate: {health['timeout_rate']}")
             lines.append(f"- planning_health_tool_call_completion_rate: {health['tool_call_completion_rate']}")
             lines.append(f"- planning_health_promise_without_task_rate: {health['promise_without_task_rate']}")
+            lines.append(f"- planning_health_followup_task_missing_rate: {health['followup_task_missing_rate']}")
         primary_recovery_action = (
             planning.get("primary_recovery_action")
             if isinstance(planning.get("primary_recovery_action"), dict)

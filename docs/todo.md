@@ -46,6 +46,9 @@
 - 已把 `overdue follow-up / pending plan` 的恢复动作对齐到 health 与 triage：
   - 不再只给泛化运维提示
   - 会直接给 source task / follow-up task 的检查命令
+- 已补 `followup-task-missing` 的 recovery 投影与文案：
+  - 当 planning 记录里已有 `followup_task_id`，但真实 task record 丢失时，会正式标成 error 级 anomaly
+  - `task_status / health_report / main_ops health / triage / running short followup` 都会提示“补建或重新关联 follow-up task”
 - 已把 future-first 的 `main_user_content_mode` contract 补进 acceptance 与 ops 投影：
   - `planning_acceptance.py` 会正式验证 `main_user_content_mode=none` 的 immediate-output contract
   - `task_status / main_ops health / planning` 会投影 future-first 计数与主要 mode

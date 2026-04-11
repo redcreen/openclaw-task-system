@@ -277,6 +277,40 @@ class HealthReportTests(unittest.TestCase):
         self.assertIn("- planning_health_timeout_rate: 1.0", markdown)
         self.assertIn("- planning_primary_recovery_action_kind: inspect-planner-timeout", markdown)
 
+    def test_build_health_report_surfaces_missing_followup_task(self) -> None:
+        source = self.store.register_task(
+            agent_id="main",
+            session_key="session:planning-missing-followup",
+            channel="telegram",
+            chat_id="chat:planning-missing-followup",
+            task_label="planning missing follow-up task",
+        )
+        source.meta["tool_followup_plan"] = {
+            "plan_id": "plan_missing_task",
+            "status": "scheduled",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+            "followup_task_id": "task_missing_followup_record",
+            "followup_summary": "5分钟后同步结果",
+        }
+        source.meta["planning_promise_guard"] = {
+            "status": "scheduled",
+            "expected_by_finalize": True,
+            "promise_summary": "5分钟后同步结果",
+        }
+        self.store.save_task(source)
+
+        report = health_report.build_health_report(config_path=self.config_path)
+        markdown = health_report.render_markdown(report)
+
+        self.assertEqual(report["status"], "error")
+        self.assertIn("planning-missing-followup-tasks:1", report["issues"])
+        self.assertEqual(report["overview"]["planning"]["health"]["primary_reason"], "followup-task-missing-present")
+        self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-missing-followup-task")
+        self.assertIn("recreate or relink", report["issue_entries"][0]["remediation"])
+        self.assertIn("- planning_followup_task_missing_count: 1", markdown)
+        self.assertIn("- planning_health_followup_task_missing_rate: 1.0", markdown)
+        self.assertIn("- planning_primary_recovery_action_kind: inspect-missing-followup-task", markdown)
+
     def test_build_health_report_uses_structured_recovery_for_overdue_followup(self) -> None:
         source = self.store.register_task(
             agent_id="main",

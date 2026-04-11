@@ -115,9 +115,10 @@ python3 scripts/runtime/main_ops.py plugin-install-drift --json
 - 当前 planning task / pending / anomaly / overdue 是什么
 - 当前 future-first task 有多少，主导的 `main_user_content_mode` 是什么
 - 当前 `planning health` 是否退化
-- 最近 planning 样本里的 timeout / completion / promise-without-task 比例是什么
+- 最近 planning 样本里的 timeout / completion / promise-without-task / missing-followup-task 比例是什么
 - tool-assisted follow-up 是否已经物化成真实任务
 - 当前 planning anomaly 的 recovery action 是什么，第一条应该先看哪个 task
+- follow-up plan 指向的真实 task 记录是否已经缺失
 - planner timeout 是否已经被单独投影成 source-task recovery action
 - `planning_acceptance.py --json` 是否已经正式验证 `main_user_content_mode=none` 的 immediate-output contract
 - `planning_acceptance.py --json` 是否已经正式验证 compound delayed 请求不会偷偷物化 hidden follow-up

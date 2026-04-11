@@ -126,6 +126,7 @@ def build_health_report(
     planning_health = planning.get("health") if isinstance(planning.get("health"), dict) else {}
     planning_recovery_action = _planning_primary_recovery_action(overview)
     promise_without_task_count = int(planning.get("promise_without_task_count", 0) or 0)
+    followup_task_missing_count = int(planning.get("followup_task_missing_count", 0) or 0)
     overdue_followup_count = int(planning.get("overdue_followup_count", 0) or 0)
     planning_pending_count = int(planning.get("planning_pending_task_count", 0) or 0)
     planning_timeout_count = int(planning_health.get("timeout_count", 0) or 0)
@@ -140,6 +141,22 @@ def build_health_report(
                     f"Start with `{planning_recovery_action['command']}`."
                     if planning_recovery_action and planning_recovery_action.get("command")
                     else "Inspect planning anomalies in `main_ops.py dashboard --json` or `task_status.py --overview`; fix the tool path so every future promise materializes a real follow-up task before finalize."
+                ),
+            )
+        )
+    if followup_task_missing_count:
+        issue_entries.append(
+            _issue_entry(
+                code=f"planning-missing-followup-tasks:{followup_task_missing_count}",
+                severity="error",
+                count=followup_task_missing_count,
+                remediation=(
+                    f"{planning_recovery_action['summary']} "
+                    f"Start with `{planning_recovery_action['command']}`."
+                    if planning_recovery_action
+                    and planning_recovery_action.get("kind") == "inspect-missing-followup-task"
+                    and planning_recovery_action.get("command")
+                    else "Inspect planning health and recreate or relink missing follow-up task records before trusting scheduled follow-up state."
                 ),
             )
         )
@@ -249,6 +266,7 @@ def render_markdown(report: dict[str, object]) -> str:
             f"- planning_tool_path_task_count: {overview['planning']['tool_path_task_count']}",
             f"- planning_pending_task_count: {overview['planning']['planning_pending_task_count']}",
             f"- planning_promise_without_task_count: {overview['planning']['promise_without_task_count']}",
+            f"- planning_followup_task_missing_count: {overview['planning']['followup_task_missing_count']}",
             f"- planning_overdue_followup_count: {overview['planning']['overdue_followup_count']}",
         ]
     )
@@ -263,6 +281,7 @@ def render_markdown(report: dict[str, object]) -> str:
                 f"- planning_health_timeout_rate: {planning_health['timeout_rate']}",
                 f"- planning_health_tool_call_completion_rate: {planning_health['tool_call_completion_rate']}",
                 f"- planning_health_promise_without_task_rate: {planning_health['promise_without_task_rate']}",
+                f"- planning_health_followup_task_missing_rate: {planning_health['followup_task_missing_rate']}",
             ]
         )
     planning_recovery_action = report.get("planning_primary_recovery_action")

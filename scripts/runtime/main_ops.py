@@ -97,6 +97,7 @@ def render_main_health(
         f"- planning_pending_task_count: {summary['planning_pending_task_count']}",
         f"- planning_future_first_task_count: {summary['planning_future_first_task_count']}",
         f"- planning_promise_without_task_count: {summary['planning_promise_without_task_count']}",
+        f"- planning_followup_task_missing_count: {summary['planning_followup_task_missing_count']}",
         f"- planning_overdue_followup_count: {summary['planning_overdue_followup_count']}",
         f"- planning_primary_main_user_content_mode: {summary['planning_primary_main_user_content_mode'] or 'none'}",
         f"- planning_health_status: {summary['planning_health_status']}",
@@ -144,6 +145,7 @@ def get_main_health_summary(
         "planning_pending_task_count": int(planning.get("planning_pending_task_count", 0) or 0),
         "planning_future_first_task_count": int(planning.get("future_first_task_count", 0) or 0),
         "planning_promise_without_task_count": int(planning.get("promise_without_task_count", 0) or 0),
+        "planning_followup_task_missing_count": int(planning.get("followup_task_missing_count", 0) or 0),
         "planning_overdue_followup_count": int(planning.get("overdue_followup_count", 0) or 0),
         "planning_main_user_content_mode_counts": dict(planning.get("main_user_content_mode_counts") or {}),
         "planning_primary_main_user_content_mode": str(planning.get("primary_main_user_content_mode") or "").strip() or None,
@@ -2131,6 +2133,8 @@ def get_main_dashboard_summary(
         status = "warn"
     if health["planning_promise_without_task_count"] > 0:
         status = "error"
+    elif health["planning_followup_task_missing_count"] > 0:
+        status = "error"
     elif health["planning_health_status"] == "warn" and status == "ok":
         status = "warn"
     action_hint = "No immediate action needed."
@@ -2146,6 +2150,14 @@ def get_main_dashboard_summary(
     elif (
         health["planning_promise_without_task_count"] > 0
         and isinstance(health.get("planning_primary_recovery_action"), dict)
+        and str((health["planning_primary_recovery_action"] or {}).get("command") or "").strip()
+    ):
+        action_hint = str(health["planning_primary_recovery_action"].get("summary") or action_hint)
+        action_hint_command = str(health["planning_primary_recovery_action"].get("command") or "")
+    elif (
+        health["planning_followup_task_missing_count"] > 0
+        and isinstance(health.get("planning_primary_recovery_action"), dict)
+        and str((health["planning_primary_recovery_action"] or {}).get("kind") or "") == "inspect-missing-followup-task"
         and str((health["planning_primary_recovery_action"] or {}).get("command") or "").strip()
     ):
         action_hint = str(health["planning_primary_recovery_action"].get("summary") or action_hint)
@@ -2190,6 +2202,7 @@ def get_main_dashboard_summary(
         "continuity_auto_resumable_task_count": continuity["auto_resumable_task_count"],
         "continuity_manual_review_task_count": continuity["manual_review_task_count"],
         "planning_promise_without_task_count": health["planning_promise_without_task_count"],
+        "planning_followup_task_missing_count": health["planning_followup_task_missing_count"],
         "planning_overdue_followup_count": health["planning_overdue_followup_count"],
         "planning_health_summary": (
             f"{health['planning_health_status']} timeouts={health['planning_health_timeout_count']}"
@@ -3118,6 +3131,24 @@ def get_main_triage_summary(
         focus_session_key = planning_anomaly_task.get("session_key")
         next_actions.append(f"{primary_action['summary']} `{inspect_command}`")
     elif (
+        int(planning_summary.get("followup_task_missing_count", 0) or 0)
+        and isinstance(planning_summary.get("primary_recovery_action"), dict)
+        and str((planning_summary.get("primary_recovery_action") or {}).get("kind") or "") == "inspect-missing-followup-task"
+        and str((planning_summary.get("primary_recovery_action") or {}).get("command") or "").strip()
+    ):
+        recovery_action = planning_summary["primary_recovery_action"]
+        primary_action = {
+            "kind": str(recovery_action.get("kind") or "inspect-missing-followup-task"),
+            "summary": str(
+                recovery_action.get("summary")
+                or "Inspect the missing follow-up task record before relying on scheduled follow-up state."
+            ),
+            "command": str(recovery_action.get("command") or "python3 scripts/runtime/main_ops.py planning --json"),
+            "session_key": recovery_action.get("session_key"),
+        }
+        focus_session_key = recovery_action.get("session_key")
+        next_actions.append(f"{primary_action['summary']} `{primary_action['command']}`")
+    elif (
         str(planning_health.get("status") or "") == "warn"
         and isinstance(planning_summary.get("primary_recovery_action"), dict)
         and str((planning_summary.get("primary_recovery_action") or {}).get("kind") or "") == "inspect-planner-timeout"
@@ -3236,6 +3267,7 @@ def get_main_triage_summary(
         "triage_status": triage_status,
         "blocked_main_task_count": len(blocked_main),
         "planning_promise_without_task_count": int(report["overview"].get("planning", {}).get("promise_without_task_count", 0) or 0),
+        "planning_followup_task_missing_count": int(report["overview"].get("planning", {}).get("followup_task_missing_count", 0) or 0),
         "planning_overdue_followup_count": int(report["overview"].get("planning", {}).get("overdue_followup_count", 0) or 0),
         "planning_health_status": str(planning_health.get("status") or "unknown"),
         "planning_health_timeout_count": int(planning_health.get("timeout_count", 0) or 0),
@@ -3287,6 +3319,7 @@ def render_main_triage(
         f"- triage_status: {summary['triage_status']}",
         f"- blocked_main_task_count: {summary['blocked_main_task_count']}",
         f"- planning_promise_without_task_count: {summary['planning_promise_without_task_count']}",
+        f"- planning_followup_task_missing_count: {summary['planning_followup_task_missing_count']}",
         f"- planning_overdue_followup_count: {summary['planning_overdue_followup_count']}",
         f"- planning_health_status: {summary['planning_health_status']}",
         f"- planning_health_timeout_count: {summary['planning_health_timeout_count']}",

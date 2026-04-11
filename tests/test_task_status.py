@@ -516,6 +516,46 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(overview["planning"]["health"]["tool_call_completion_rate"], 0.5)
         self.assertEqual(overview["planning"]["primary_recovery_action"]["kind"], "inspect-pending-plan")
 
+    def test_build_status_summary_projects_missing_followup_task_recovery_action(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:missing-followup-task",
+            channel="feishu",
+            chat_id="chat:missing-followup-task",
+            task_label="missing follow-up source",
+        )
+        task.meta["tool_followup_plan"] = {
+            "plan_id": "plan_missing_followup",
+            "status": "scheduled",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+            "followup_task_id": "task_missing_followup_record",
+            "followup_summary": "5分钟后同步结果",
+            "main_user_content_mode": "none",
+        }
+        task.meta["planning_promise_guard"] = {
+            "status": "scheduled",
+            "expected_by_finalize": True,
+            "promise_summary": "5分钟后同步结果",
+            "main_user_content_mode": "none",
+        }
+        self.store.save_task(task)
+
+        summary = task_status.build_status_summary(task.task_id, paths=self.paths)
+        overview = task_status.build_system_overview(paths=self.paths)
+        markdown = task_status.render_overview_markdown(paths=self.paths)
+
+        self.assertEqual(summary["planning"]["anomaly"], "followup-task-missing")
+        self.assertTrue(summary["planning"]["followup_task_missing"])
+        self.assertEqual(summary["planning"]["followup_task_id"], "task_missing_followup_record")
+        self.assertEqual(summary["planning"]["recovery_action"]["kind"], "inspect-missing-followup-task")
+        self.assertEqual(overview["planning"]["followup_task_missing_count"], 1)
+        self.assertEqual(overview["planning"]["health"]["status"], "error")
+        self.assertEqual(overview["planning"]["health"]["primary_reason"], "followup-task-missing-present")
+        self.assertEqual(overview["planning"]["primary_recovery_action"]["kind"], "inspect-missing-followup-task")
+        self.assertIn("- planning_followup_task_missing_count: 1", markdown)
+        self.assertIn("- planning_health_followup_task_missing_rate: 1.0", markdown)
+        self.assertIn("- planning_primary_recovery_action_kind: inspect-missing-followup-task", markdown)
+
     def test_build_status_summary_projects_planner_timeout_recovery_action(self) -> None:
         task = self.store.register_task(
             agent_id="main",
