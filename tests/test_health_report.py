@@ -240,7 +240,10 @@ class HealthReportTests(unittest.TestCase):
         self.assertIn("planning-promise-without-task:1", report["issues"])
         self.assertIn("planning-overdue-followups:1", report["issues"])
         self.assertEqual(report["overview"]["planning"]["health"]["status"], "error")
+        self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-promise-without-task")
+        self.assertIn("materialize a replacement follow-up", report["issue_entries"][0]["remediation"])
         self.assertIn("- planning_health_status: error", markdown)
+        self.assertIn("- planning_primary_recovery_action_kind: inspect-promise-without-task", markdown)
 
     def test_build_health_report_surfaces_planning_timeouts(self) -> None:
         source = self.store.register_task(

@@ -309,16 +309,38 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(dashboard["status"], "error")
         self.assertEqual(dashboard["health"]["planning_promise_without_task_count"], 1)
         self.assertEqual(dashboard["health"]["planning_overdue_followup_count"], 1)
+        self.assertEqual(
+            dashboard["health"]["planning_primary_recovery_action"]["kind"],
+            "inspect-promise-without-task",
+        )
+        self.assertEqual(
+            dashboard["action_hint_command"],
+            "python3 scripts/runtime/main_ops.py continuity --session-key 'session:main:planning-risk'",
+        )
         self.assertEqual(continuity["planning_anomaly_task_count"], 1)
         self.assertEqual(continuity["overdue_planned_followup_count"], 1)
         self.assertEqual(continuity["top_risk_session"]["session_key"], "session:main:planning-risk")
         self.assertEqual(continuity["top_risk_session"]["planning_anomaly_count"], 1)
         self.assertEqual(continuity["top_risk_session"]["overdue_followup_count"], 1)
         self.assertEqual(triage["planning_promise_without_task_count"], 1)
-        self.assertEqual(triage["primary_action_kind"], "inspect-planning-anomaly")
+        self.assertEqual(triage["primary_action_kind"], "inspect-promise-without-task")
+        self.assertIn("materialize a replacement follow-up", triage["primary_action_summary"])
+        self.assertEqual(
+            dashboard["action_hint_command"],
+            "python3 scripts/runtime/main_ops.py continuity --session-key 'session:main:planning-risk'",
+        )
         self.assertIn("- planning_promise_without_task: 1", rendered_dashboard)
         self.assertIn("- planning_anomaly_task_count: 1", rendered_continuity)
         self.assertIn("- overdue_planned_followup_count: 1", rendered_continuity)
+
+        planning = main_ops.get_main_planning_summary(config_path=self._config_path(), paths=self.paths)
+        rendered_planning = main_ops.render_main_planning(config_path=self._config_path(), paths=self.paths)
+        self.assertEqual(planning["primary_recovery_action"]["kind"], "inspect-promise-without-task")
+        self.assertEqual(
+            planning["planning_recovery_action_counts"],
+            {"inspect-overdue-followup": 1, "inspect-promise-without-task": 1},
+        )
+        self.assertIn("- planning_primary_recovery_action_kind: inspect-promise-without-task", rendered_planning)
 
     def test_render_main_dashboard_can_focus_one_session(self) -> None:
         task = self.store.register_task(
@@ -401,10 +423,17 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["planning_anomaly_task_count"], 1)
         self.assertEqual(summary["planning_health"]["status"], "error")
         self.assertEqual(summary["planning_health"]["promise_without_task_rate"], 0.5)
-        self.assertEqual(summary["primary_action_kind"], "inspect-planning-anomaly")
+        self.assertEqual(summary["primary_action_kind"], "inspect-promise-without-task")
+        self.assertEqual(
+            summary["planning_recovery_action_counts"],
+            {"inspect-pending-plan": 1, "inspect-promise-without-task": 1},
+        )
+        self.assertEqual(summary["primary_recovery_action"]["kind"], "inspect-promise-without-task")
+        self.assertIn("materialize a replacement follow-up", summary["primary_action_summary"])
         self.assertIn("# Main Planning", rendered)
         self.assertIn("- planning_task_count: 2", rendered)
         self.assertIn("- planning_health_status: error", rendered)
+        self.assertIn("- planning_primary_recovery_action_kind: inspect-promise-without-task", rendered)
         self.assertIn("plan_status=anomaly", rendered)
 
     def test_get_main_planning_summary_can_focus_session(self) -> None:

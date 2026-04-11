@@ -37,12 +37,14 @@
 - 已补 `LLM planning health` 最小信号：
   - 基于 runtime truth source 投影 `recent success / timeout / tool-call completion / promise-without-task`
   - 已进入 `task_status / health_report / main_ops planning / dashboard / triage`
+- 已补 `promise-without-task` 的 recovery 投影与文案：
+  - `task_status / health_report / main_ops planning` 会给出结构化 recovery action
+  - running 态短跟进会明确“补建真实任务 / 明确撤回承诺”的后续处理方向
 
 ## 下一个动作
 
 1. 继续扩 planning health 的真实样本覆盖与降级策略。
-2. 设计更多 `promise-without-task` 相关 anomaly 投影与 recovery 文案。
-3. 把当前 runtime 中的 compound/delayed 语义 stopgap 逐步收敛成：
+2. 把当前 runtime 中的 compound/delayed 语义 stopgap 逐步收敛成：
    - 明确的兼容桥接
    - 而不是长期主判断路径。
 

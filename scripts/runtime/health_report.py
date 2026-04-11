@@ -25,6 +25,14 @@ def _issue_entry(code: str, severity: str, count: int, remediation: str) -> dict
     }
 
 
+def _planning_primary_recovery_action(overview: dict[str, object]) -> Optional[dict[str, object]]:
+    planning = overview.get("planning") if isinstance(overview.get("planning"), dict) else {}
+    recovery_action = planning.get("primary_recovery_action")
+    if isinstance(recovery_action, dict) and str(recovery_action.get("kind") or "").strip() not in {"", "none"}:
+        return recovery_action
+    return None
+
+
 def build_health_report(
     *,
     config_path: Optional[Path] = None,
@@ -116,6 +124,7 @@ def build_health_report(
         )
     planning = overview.get("planning") if isinstance(overview.get("planning"), dict) else {}
     planning_health = planning.get("health") if isinstance(planning.get("health"), dict) else {}
+    planning_recovery_action = _planning_primary_recovery_action(overview)
     promise_without_task_count = int(planning.get("promise_without_task_count", 0) or 0)
     overdue_followup_count = int(planning.get("overdue_followup_count", 0) or 0)
     planning_pending_count = int(planning.get("planning_pending_task_count", 0) or 0)
@@ -126,7 +135,12 @@ def build_health_report(
                 code=f"planning-promise-without-task:{promise_without_task_count}",
                 severity="error",
                 count=promise_without_task_count,
-                remediation="Inspect planning anomalies in `main_ops.py dashboard --json` or `task_status.py --overview`; fix the tool path so every future promise materializes a real follow-up task before finalize.",
+                remediation=(
+                    f"{planning_recovery_action['summary']} "
+                    f"Start with `{planning_recovery_action['command']}`."
+                    if planning_recovery_action and planning_recovery_action.get("command")
+                    else "Inspect planning anomalies in `main_ops.py dashboard --json` or `task_status.py --overview`; fix the tool path so every future promise materializes a real follow-up task before finalize."
+                ),
             )
         )
     if overdue_followup_count:
@@ -183,6 +197,7 @@ def build_health_report(
             for check in plugin_checks
         ],
         "plugin_install_drift": install_drift,
+        "planning_primary_recovery_action": planning_recovery_action,
     }
 
 
@@ -227,6 +242,14 @@ def render_markdown(report: dict[str, object]) -> str:
                 f"- planning_health_timeout_rate: {planning_health['timeout_rate']}",
                 f"- planning_health_tool_call_completion_rate: {planning_health['tool_call_completion_rate']}",
                 f"- planning_health_promise_without_task_rate: {planning_health['promise_without_task_rate']}",
+            ]
+        )
+    planning_recovery_action = report.get("planning_primary_recovery_action")
+    if isinstance(planning_recovery_action, dict):
+        lines.extend(
+            [
+                f"- planning_primary_recovery_action_kind: {planning_recovery_action.get('kind')}",
+                f"- planning_primary_recovery_action_command: {planning_recovery_action.get('command') or 'none'}",
             ]
         )
     if overview["planning"]["anomaly_counts"]:

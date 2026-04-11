@@ -271,6 +271,66 @@ def _planning_success(planning: dict[str, object]) -> bool:
     return plan_status in {"scheduled", "fulfilled"} or guard_status in {"scheduled", "fulfilled"}
 
 
+def _build_planning_recovery_action(task: dict[str, object], planning: dict[str, object]) -> dict[str, object]:
+    task_id = str(task.get("task_id") or "")
+    session_key = str(task.get("session_key") or "") or None
+    inspect_command = f"python3 scripts/runtime/main_ops.py show {task_id}" if task_id else None
+    followup_summary = str(planning.get("followup_summary") or planning.get("promise_summary") or "").strip()
+    target = followup_summary or "the promised follow-up"
+    if bool(planning.get("promise_without_task")):
+        return {
+            "kind": "inspect-promise-without-task",
+            "summary": (
+                f"Inspect the source task and either materialize a replacement follow-up for {target} "
+                "or clear the stale promise before treating the run as complete."
+            ),
+            "command": inspect_command,
+            "session_key": session_key,
+        }
+    if str(planning.get("anomaly") or "").strip():
+        return {
+            "kind": "inspect-planning-anomaly",
+            "summary": "Inspect the planning anomaly before relying on the follow-up state.",
+            "command": inspect_command,
+            "session_key": session_key,
+        }
+    if bool(planning.get("overdue_followup")):
+        return {
+            "kind": "inspect-overdue-followup",
+            "summary": "Inspect the overdue planned follow-up and recover the continuation runner or reschedule it explicitly.",
+            "command": inspect_command,
+            "session_key": session_key,
+        }
+    if bool(planning.get("planning_pending")):
+        return {
+            "kind": "inspect-pending-plan",
+            "summary": "Inspect the pending planning path and confirm it materializes before finalize.",
+            "command": inspect_command,
+            "session_key": session_key,
+        }
+    return {
+        "kind": "none",
+        "summary": "No planning recovery action suggested.",
+        "command": None,
+        "session_key": session_key,
+    }
+
+
+def _planning_recovery_priority(action: dict[str, object]) -> tuple[int, str, str]:
+    kind = str(action.get("kind") or "")
+    priority = {
+        "inspect-promise-without-task": 0,
+        "inspect-planning-anomaly": 1,
+        "inspect-overdue-followup": 2,
+        "inspect-pending-plan": 3,
+    }.get(kind, 99)
+    return (
+        priority,
+        str(action.get("session_key") or ""),
+        str(action.get("command") or ""),
+    )
+
+
 def _rate(count: int, total: int) -> Optional[float]:
     if total <= 0:
         return None
@@ -433,6 +493,7 @@ def build_status_summary(
     task["user_facing_status"] = projection["label"]
     task["user_facing_status_family"] = projection["family"]
     task["planning"] = _build_planning_summary(task)
+    task["planning"]["recovery_action"] = _build_planning_recovery_action(task, task["planning"])
     task["same_session_routing"] = _build_same_session_routing_summary(task)
     return task
 
@@ -510,6 +571,19 @@ def build_system_overview(
         if archived_status:
             archived_counts[str(archived_status)] += 1
     planning_health = build_planning_health_summary([*inflight_statuses, *archived_payloads])
+    planning_recovery_actions = [
+        item["planning"]["recovery_action"]
+        for item in inflight_statuses
+        if isinstance(item.get("planning"), dict)
+        and isinstance(item["planning"].get("recovery_action"), dict)
+        and str(item["planning"]["recovery_action"].get("kind") or "") != "none"
+    ]
+    planning_recovery_actions = sorted(planning_recovery_actions, key=_planning_recovery_priority)
+    planning_recovery_counts = Counter(
+        str(action.get("kind") or "")
+        for action in planning_recovery_actions
+        if str(action.get("kind") or "").strip()
+    )
 
     return {
         "active_task_count": len(inflight_statuses),
@@ -540,6 +614,8 @@ def build_system_overview(
             "anomaly_counts": dict(sorted(planning_anomaly_counts.items())),
             "promise_guard_status_counts": dict(sorted(promise_guard_counts.items())),
             "plan_status_counts": dict(sorted(plan_status_counts.items())),
+            "recovery_action_counts": dict(sorted(planning_recovery_counts.items())),
+            "primary_recovery_action": planning_recovery_actions[0] if planning_recovery_actions else None,
             "health": planning_health,
         },
         "active_tasks": inflight_statuses,
@@ -617,6 +693,10 @@ def render_status_markdown(
         lines.append(f"- planning.promise_without_task: {planning.get('promise_without_task')}")
         if planning.get("anomaly"):
             lines.append(f"- planning.anomaly: {planning['anomaly']}")
+        recovery_action = planning.get("recovery_action") if isinstance(planning.get("recovery_action"), dict) else None
+        if isinstance(recovery_action, dict):
+            lines.append(f"- planning.recovery_action_kind: {recovery_action.get('kind')}")
+            lines.append(f"- planning.recovery_action_command: {recovery_action.get('command')}")
     same_session_routing = status.get("same_session_routing")
     if isinstance(same_session_routing, dict):
         lines.append(f"- same_session_routing.routing_status: {same_session_routing.get('routing_status')}")
@@ -694,6 +774,18 @@ def render_overview_markdown(
             lines.append(f"- planning_health_timeout_rate: {health['timeout_rate']}")
             lines.append(f"- planning_health_tool_call_completion_rate: {health['tool_call_completion_rate']}")
             lines.append(f"- planning_health_promise_without_task_rate: {health['promise_without_task_rate']}")
+        primary_recovery_action = (
+            planning.get("primary_recovery_action")
+            if isinstance(planning.get("primary_recovery_action"), dict)
+            else None
+        )
+        if isinstance(primary_recovery_action, dict):
+            lines.append(f"- planning_primary_recovery_action_kind: {primary_recovery_action.get('kind')}")
+            lines.append(f"- planning_primary_recovery_action_command: {primary_recovery_action.get('command')}")
+        if planning.get("recovery_action_counts"):
+            lines.append(
+                f"- planning_recovery_action_counts: {json.dumps(planning['recovery_action_counts'], ensure_ascii=False)}"
+            )
         if planning["anomaly_counts"]:
             lines.append(f"- planning_anomaly_counts: {json.dumps(planning['anomaly_counts'], ensure_ascii=False)}")
     if overview["active_tasks"]:

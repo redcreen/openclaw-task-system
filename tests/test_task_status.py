@@ -439,15 +439,28 @@ class TaskStatusTests(unittest.TestCase):
 
         self.assertTrue(source_summary["planning"]["promise_without_task"])
         self.assertEqual(source_summary["planning"]["anomaly"], "promise-without-task")
+        self.assertEqual(
+            source_summary["planning"]["recovery_action"]["kind"],
+            "inspect-promise-without-task",
+        )
         self.assertTrue(followup_summary["planning"]["overdue_followup"])
         self.assertEqual(overview["planning"]["promise_without_task_count"], 1)
         self.assertEqual(overview["planning"]["overdue_followup_count"], 1)
         self.assertEqual(overview["planning"]["anomaly_counts"], {"promise-without-task": 1})
+        self.assertEqual(
+            overview["planning"]["recovery_action_counts"],
+            {"inspect-overdue-followup": 1, "inspect-promise-without-task": 1},
+        )
+        self.assertEqual(
+            overview["planning"]["primary_recovery_action"]["kind"],
+            "inspect-promise-without-task",
+        )
         self.assertEqual(overview["planning"]["health"]["status"], "error")
         self.assertEqual(overview["planning"]["health"]["primary_reason"], "promise-without-task-present")
         self.assertIn("- planning_promise_without_task_count: 1", markdown)
         self.assertIn("- planning_overdue_followup_count: 1", markdown)
         self.assertIn("- planning_health_status: error", markdown)
+        self.assertIn("- planning_primary_recovery_action_kind: inspect-promise-without-task", markdown)
 
     def test_build_system_overview_projects_planning_health_from_archived_and_active_tasks(self) -> None:
         healthy = self.store.register_task(
@@ -496,3 +509,4 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(overview["planning"]["health"]["tool_call_completion_count"], 1)
         self.assertEqual(overview["planning"]["health"]["success_rate"], 0.5)
         self.assertEqual(overview["planning"]["health"]["tool_call_completion_rate"], 0.5)
+        self.assertEqual(overview["planning"]["primary_recovery_action"]["kind"], "inspect-pending-plan")

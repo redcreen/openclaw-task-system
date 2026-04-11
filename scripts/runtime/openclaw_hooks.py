@@ -1413,7 +1413,7 @@ def should_send_short_followup_from_payload(
             target = promise_summary or followup_summary or "后续同步"
             followup_message = (
                 f"已收到你的消息，当前仍在处理中；但 {target} 这条后续安排还没有成功落成真实任务，"
-                "我会如实继续推进并在后续状态里说明结果。"
+                "如果这条安排仍然需要，我会补建真实任务；如果不需要，会明确撤回这条承诺。"
             )
         elif plan_status == "planned":
             target = followup_summary or promise_summary or "后续同步"
@@ -1466,6 +1466,11 @@ def should_send_short_followup_from_payload(
                 "planning_plan_status": plan_status or None,
                 "planning_followup_summary": followup_summary or None,
                 "planning_promise_summary": promise_summary or None,
+                "planning_recovery_hint": (
+                    "inspect-source-task-and-recreate-or-clear-promise"
+                    if planning_anomaly == "promise-without-task"
+                    else None
+                ),
                 "blocked_reason": blocked_reason or None,
                 "running_target": running_progress["running_target"],
                 "estimated_steps": running_progress["estimated_steps"],

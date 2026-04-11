@@ -36,34 +36,6 @@ GENERIC_SUCCESS_SUMMARIES = {
     "assistant",
 }
 
-TASK_USER_CONTENT_OPEN = "<task_user_content>"
-TASK_USER_CONTENT_CLOSE = "</task_user_content>"
-
-
-def _sanitize_structured_followup_message(text: str) -> str:
-    raw = str(text or "").strip()
-    if not raw:
-        return ""
-    pieces: list[str] = []
-    cursor = 0
-    while cursor < len(raw):
-        open_index = raw.find(TASK_USER_CONTENT_OPEN, cursor)
-        if open_index < 0:
-            break
-        content_start = open_index + len(TASK_USER_CONTENT_OPEN)
-        close_index = raw.find(TASK_USER_CONTENT_CLOSE, content_start)
-        if close_index < 0:
-            break
-        candidate = raw[content_start:close_index].strip()
-        if candidate:
-            pieces.append(candidate)
-        cursor = close_index + len(TASK_USER_CONTENT_CLOSE)
-    if pieces:
-        return "\n".join(pieces).strip()
-    if TASK_USER_CONTENT_OPEN in raw or TASK_USER_CONTENT_CLOSE in raw:
-        return ""
-    return raw
-
 
 def _build_control_plane_message(
     *,
@@ -471,9 +443,7 @@ def create_followup_plan_from_payload(
 
     followup_kind = str(payload.get("followup_kind") or payload.get("kind") or "delayed-reply").strip()
     followup_due_at = str(payload.get("followup_due_at") or payload.get("due_at") or "").strip()
-    followup_message = _sanitize_structured_followup_message(
-        str(payload.get("followup_message") or payload.get("reply_text") or "").strip()
-    )
+    followup_message = str(payload.get("followup_message") or payload.get("reply_text") or "").strip()
     followup_summary = str(payload.get("followup_summary") or payload.get("summary") or "").strip()
     main_user_content_mode = str(payload.get("main_user_content_mode") or "none").strip() or "none"
     reply_to_id = str(payload.get("reply_to_id") or payload.get("replyToId") or "").strip()
@@ -609,7 +579,7 @@ def schedule_followup_from_plan_from_payload(
             }
 
     followup_due_at = str(plan.get("followup_due_at") or "").strip()
-    followup_message = _sanitize_structured_followup_message(str(plan.get("followup_message") or "").strip())
+    followup_message = str(plan.get("followup_message") or "").strip()
     if not followup_due_at or not followup_message:
         return {"scheduled": False, "reason": "invalid-followup-plan"}
     try:
@@ -1317,9 +1287,7 @@ def finalize_active_from_payload(
         if isinstance(post_run_plan, dict):
             followup_kind = str(post_run_plan.get("kind") or "").strip()
             followup_due_at = str(post_run_plan.get("due_at") or "").strip()
-            followup_reply_text = _sanitize_structured_followup_message(
-                str(post_run_plan.get("reply_text") or "").strip()
-            )
+            followup_reply_text = str(post_run_plan.get("reply_text") or "").strip()
             followup_wait_seconds = int(post_run_plan.get("wait_seconds") or 0)
             if followup_kind and followup_due_at and followup_reply_text and followup_wait_seconds > 0:
                 followup_task = store.observe_task(
@@ -1445,7 +1413,7 @@ def should_send_short_followup_from_payload(
             target = promise_summary or followup_summary or "后续同步"
             followup_message = (
                 f"已收到你的消息，当前仍在处理中；但 {target} 这条后续安排还没有成功落成真实任务，"
-                "我会如实继续推进并在后续状态里说明结果。"
+                "如果这条安排仍然需要，我会补建真实任务；如果不需要，会明确撤回这条承诺。"
             )
         elif plan_status == "planned":
             target = followup_summary or promise_summary or "后续同步"
@@ -1498,6 +1466,11 @@ def should_send_short_followup_from_payload(
                 "planning_plan_status": plan_status or None,
                 "planning_followup_summary": followup_summary or None,
                 "planning_promise_summary": promise_summary or None,
+                "planning_recovery_hint": (
+                    "inspect-source-task-and-recreate-or-clear-promise"
+                    if planning_anomaly == "promise-without-task"
+                    else None
+                ),
                 "blocked_reason": blocked_reason or None,
                 "running_target": running_progress["running_target"],
                 "estimated_steps": running_progress["estimated_steps"],

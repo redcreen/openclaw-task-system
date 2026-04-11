@@ -101,6 +101,13 @@ def render_main_health(
         f"- failed_instruction_count: {summary['failed_instruction_count']}",
         f"- active_stale_delivery_task_count: {summary['active_stale_delivery_task_count']}",
     ]
+    if isinstance(summary.get("planning_primary_recovery_action"), dict):
+        lines.append(
+            f"- planning_primary_recovery_action_kind: {summary['planning_primary_recovery_action'].get('kind')}"
+        )
+        lines.append(
+            f"- planning_primary_recovery_action_command: {summary['planning_primary_recovery_action'].get('command') or 'none'}"
+        )
     if summary["blocked_main_tasks"]:
         lines.append("")
         lines.append("## Blocked Main Tasks")
@@ -133,6 +140,9 @@ def get_main_health_summary(
         "planning_health_status": str((planning.get("health") or {}).get("status") or "unknown"),
         "planning_health_timeout_count": int(((planning.get("health") or {}).get("timeout_count") or 0)),
         "planning_health_sample_task_count": int(((planning.get("health") or {}).get("sample_task_count") or 0)),
+        "planning_primary_recovery_action": planning.get("primary_recovery_action")
+        if isinstance(planning.get("primary_recovery_action"), dict)
+        else None,
         "failed_instruction_count": overview["failed_instruction_count"],
         "active_stale_delivery_task_count": overview["active_stale_delivery_task_count"],
         "blocked_main_tasks": blocked_main,
@@ -195,27 +205,42 @@ def get_main_planning_summary(
     }
     if anomaly_items:
         first = anomaly_items[0]
+        recovery_action = (
+            (first.get("planning") or {}).get("recovery_action")
+            if isinstance(first.get("planning"), dict)
+            else None
+        )
         primary_action = {
-            "kind": "inspect-planning-anomaly",
-            "summary": "Inspect the planning anomaly first.",
-            "command": f"python3 scripts/runtime/main_ops.py show {first['task_id']}",
-            "session_key": first.get("session_key"),
+            "kind": str((recovery_action or {}).get("kind") or "inspect-planning-anomaly"),
+            "summary": str((recovery_action or {}).get("summary") or "Inspect the planning anomaly first."),
+            "command": str((recovery_action or {}).get("command") or f"python3 scripts/runtime/main_ops.py show {first['task_id']}"),
+            "session_key": (recovery_action or {}).get("session_key") or first.get("session_key"),
         }
     elif overdue_items:
         first = overdue_items[0]
+        recovery_action = (
+            (first.get("planning") or {}).get("recovery_action")
+            if isinstance(first.get("planning"), dict)
+            else None
+        )
         primary_action = {
-            "kind": "inspect-overdue-followup",
-            "summary": "Inspect the overdue planned follow-up first.",
-            "command": f"python3 scripts/runtime/main_ops.py show {first['task_id']}",
-            "session_key": first.get("session_key"),
+            "kind": str((recovery_action or {}).get("kind") or "inspect-overdue-followup"),
+            "summary": str((recovery_action or {}).get("summary") or "Inspect the overdue planned follow-up first."),
+            "command": str((recovery_action or {}).get("command") or f"python3 scripts/runtime/main_ops.py show {first['task_id']}"),
+            "session_key": (recovery_action or {}).get("session_key") or first.get("session_key"),
         }
     elif pending_items:
         first = pending_items[0]
+        recovery_action = (
+            (first.get("planning") or {}).get("recovery_action")
+            if isinstance(first.get("planning"), dict)
+            else None
+        )
         primary_action = {
-            "kind": "inspect-pending-plan",
-            "summary": "Inspect the pending plan first.",
-            "command": f"python3 scripts/runtime/main_ops.py show {first['task_id']}",
-            "session_key": first.get("session_key"),
+            "kind": str((recovery_action or {}).get("kind") or "inspect-pending-plan"),
+            "summary": str((recovery_action or {}).get("summary") or "Inspect the pending plan first."),
+            "command": str((recovery_action or {}).get("command") or f"python3 scripts/runtime/main_ops.py show {first['task_id']}"),
+            "session_key": (recovery_action or {}).get("session_key") or first.get("session_key"),
         }
     status = "ok"
     if anomaly_items:
@@ -241,8 +266,19 @@ def get_main_planning_summary(
         "planning_anomaly_task_count": len(anomaly_items),
         "overdue_planned_followup_count": len(overdue_items),
         "planning_health": planning_health,
+        "planning_recovery_action_counts": dict(
+            sorted(
+                Counter(
+                    str(((item.get("planning") or {}).get("recovery_action") or {}).get("kind") or "")
+                    for item in planning_items
+                    if str(((item.get("planning") or {}).get("recovery_action") or {}).get("kind") or "") not in {"", "none"}
+                ).items()
+            )
+        ),
+        "primary_recovery_action": primary_action,
         "primary_action_kind": primary_action["kind"],
         "primary_action_command": primary_action["command"],
+        "primary_action_summary": primary_action["summary"],
         "requires_action": status != "ok",
         "primary_action": primary_action,
         "suggested_next_commands": deduped_commands,
@@ -272,7 +308,11 @@ def render_main_planning(
         f"- planning_health_success_rate: {summary['planning_health']['success_rate']}",
         f"- planning_health_timeout_rate: {summary['planning_health']['timeout_rate']}",
         f"- planning_health_tool_call_completion_rate: {summary['planning_health']['tool_call_completion_rate']}",
+        f"- planning_primary_recovery_action_kind: {summary['primary_recovery_action']['kind']}",
+        f"- planning_primary_recovery_action_command: {summary['primary_recovery_action']['command'] or 'none'}",
+        f"- planning_recovery_action_counts: {json.dumps(summary['planning_recovery_action_counts'], ensure_ascii=False)}",
         f"- primary_action_kind: {summary['primary_action_kind']}",
+        f"- primary_action_summary: {summary['primary_action_summary']}",
         f"- primary_action_command: {summary['primary_action_command'] or 'none'}",
     ]
     tasks = summary.get("tasks", [])
@@ -287,6 +327,10 @@ def render_main_planning(
                 lines.append(f"  followup_summary: {planning['followup_summary']}")
             if planning.get("followup_due_at"):
                 lines.append(f"  followup_due_at: {planning['followup_due_at']}")
+            recovery_action = planning.get("recovery_action") if isinstance(planning.get("recovery_action"), dict) else {}
+            if recovery_action and str(recovery_action.get("kind") or "") != "none":
+                lines.append(f"  recovery_action: {recovery_action.get('kind')}")
+                lines.append(f"  recovery_command: {recovery_action.get('command')}")
     return "\n".join(lines) + "\n"
 
 
@@ -2062,6 +2106,13 @@ def get_main_dashboard_summary(
     ):
         action_hint = str(continuity_primary_action.get("summary") or action_hint)
         action_hint_command = str(continuity_primary_action.get("command") or "")
+    elif (
+        health["planning_promise_without_task_count"] > 0
+        and isinstance(health.get("planning_primary_recovery_action"), dict)
+        and str((health["planning_primary_recovery_action"] or {}).get("command") or "").strip()
+    ):
+        action_hint = str(health["planning_primary_recovery_action"].get("summary") or action_hint)
+        action_hint_command = str(health["planning_primary_recovery_action"].get("command") or "")
     elif health["main_active_task_count"] > 0:
         action_hint = "Review current lanes before changing queue behavior."
         action_hint_command = "python3 scripts/runtime/main_ops.py lanes --json"
@@ -2993,15 +3044,26 @@ def get_main_triage_summary(
                     "`python3 scripts/runtime/main_ops.py sweep --fail-stale-blocked-after-minutes 60 --reason \"stale blocked main task\"`"
                 )
     elif int(planning_summary.get("promise_without_task_count", 0) or 0) and planning_anomaly_task is not None:
-        inspect_command = f"python3 scripts/runtime/main_ops.py show {planning_anomaly_task['task_id']}"
+        planning_recovery = (
+            (planning_anomaly_task.get("planning") or {}).get("recovery_action")
+            if isinstance(planning_anomaly_task.get("planning"), dict)
+            else None
+        )
+        inspect_command = str(
+            (planning_recovery or {}).get("command")
+            or f"python3 scripts/runtime/main_ops.py show {planning_anomaly_task['task_id']}"
+        )
         primary_action = {
-            "kind": "inspect-planning-anomaly",
-            "summary": "Inspect the planning anomaly before taking other actions.",
+            "kind": str((planning_recovery or {}).get("kind") or "inspect-planning-anomaly"),
+            "summary": str(
+                (planning_recovery or {}).get("summary")
+                or "Inspect the planning anomaly before taking other actions."
+            ),
             "command": inspect_command,
-            "session_key": planning_anomaly_task.get("session_key"),
+            "session_key": (planning_recovery or {}).get("session_key") or planning_anomaly_task.get("session_key"),
         }
         focus_session_key = planning_anomaly_task.get("session_key")
-        next_actions.append(f"Inspect planning anomaly first: `{inspect_command}`")
+        next_actions.append(f"{primary_action['summary']} `{inspect_command}`")
     elif str(planning_health.get("status") or "") == "warn":
         primary_action = {
             "kind": "inspect-planning-health",
@@ -3117,6 +3179,7 @@ def get_main_triage_summary(
         if str(continuity.get("primary_action_kind") or "").strip() in {"apply-auto-resume", "preview-auto-resume"}
         else None,
         "primary_action_kind": primary_action["kind"],
+        "primary_action_summary": primary_action["summary"],
         "primary_action_command": primary_action["command"],
         "runbook_status": runbook["status"],
         "requires_action": triage_status != "ok",

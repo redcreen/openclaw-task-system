@@ -792,8 +792,13 @@ class OpenClawHooksTests(unittest.TestCase):
 
         self.assertTrue(result["should_send"])
         self.assertIn("还没有成功落成真实任务", result["followup_message"])
+        self.assertIn("我会补建真实任务", result["followup_message"])
         self.assertEqual(result["control_plane_message"]["metadata"]["planning_anomaly"], "promise-without-task")
         self.assertEqual(result["control_plane_message"]["metadata"]["planning_promise_summary"], "10分钟后提醒看结果")
+        self.assertEqual(
+            result["control_plane_message"]["metadata"]["planning_recovery_hint"],
+            "inspect-source-task-and-recreate-or-clear-promise",
+        )
 
     def test_should_send_short_followup_for_running_task_reports_current_stage(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
