@@ -168,23 +168,27 @@ openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.gi
 - [`docs/compound_followup_boundary.md`](./docs/compound_followup_boundary.md)
 - [`docs/llm_tool_task_planning.md`](./docs/llm_tool_task_planning.md)
 
-### 仓库结构
+## 文档地图
 
-- 如果是全新接手，建议按这个顺序阅读：
-  - `README.md`
-  - `docs/roadmap.md`
-  - `docs/architecture.md`
-  - `docs/testsuite.md`
-  - `docs/usage_guide.md`
-  - `docs/plugin_installation.md`
-- [docs/roadmap.md](./docs/roadmap.md)：正式 roadmap
-- [docs/architecture.md](./docs/architecture.md)：架构设计
-- [docs/testsuite.md](./docs/testsuite.md)：测试体系
-- [docs/usage_guide.md](./docs/usage_guide.md)：扩展使用说明
-- [docs/plugin_installation.md](./docs/plugin_installation.md)：插件安装说明
-- [docs/todo.md](./docs/todo.md)：临时记录，不是正式主线
-- [plugin/](./plugin)：OpenClaw 插件
-- [scripts/runtime/](./scripts/runtime)：运行时、truth source 与 CLI
+建议优先看这些正式入口：
+
+- [docs/roadmap.zh-CN.md](./docs/roadmap.zh-CN.md)：当前正式主线、阶段结论和边界
+- [docs/architecture.zh-CN.md](./docs/architecture.zh-CN.md)：运行时分层、truth source 与 contract
+- [docs/test-plan.zh-CN.md](./docs/test-plan.zh-CN.md)：发布门槛与 acceptance 覆盖
+- [docs/README.zh-CN.md](./docs/README.zh-CN.md)：文档导航与次级入口
+
+补充资料：
+
+- [docs/plugin_installation.zh-CN.md](./docs/plugin_installation.zh-CN.md)：安装与配置细节
+- [docs/usage_guide.zh-CN.md](./docs/usage_guide.zh-CN.md)：运维命令与日常流程
+- [docs/testsuite.zh-CN.md](./docs/testsuite.zh-CN.md)：详细测试清单
+- [docs/reference/README.zh-CN.md](./docs/reference/README.zh-CN.md)：稳定参考资料
+- [docs/archive/README.zh-CN.md](./docs/archive/README.zh-CN.md)：历史验收记录、交接和旧整理文档
+
+源码目录：
+
+- [plugin/](./plugin)：可安装的 OpenClaw 插件 payload
+- [scripts/runtime/](./scripts/runtime)：运行时工具、诊断入口和 acceptance helper
 - [config/](./config)：配置样例
 
 ### 安装方式
@@ -472,10 +476,11 @@ python3 scripts/runtime/main_ops.py triage --json
 python3 scripts/runtime/main_ops.py channel-acceptance --json
 ```
 
-交接 / 提交整理参考：
+历史验收 / 交接资料：
 
-- [`docs/planning_acceptance_handoff.md`](./docs/planning_acceptance_handoff.md)
-- [`docs/planning_acceptance_commit_plan.md`](./docs/planning_acceptance_commit_plan.md)
+- [`docs/archive/planning_acceptance_record_2026-04-09.zh-CN.md`](./docs/archive/planning_acceptance_record_2026-04-09.zh-CN.md)
+- [`docs/archive/planning_acceptance_handoff.zh-CN.md`](./docs/archive/planning_acceptance_handoff.zh-CN.md)
+- [`docs/archive/planning_acceptance_commit_plan.zh-CN.md`](./docs/archive/planning_acceptance_commit_plan.zh-CN.md)
 
 ### 已经解决的核心问题
 
@@ -525,11 +530,3 @@ python3 scripts/runtime/main_ops.py channel-acceptance --json
 - 更完整的用户控制面、批量操作与更强的任务视图
 - 在现有 contract 模型下继续清理 Feishu queue 与 task queue 的边界
 - 用 LLM-assisted task planning 处理复合 delayed follow-up
-
-## Documentation Map
-- [Docs Home](docs/README.md)
-- [Test Plan](docs/test-plan.md)
-
-## Quick Start
-
-See [docs/README.md](docs/README.md) for the full documentation map.

@@ -13,7 +13,7 @@
 
 - [README.md](../README.md)
 - [roadmap.md](./roadmap.md)
-- [local_install_validation_2026-04-09.md](./local_install_validation_2026-04-09.md)
+- [archive/local_install_validation_2026-04-09.md](./archive/local_install_validation_2026-04-09.md)
 
 ## 1. 前提
 

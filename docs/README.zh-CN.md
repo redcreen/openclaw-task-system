@@ -22,3 +22,5 @@
 - 参考文档：[reference/README.zh-CN.md](reference/README.zh-CN.md)
 - 工作流文档：[workstreams/README.zh-CN.md](workstreams/README.zh-CN.md)
 - 归档文档：[archive/README.zh-CN.md](archive/README.zh-CN.md)
+
+归档目录用于放历史验收记录、交接说明和已退役的整理文档，避免这些内容继续挤占当前主入口。

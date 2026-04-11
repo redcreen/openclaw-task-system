@@ -22,3 +22,5 @@
 - reference docs: [reference/README.md](reference/README.md)
 - workstreams: [workstreams/README.md](workstreams/README.md)
 - archive: [archive/README.md](archive/README.md)
+
+Archive is for historical acceptance records, handoff notes, and superseded cleanup plans that should stay available without crowding the main docs stack.

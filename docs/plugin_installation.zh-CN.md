@@ -15,6 +15,7 @@
 
 - [../README.zh-CN.md](../README.zh-CN.md)
 - [roadmap.zh-CN.md](roadmap.zh-CN.md)
+- [archive/local_install_validation_2026-04-09.zh-CN.md](archive/local_install_validation_2026-04-09.zh-CN.md)
 
 ## 快速安装
 

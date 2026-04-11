@@ -20,7 +20,7 @@
 - [../scripts/runtime/run_planning_acceptance_bundle.py](../scripts/runtime/run_planning_acceptance_bundle.py)
 - [../scripts/runtime/planning_acceptance_suite.py](../scripts/runtime/planning_acceptance_suite.py)
 - [planning_acceptance_record_template.md](./planning_acceptance_record_template.md)
-- [planning_acceptance_record_2026-04-09.md](./planning_acceptance_record_2026-04-09.md)
+- [archive/planning_acceptance_record_2026-04-09.md](./archive/planning_acceptance_record_2026-04-09.md)
 
 说明：
 
@@ -157,4 +157,4 @@ python3 scripts/runtime/main_ops.py continuity --json
 推荐直接用：
 
 - [planning_acceptance_record_template.md](./planning_acceptance_record_template.md)
-- [planning_acceptance_record_2026-04-09.md](./planning_acceptance_record_2026-04-09.md)
+- [archive/planning_acceptance_record_2026-04-09.md](./archive/planning_acceptance_record_2026-04-09.md)

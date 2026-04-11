@@ -45,6 +45,10 @@ python3 scripts/runtime/same_session_routing_acceptance.py --json
 python3 scripts/runtime/stable_acceptance.py --json
 ```
 
+历史验收记录、交接和旧整理资料统一看：
+
+- [archive/README.zh-CN.md](archive/README.zh-CN.md)
+
 ## 什么时候读英文原文
 
 如果你要看完整的命令清单、运维问题示例和 acceptance 工具链说明，继续读 [usage_guide.md](usage_guide.md)。

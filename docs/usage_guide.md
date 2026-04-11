@@ -133,13 +133,16 @@ python3 scripts/runtime/main_ops.py plugin-install-drift --json
 - 当前 installable plugin payload 和本地安装态 runtime 是否已经漂移
 - install drift 是否已经被 dashboard / triage 主视图吸收成直接可见信号
 
-真实 / 半真实通道验收手册见：
+当前验收入口：
 
 - [planning_acceptance_runbook.md](./planning_acceptance_runbook.md)
 - [planning_acceptance_record_template.md](./planning_acceptance_record_template.md)
-- [planning_acceptance_record_2026-04-09.md](./planning_acceptance_record_2026-04-09.md)
-- [planning_acceptance_handoff.md](./planning_acceptance_handoff.md)
-- [planning_acceptance_commit_plan.md](./planning_acceptance_commit_plan.md)
+
+历史验收记录与交接资料：
+
+- [archive/planning_acceptance_record_2026-04-09.md](./archive/planning_acceptance_record_2026-04-09.md)
+- [archive/planning_acceptance_handoff.md](./archive/planning_acceptance_handoff.md)
+- [archive/planning_acceptance_commit_plan.md](./archive/planning_acceptance_commit_plan.md)
 
 ### 2.6 same-session routing 运维
 
