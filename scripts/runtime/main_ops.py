@@ -18,6 +18,7 @@ from instruction_executor import (
     retry_failed_instructions,
 )
 from main_task_adapter import block_main_task, fail_main_task, finish_main_task, resume_main_task
+from plugin_install_drift import build_install_drift_report
 from producer_contract import (
     build_producer_contract_summary,
     infer_channel_from_session_key,
@@ -92,6 +93,9 @@ def render_main_health(
         f"- status: {summary['status']}",
         f"- main_active_task_count: {summary['main_active_task_count']}",
         f"- main_blocked_task_count: {summary['main_blocked_task_count']}",
+        f"- planning_pending_task_count: {summary['planning_pending_task_count']}",
+        f"- planning_promise_without_task_count: {summary['planning_promise_without_task_count']}",
+        f"- planning_overdue_followup_count: {summary['planning_overdue_followup_count']}",
         f"- failed_instruction_count: {summary['failed_instruction_count']}",
         f"- active_stale_delivery_task_count: {summary['active_stale_delivery_task_count']}",
     ]
@@ -114,16 +118,241 @@ def get_main_health_summary(
     blocked_main = [
         task for task in overview["active_tasks"] if task["agent_id"] == "main" and task["status"] == "blocked"
     ]
+    planning = overview.get("planning") if isinstance(overview.get("planning"), dict) else {}
     return {
         "status": report["status"],
         "main_active_task_count": len(
             [task for task in overview["active_tasks"] if task["agent_id"] == "main"]
         ),
         "main_blocked_task_count": len(blocked_main),
+        "planning_pending_task_count": int(planning.get("planning_pending_task_count", 0) or 0),
+        "planning_promise_without_task_count": int(planning.get("promise_without_task_count", 0) or 0),
+        "planning_overdue_followup_count": int(planning.get("overdue_followup_count", 0) or 0),
         "failed_instruction_count": overview["failed_instruction_count"],
         "active_stale_delivery_task_count": overview["active_stale_delivery_task_count"],
         "blocked_main_tasks": blocked_main,
     }
+
+
+def get_main_planning_summary(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
+) -> dict[str, object]:
+    resolved_paths = _resolve_paths(config_path, paths=paths)
+    normalized_session_key = str(session_key or "").strip() or None
+    statuses = [
+        status
+        for status in list_inflight_statuses(config_path=config_path, paths=resolved_paths)
+        if str(status.get("agent_id") or "") == "main"
+        and (normalized_session_key is None or str(status.get("session_key") or "") == normalized_session_key)
+    ]
+    planning_items = [
+        status
+        for status in statuses
+        if isinstance(status.get("planning"), dict) and bool(status["planning"].get("tool_path_used"))
+    ]
+    anomaly_items = [
+        status for status in planning_items if bool((status.get("planning") or {}).get("anomaly"))
+    ]
+    pending_items = [
+        status for status in planning_items if bool((status.get("planning") or {}).get("planning_pending"))
+    ]
+    overdue_items = [
+        status for status in planning_items if bool((status.get("planning") or {}).get("overdue_followup"))
+    ]
+    planned_followups = [
+        {
+            "task_id": str(status.get("task_id") or ""),
+            "session_key": str(status.get("session_key") or ""),
+            "task_label": str(status.get("task_label") or ""),
+            "status": str(status.get("status") or ""),
+            "planning": status.get("planning"),
+            "user_facing_status_code": str(status.get("user_facing_status_code") or ""),
+            "user_facing_status": str(status.get("user_facing_status") or ""),
+        }
+        for status in sorted(
+            planning_items,
+            key=lambda item: (
+                not bool((item.get("planning") or {}).get("anomaly")),
+                not bool((item.get("planning") or {}).get("overdue_followup")),
+                str(item.get("created_at") or ""),
+                str(item.get("task_id") or ""),
+            ),
+        )
+    ]
+    primary_action = {
+        "kind": "none",
+        "summary": "No planning anomaly requires immediate action.",
+        "command": None,
+        "session_key": normalized_session_key,
+    }
+    if anomaly_items:
+        first = anomaly_items[0]
+        primary_action = {
+            "kind": "inspect-planning-anomaly",
+            "summary": "Inspect the planning anomaly first.",
+            "command": f"python3 scripts/runtime/main_ops.py show {first['task_id']}",
+            "session_key": first.get("session_key"),
+        }
+    elif overdue_items:
+        first = overdue_items[0]
+        primary_action = {
+            "kind": "inspect-overdue-followup",
+            "summary": "Inspect the overdue planned follow-up first.",
+            "command": f"python3 scripts/runtime/main_ops.py show {first['task_id']}",
+            "session_key": first.get("session_key"),
+        }
+    elif pending_items:
+        first = pending_items[0]
+        primary_action = {
+            "kind": "inspect-pending-plan",
+            "summary": "Inspect the pending plan first.",
+            "command": f"python3 scripts/runtime/main_ops.py show {first['task_id']}",
+            "session_key": first.get("session_key"),
+        }
+    status = "ok"
+    if anomaly_items:
+        status = "error"
+    elif overdue_items or pending_items:
+        status = "warn"
+    suggested_next_commands = [
+        *([primary_action["command"]] if primary_action["command"] else []),
+        "python3 scripts/runtime/main_ops.py dashboard --json",
+        "python3 scripts/runtime/main_ops.py continuity --json",
+        "python3 scripts/runtime/main_ops.py triage --json",
+    ]
+    deduped_commands: list[str] = []
+    for command in suggested_next_commands:
+        if command and command not in deduped_commands:
+            deduped_commands.append(command)
+    return {
+        "session_filter": normalized_session_key or "all",
+        "status": status,
+        "planning_task_count": len(planning_items),
+        "planning_pending_task_count": len(pending_items),
+        "planning_anomaly_task_count": len(anomaly_items),
+        "overdue_planned_followup_count": len(overdue_items),
+        "primary_action_kind": primary_action["kind"],
+        "primary_action_command": primary_action["command"],
+        "requires_action": status != "ok",
+        "primary_action": primary_action,
+        "suggested_next_commands": deduped_commands,
+        "tasks": planned_followups,
+    }
+
+
+def render_main_planning(
+    *,
+    config_path: Optional[Path] = None,
+    paths: Optional[TaskPaths] = None,
+    session_key: Optional[str] = None,
+) -> str:
+    summary = get_main_planning_summary(config_path=config_path, paths=paths, session_key=session_key)
+    lines = [
+        "# Main Planning",
+        "",
+        f"- session_filter: {summary['session_filter']}",
+        f"- status: {summary['status']}",
+        f"- planning_task_count: {summary['planning_task_count']}",
+        f"- planning_pending_task_count: {summary['planning_pending_task_count']}",
+        f"- planning_anomaly_task_count: {summary['planning_anomaly_task_count']}",
+        f"- overdue_planned_followup_count: {summary['overdue_planned_followup_count']}",
+        f"- primary_action_kind: {summary['primary_action_kind']}",
+        f"- primary_action_command: {summary['primary_action_command'] or 'none'}",
+    ]
+    tasks = summary.get("tasks", [])
+    if isinstance(tasks, list) and tasks:
+        lines.extend(["", "## Tasks", ""])
+        for item in tasks:
+            planning = item.get("planning") if isinstance(item.get("planning"), dict) else {}
+            lines.append(
+                f"- {item['task_id']} | {item['status']} | plan_status={planning.get('plan_status') or 'none'} | anomaly={planning.get('anomaly') or 'none'} | overdue={planning.get('overdue_followup')} | {item['task_label']}"
+            )
+            if planning.get("followup_summary"):
+                lines.append(f"  followup_summary: {planning['followup_summary']}")
+            if planning.get("followup_due_at"):
+                lines.append(f"  followup_due_at: {planning['followup_due_at']}")
+    return "\n".join(lines) + "\n"
+
+
+def get_main_plugin_install_drift_summary() -> dict[str, object]:
+    report = build_install_drift_report()
+    missing_in_installed = list(report.get("missing_in_installed", []))
+    extra_in_installed = list(report.get("extra_in_installed", []))
+    status = "ok"
+    primary_action = {
+        "kind": "none",
+        "summary": "Installed runtime is in sync with the installable plugin payload.",
+        "command": None,
+    }
+    if not bool(report.get("installed_runtime_exists")):
+        status = "error"
+        primary_action = {
+            "kind": "inspect-installed-runtime",
+            "summary": "Installed runtime is missing; inspect local OpenClaw plugin installation first.",
+            "command": "python3 scripts/runtime/plugin_install_drift.py --json",
+        }
+    elif missing_in_installed or extra_in_installed:
+        status = "warn"
+        primary_action = {
+            "kind": "inspect-installed-runtime",
+            "summary": "Installed runtime drift is detected; inspect missing or extra files first.",
+            "command": "python3 scripts/runtime/plugin_install_drift.py --json",
+        }
+    suggested_next_commands = [
+        *(["python3 scripts/runtime/plugin_install_drift.py --json"] if status != "ok" else []),
+        "python3 scripts/runtime/plugin_doctor.py --json",
+        "python3 scripts/runtime/health_report.py --json",
+    ]
+    deduped_commands: list[str] = []
+    for command in suggested_next_commands:
+        if command and command not in deduped_commands:
+            deduped_commands.append(command)
+    return {
+        "status": status,
+        "installed_runtime_exists": bool(report.get("installed_runtime_exists")),
+        "source_runtime_dir": report.get("source_runtime_dir"),
+        "installed_runtime_dir": report.get("installed_runtime_dir"),
+        "source_file_count": int(report.get("source_file_count", 0) or 0),
+        "installed_file_count": int(report.get("installed_file_count", 0) or 0),
+        "missing_in_installed_count": len(missing_in_installed),
+        "extra_in_installed_count": len(extra_in_installed),
+        "missing_in_installed": missing_in_installed,
+        "extra_in_installed": extra_in_installed,
+        "primary_action_kind": primary_action["kind"],
+        "primary_action_command": primary_action["command"],
+        "requires_action": status != "ok",
+        "primary_action": primary_action,
+        "suggested_next_commands": deduped_commands,
+        "report": report,
+    }
+
+
+def render_main_plugin_install_drift() -> str:
+    summary = get_main_plugin_install_drift_summary()
+    lines = [
+        "# Main Plugin Install Drift",
+        "",
+        f"- status: {summary['status']}",
+        f"- installed_runtime_exists: {summary['installed_runtime_exists']}",
+        f"- source_file_count: {summary['source_file_count']}",
+        f"- installed_file_count: {summary['installed_file_count']}",
+        f"- missing_in_installed_count: {summary['missing_in_installed_count']}",
+        f"- extra_in_installed_count: {summary['extra_in_installed_count']}",
+        f"- primary_action_kind: {summary['primary_action_kind']}",
+        f"- primary_action_command: {summary['primary_action_command'] or 'none'}",
+    ]
+    if summary["missing_in_installed"]:
+        lines.extend(["", "## Missing In Installed", ""])
+        for name in summary["missing_in_installed"]:
+            lines.append(f"- {name}")
+    if summary["extra_in_installed"]:
+        lines.extend(["", "## Extra In Installed", ""])
+        for name in summary["extra_in_installed"]:
+            lines.append(f"- {name}")
+    return "\n".join(lines) + "\n"
 
 
 def _derive_execution_recommendation(
@@ -260,6 +489,8 @@ def render_main_continuity(
                 "auto_resumable_count": 0,
                 "manual_review_count": 0,
                 "not_recommended_count": 0,
+                "planning_anomaly_count": 0,
+                "overdue_followup_count": 0,
                 "task_labels": [],
                 "user_facing_status_counts": {},
                 "user_facing_status_code_counts": {},
@@ -281,6 +512,12 @@ def render_main_continuity(
         bucket = ensure_session(task.session_key)
         bucket["not_recommended_count"] = int(bucket["not_recommended_count"]) + 1
         bucket["task_labels"].append(task.task_label)
+    for task in main_tasks:
+        status_entry = inflight_statuses.get(task.task_id)
+        planning = status_entry.get("planning") if isinstance(status_entry, dict) and isinstance(status_entry.get("planning"), dict) else {}
+        if planning.get("anomaly") or planning.get("overdue_followup"):
+            bucket = ensure_session(task.session_key)
+            bucket["task_labels"].append(task.task_label)
 
     for task in main_tasks:
         bucket = session_summary.get(task.session_key)
@@ -297,6 +534,11 @@ def render_main_continuity(
             if isinstance(code_counts, dict):
                 code = projection["code"]
                 code_counts[code] = int(code_counts.get(code, 0)) + 1
+            planning = status_entry.get("planning") if isinstance(status_entry.get("planning"), dict) else {}
+            if planning.get("anomaly"):
+                bucket["planning_anomaly_count"] = int(bucket["planning_anomaly_count"]) + 1
+            if planning.get("overdue_followup"):
+                bucket["overdue_followup_count"] = int(bucket["overdue_followup_count"]) + 1
 
     suggested_next_commands = [
         "python3 scripts/runtime/main_ops.py lanes --json",
@@ -400,6 +642,8 @@ def render_main_continuity(
         f"- auto_resumable_task_count: {len(auto_resumable)}",
         f"- manual_review_task_count: {len(manual_review)}",
         f"- not_recommended_auto_resume_count: {len(not_recommended)}",
+        f"- planning_anomaly_task_count: {sum(int(bucket['planning_anomaly_count']) for bucket in session_summary.values())}",
+        f"- overdue_planned_followup_count: {sum(int(bucket['overdue_followup_count']) for bucket in session_summary.values())}",
         f"- top_risk_session: {top_risk_session_key or 'none'}",
         f"- primary_action: {primary_action['kind']}",
         f"- primary_action_command: {primary_action['command'] or 'none'}",
@@ -459,7 +703,7 @@ def render_main_continuity(
         ):
             unique_labels = sorted({str(label) for label in bucket["task_labels"] if str(label).strip()})
             lines.append(
-                f"- {session_key} | auto_resumable={bucket['auto_resumable_count']} | manual_review={bucket['manual_review_count']} | not_recommended={bucket['not_recommended_count']}"
+                f"- {session_key} | auto_resumable={bucket['auto_resumable_count']} | manual_review={bucket['manual_review_count']} | not_recommended={bucket['not_recommended_count']} | planning_anomaly={bucket['planning_anomaly_count']} | overdue_followup={bucket['overdue_followup_count']}"
             )
             status_counts = bucket.get("user_facing_status_counts")
             if isinstance(status_counts, dict) and status_counts:
@@ -554,6 +798,8 @@ def get_main_continuity_summary(
                 "auto_resumable_count": 0,
                 "manual_review_count": 0,
                 "not_recommended_count": 0,
+                "planning_anomaly_count": 0,
+                "overdue_followup_count": 0,
                 "task_labels": [],
                 "user_facing_status_counts": {},
                 "user_facing_status_code_counts": {},
@@ -575,6 +821,12 @@ def get_main_continuity_summary(
         bucket = ensure_session(task.session_key)
         bucket["not_recommended_count"] = int(bucket["not_recommended_count"]) + 1
         bucket["task_labels"].append(task.task_label)
+    for task in main_tasks:
+        status_entry = inflight_statuses.get(task.task_id)
+        planning = status_entry.get("planning") if isinstance(status_entry, dict) and isinstance(status_entry.get("planning"), dict) else {}
+        if planning.get("anomaly") or planning.get("overdue_followup"):
+            bucket = ensure_session(task.session_key)
+            bucket["task_labels"].append(task.task_label)
 
     for task in main_tasks:
         bucket = session_summary.get(task.session_key)
@@ -591,6 +843,11 @@ def get_main_continuity_summary(
             if isinstance(code_counts, dict):
                 code = projection["code"]
                 code_counts[code] = int(code_counts.get(code, 0)) + 1
+            planning = status_entry.get("planning") if isinstance(status_entry.get("planning"), dict) else {}
+            if planning.get("anomaly"):
+                bucket["planning_anomaly_count"] = int(bucket["planning_anomaly_count"]) + 1
+            if planning.get("overdue_followup"):
+                bucket["overdue_followup_count"] = int(bucket["overdue_followup_count"]) + 1
 
     suggested_next_commands = [
         "python3 scripts/runtime/main_ops.py lanes --json",
@@ -645,6 +902,8 @@ def get_main_continuity_summary(
             "auto_resumable_count": session_entry["auto_resumable_count"],
             "manual_review_count": session_entry["manual_review_count"],
             "not_recommended_count": session_entry["not_recommended_count"],
+            "planning_anomaly_count": session_entry["planning_anomaly_count"],
+            "overdue_followup_count": session_entry["overdue_followup_count"],
             "task_labels": sorted({str(label) for label in session_entry["task_labels"] if str(label).strip()}),
             "user_facing_status_counts": dict(
                 sorted(
@@ -666,6 +925,8 @@ def get_main_continuity_summary(
                     int(item["auto_resumable_count"])
                     + int(item["manual_review_count"])
                     + int(item["not_recommended_count"])
+                    + int(item["planning_anomaly_count"])
+                    + int(item["overdue_followup_count"])
                 ),
                 str(item["session_key"]),
             ),
@@ -679,6 +940,8 @@ def get_main_continuity_summary(
             "auto_resumable_count": top_session["auto_resumable_count"],
             "manual_review_count": top_session["manual_review_count"],
             "not_recommended_count": top_session["not_recommended_count"],
+            "planning_anomaly_count": top_session["planning_anomaly_count"],
+            "overdue_followup_count": top_session["overdue_followup_count"],
             "task_labels": top_session["task_labels"],
             "user_facing_status_counts": top_session["user_facing_status_counts"],
             "user_facing_status_code_counts": top_session["user_facing_status_code_counts"],
@@ -752,6 +1015,9 @@ def get_main_continuity_summary(
     else:
         continuity_text = "当前没有需要立即处理的 continuity 风险。"
 
+    planning_anomaly_task_count = sum(int(entry["planning_anomaly_count"]) for entry in by_session)
+    overdue_planned_followup_count = sum(int(entry["overdue_followup_count"]) for entry in by_session)
+
     return {
         "session_filter": normalized_session_key or "all",
         "silence_monitor_enabled": monitor.enabled,
@@ -765,6 +1031,8 @@ def get_main_continuity_summary(
         "auto_resumable_task_count": len(auto_resumable),
         "manual_review_task_count": len(manual_review),
         "not_recommended_auto_resume_count": len(not_recommended),
+        "planning_anomaly_task_count": planning_anomaly_task_count,
+        "overdue_planned_followup_count": overdue_planned_followup_count,
         "auto_resumable": [
             {
                 "task_id": task.task_id,
@@ -1599,6 +1867,11 @@ def render_main_dashboard(
                 f"- main_active_task_count: {summary['health']['main_active_task_count']}",
                 f"- main_blocked_task_count: {summary['health']['main_blocked_task_count']}",
                 f"- continuity_risk: auto={summary['continuity']['auto_resumable_task_count']} manual={summary['continuity']['manual_review_task_count']}",
+                f"- planning_promise_without_task_count: {summary['health']['planning_promise_without_task_count']}",
+                f"- planning_overdue_followup_count: {summary['health']['planning_overdue_followup_count']}",
+                f"- plugin_install_drift_status: {summary['plugin_install_drift']['status']}",
+                f"- plugin_install_drift_missing_count: {summary['plugin_install_drift']['missing_in_installed_count']}",
+                f"- plugin_install_drift_extra_count: {summary['plugin_install_drift']['extra_in_installed_count']}",
                 f"- producer_focus_channel: {summary['producer_contract']['focus_channel'] or 'mixed'}",
                 f"- producer_mode: {summary['producer_contract']['producer_mode'] or 'mixed'}",
                 f"- channel_acceptance_phase_status: {summary['channel_acceptance']['phase_status']}",
@@ -1634,6 +1907,9 @@ def render_main_dashboard(
             f"- queues: {compact_summary['queue_count']}",
             f"- lanes: {compact_summary['lane_agent_count']}",
             f"- continuity_risk: auto={compact_summary['continuity_auto_resumable_task_count']} manual={compact_summary['continuity_manual_review_task_count']}",
+            f"- planning_promise_without_task: {compact_summary['planning_promise_without_task_count']}",
+            f"- planning_overdue_followup: {compact_summary['planning_overdue_followup_count']}",
+            f"- plugin_install_drift: {compact_summary['plugin_install_drift_summary']}",
             f"- producer: {compact_summary['producer_summary']}",
             f"- channel_acceptance: {compact_summary['channel_acceptance_summary']}",
             f"- auto_resume: {compact_summary['auto_resume_summary']}",
@@ -1655,6 +1931,11 @@ def render_main_dashboard(
         f"- lane_agent_count: {summary['lanes']['agent_count']}",
         f"- continuity_auto_resumable_task_count: {summary['continuity']['auto_resumable_task_count']}",
         f"- continuity_manual_review_task_count: {summary['continuity']['manual_review_task_count']}",
+        f"- planning_promise_without_task_count: {summary['health']['planning_promise_without_task_count']}",
+        f"- planning_overdue_followup_count: {summary['health']['planning_overdue_followup_count']}",
+        f"- plugin_install_drift_status: {summary['plugin_install_drift']['status']}",
+        f"- plugin_install_drift_missing_count: {summary['plugin_install_drift']['missing_in_installed_count']}",
+        f"- plugin_install_drift_extra_count: {summary['plugin_install_drift']['extra_in_installed_count']}",
         f"- producer_focus_channel: {summary['producer_contract']['focus_channel'] or 'mixed'}",
         f"- producer_mode: {summary['producer_contract']['producer_mode'] or 'mixed'}",
         f"- channel_acceptance_phase_status: {summary['channel_acceptance']['phase_status']}",
@@ -1694,6 +1975,7 @@ def get_main_dashboard_summary(
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(config_path, paths=paths)
     normalized_session_key = str(session_key or "").strip() or None
+    install_drift = get_main_plugin_install_drift_summary()
     producer_contract = get_main_producer_contract_summary(
         config_path=config_path,
         paths=resolved_paths,
@@ -1745,8 +2027,11 @@ def get_main_dashboard_summary(
         health["status"] != "ok"
         or continuity["auto_resumable_task_count"] > 0
         or continuity["manual_review_task_count"] > 0
+        or bool(install_drift.get("requires_action"))
     ):
         status = "warn"
+    if health["planning_promise_without_task_count"] > 0:
+        status = "error"
     action_hint = "No immediate action needed."
     action_hint_command = None
     continuity_primary_action = continuity.get("primary_action", {})
@@ -1760,6 +2045,9 @@ def get_main_dashboard_summary(
     elif health["main_active_task_count"] > 0:
         action_hint = "Review current lanes before changing queue behavior."
         action_hint_command = "python3 scripts/runtime/main_ops.py lanes --json"
+    elif bool(install_drift.get("requires_action")) and str(install_drift.get("primary_action_command") or "").strip():
+        action_hint = "Inspect installed runtime drift before relying on local plugin runtime behavior."
+        action_hint_command = str(install_drift["primary_action_command"])
     elif normalized_session_key and not bool(taskmonitor.get("enabled", True)):
         action_hint = f"Taskmonitor is disabled for {normalized_session_key}; re-enable if you want watchdog coverage."
         action_hint_command = (
@@ -1774,6 +2062,11 @@ def get_main_dashboard_summary(
         "lane_agent_count": lanes["agent_count"],
         "continuity_auto_resumable_task_count": continuity["auto_resumable_task_count"],
         "continuity_manual_review_task_count": continuity["manual_review_task_count"],
+        "planning_promise_without_task_count": health["planning_promise_without_task_count"],
+        "planning_overdue_followup_count": health["planning_overdue_followup_count"],
+        "plugin_install_drift_summary": (
+            f"{install_drift['status']} missing={install_drift['missing_in_installed_count']} extra={install_drift['extra_in_installed_count']}"
+        ),
         "producer_summary": (
             f"{producer_contract['focus_channel']}:{producer_contract['producer_mode']}"
             if producer_contract.get("focus_channel")
@@ -1814,6 +2107,11 @@ def get_main_dashboard_summary(
             "python3 scripts/runtime/main_ops.py queues --json",
             "python3 scripts/runtime/main_ops.py lanes --json",
             "python3 scripts/runtime/main_ops.py continuity --json",
+            *(
+                [str(install_drift["primary_action_command"])]
+                if bool(install_drift.get("requires_action")) and str(install_drift.get("primary_action_command") or "").strip()
+                else []
+            ),
             "python3 scripts/runtime/main_ops.py taskmonitor --action list --json",
         ]
         if normalized_session_key is None
@@ -1832,6 +2130,11 @@ def get_main_dashboard_summary(
         "main_blocked_task_count": health["main_blocked_task_count"],
         "continuity_auto_resumable_task_count": continuity["auto_resumable_task_count"],
         "continuity_manual_review_task_count": continuity["manual_review_task_count"],
+        "planning_promise_without_task_count": health["planning_promise_without_task_count"],
+        "planning_overdue_followup_count": health["planning_overdue_followup_count"],
+        "plugin_install_drift_status": install_drift.get("status"),
+        "plugin_install_drift_missing_count": int(install_drift.get("missing_in_installed_count", 0) or 0),
+        "plugin_install_drift_extra_count": int(install_drift.get("extra_in_installed_count", 0) or 0),
         "producer_focus_channel": producer_contract.get("focus_channel"),
         "producer_mode": producer_contract.get("producer_mode"),
         "channel_acceptance_phase_status": channel_acceptance.get("phase_status"),
@@ -1914,6 +2217,7 @@ def get_main_dashboard_summary(
         "only_issues": only_issues,
         "compact_summary": compact_summary,
         "issue_summary": issue_summary,
+        "plugin_install_drift": install_drift,
         "health": health,
         "queues": queues,
         "lanes": lanes,
@@ -2579,6 +2883,7 @@ def get_main_triage_summary(
     paths: Optional[TaskPaths] = None,
 ) -> dict[str, object]:
     report = build_health_report(config_path=config_path, paths=paths)
+    install_drift = get_main_plugin_install_drift_summary()
     overview = report["overview"]
     producer_contract = get_main_producer_contract_summary(config_path=config_path, paths=paths)
     channel_acceptance = get_main_channel_acceptance_summary(config_path=config_path, paths=paths)
@@ -2595,11 +2900,32 @@ def get_main_triage_summary(
         "session_key": None,
     }
     focus_session_key = None
+    planning_summary = report["overview"].get("planning") if isinstance(report["overview"].get("planning"), dict) else {}
+    planning_anomaly_task = next(
+        (
+            item
+            for item in overview["active_tasks"]
+            if item["agent_id"] == "main"
+            and isinstance(item.get("planning"), dict)
+            and bool(item["planning"].get("promise_without_task"))
+        ),
+        None,
+    )
 
     if blocked_main:
         task = blocked_main[0]
         blocked_age = _blocked_age_minutes(task)
-        if bool(continuity.get("auto_resume_safe_to_apply")) and str(continuity.get("primary_action_command") or "").strip():
+        if int(planning_summary.get("promise_without_task_count", 0) or 0):
+            anomaly_task = planning_anomaly_task or task
+            inspect_command = f"python3 scripts/runtime/main_ops.py show {anomaly_task['task_id']}"
+            primary_action = {
+                "kind": "inspect-planning-anomaly",
+                "summary": "Inspect the planning anomaly before resuming blocked work.",
+                "command": inspect_command,
+                "session_key": anomaly_task.get("session_key"),
+            }
+            next_actions.append(f"Inspect planning anomaly first: `{inspect_command}`")
+        elif bool(continuity.get("auto_resume_safe_to_apply")) and str(continuity.get("primary_action_command") or "").strip():
             primary_action = {
                 "kind": "apply-auto-resume",
                 "summary": "Apply guarded auto-resume first.",
@@ -2637,6 +2963,24 @@ def get_main_triage_summary(
                     "Optional stale cleanup: "
                     "`python3 scripts/runtime/main_ops.py sweep --fail-stale-blocked-after-minutes 60 --reason \"stale blocked main task\"`"
                 )
+    elif int(planning_summary.get("promise_without_task_count", 0) or 0) and planning_anomaly_task is not None:
+        inspect_command = f"python3 scripts/runtime/main_ops.py show {planning_anomaly_task['task_id']}"
+        primary_action = {
+            "kind": "inspect-planning-anomaly",
+            "summary": "Inspect the planning anomaly before taking other actions.",
+            "command": inspect_command,
+            "session_key": planning_anomaly_task.get("session_key"),
+        }
+        focus_session_key = planning_anomaly_task.get("session_key")
+        next_actions.append(f"Inspect planning anomaly first: `{inspect_command}`")
+    elif bool(install_drift.get("requires_action")) and str(install_drift.get("primary_action_command") or "").strip():
+        primary_action = {
+            "kind": str(install_drift.get("primary_action_kind") or "inspect-installed-runtime"),
+            "summary": "Inspect installed runtime drift before relying on local plugin runtime behavior.",
+            "command": str(install_drift["primary_action_command"]),
+            "session_key": None,
+        }
+        next_actions.append(f"Inspect installed runtime drift first: `{install_drift['primary_action_command']}`")
     else:
         next_actions.append("No blocked main task requires manual action.")
 
@@ -2672,6 +3016,8 @@ def get_main_triage_summary(
         suggested_next_commands.append(
             "python3 scripts/runtime/main_ops.py repair --execute-retries --execution-context host"
         )
+    if bool(install_drift.get("requires_action")) and str(install_drift.get("primary_action_command") or "").strip():
+        suggested_next_commands.append(str(install_drift["primary_action_command"]))
     if focus_session_key:
         suggested_next_commands.append(
             f"python3 scripts/runtime/main_ops.py continuity --session-key '{focus_session_key}'"
@@ -2685,7 +3031,13 @@ def get_main_triage_summary(
             deduped_commands.append(command)
     triage_status = (
         "warn"
-        if blocked_main or failed_summary["retryable"] or failed_summary["non_retryable"] or failed_summary["unknown"]
+        if (
+            blocked_main
+            or failed_summary["retryable"]
+            or failed_summary["non_retryable"]
+            or failed_summary["unknown"]
+            or bool(install_drift.get("requires_action"))
+        )
         else "ok"
     )
     runbook = {
@@ -2701,11 +3053,17 @@ def get_main_triage_summary(
         "status": report["status"],
         "triage_status": triage_status,
         "blocked_main_task_count": len(blocked_main),
+        "planning_promise_without_task_count": int(report["overview"].get("planning", {}).get("promise_without_task_count", 0) or 0),
+        "planning_overdue_followup_count": int(report["overview"].get("planning", {}).get("overdue_followup_count", 0) or 0),
         "retryable_failed_instruction_count": failed_summary["retryable"],
         "persistent_retryable_failed_instruction_count": failed_summary["persistent_retryable"],
         "non_retryable_failed_instruction_count": failed_summary["non_retryable"],
         "unknown_failed_instruction_count": failed_summary["unknown"],
         "focus_session_key": focus_session_key,
+        "plugin_install_drift": install_drift,
+        "plugin_install_drift_status": install_drift.get("status"),
+        "plugin_install_drift_missing_count": int(install_drift.get("missing_in_installed_count", 0) or 0),
+        "plugin_install_drift_extra_count": int(install_drift.get("extra_in_installed_count", 0) or 0),
         "producer_contract": producer_contract,
         "channel_acceptance": channel_acceptance,
         "producer_focus_channel": producer_contract.get("focus_channel"),
@@ -2742,11 +3100,16 @@ def render_main_triage(
         f"- status: {summary['status']}",
         f"- triage_status: {summary['triage_status']}",
         f"- blocked_main_task_count: {summary['blocked_main_task_count']}",
+        f"- planning_promise_without_task_count: {summary['planning_promise_without_task_count']}",
+        f"- planning_overdue_followup_count: {summary['planning_overdue_followup_count']}",
         f"- retryable_failed_instruction_count: {summary['retryable_failed_instruction_count']}",
         f"- persistent_retryable_failed_instruction_count: {summary['persistent_retryable_failed_instruction_count']}",
         f"- non_retryable_failed_instruction_count: {summary['non_retryable_failed_instruction_count']}",
         f"- unknown_failed_instruction_count: {summary['unknown_failed_instruction_count']}",
         f"- focus_session_key: {summary.get('focus_session_key') or 'none'}",
+        f"- plugin_install_drift_status: {summary.get('plugin_install_drift_status') or 'unknown'}",
+        f"- plugin_install_drift_missing_count: {summary.get('plugin_install_drift_missing_count')}",
+        f"- plugin_install_drift_extra_count: {summary.get('plugin_install_drift_extra_count')}",
         f"- producer_focus_channel: {summary.get('producer_focus_channel') or 'mixed'}",
         f"- producer_mode: {summary.get('producer_mode') or 'mixed'}",
         f"- channel_acceptance_phase_status: {summary.get('channel_acceptance_phase_status') or 'unknown'}",
@@ -3167,6 +3530,14 @@ def main() -> None:
     dashboard_parser.add_argument("--compact", action="store_true", help="Emit a shorter day-to-day dashboard view.")
     dashboard_parser.add_argument("--only-issues", action="store_true", help="Only show non-OK findings in the dashboard view.")
     dashboard_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
+    planning_parser = subparsers.add_parser("planning", help="Show planning-tool path state and anomalies for main.")
+    planning_parser.add_argument("--session-key", default=None, help="Focus the planning summary on one session.")
+    planning_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
+    plugin_install_drift_parser = subparsers.add_parser(
+        "plugin-install-drift",
+        help="Show installed-runtime drift against the installable plugin payload.",
+    )
+    plugin_install_drift_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
     producer_parser = subparsers.add_parser("producer", help="Show the channel-neutral producer contract summary.")
     producer_parser.add_argument("--session-key", default=None, help="Focus the producer contract on one session.")
     producer_parser.add_argument("--channel", default=None, help="Override the focus channel.")
@@ -3391,6 +3762,35 @@ def main() -> None:
             ),
             end="",
         )
+        return
+    if args.command == "planning":
+        if args.json:
+            print(
+                json.dumps(
+                    get_main_planning_summary(
+                        config_path=config_path,
+                        paths=paths,
+                        session_key=args.session_key,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+        print(
+            render_main_planning(
+                config_path=config_path,
+                paths=paths,
+                session_key=args.session_key,
+            ),
+            end="",
+        )
+        return
+    if args.command == "plugin-install-drift":
+        if args.json:
+            print(json.dumps(get_main_plugin_install_drift_summary(), ensure_ascii=False, indent=2))
+            return
+        print(render_main_plugin_install_drift(), end="")
         return
     if args.command == "producer":
         if args.json:

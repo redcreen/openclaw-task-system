@@ -1,6 +1,6 @@
 # Test Suite
 
-> 最后更新：2026-04-06
+> 最后更新：2026-04-11
 > 角色：这是本项目的正式测试手册。它定义自动化 testsuite 跑什么、保证什么，以及哪些属于人工验收。
 
 ## 1. 测试目标
@@ -69,6 +69,9 @@ bash scripts/run_tests.sh
 
 - Telegram / Feishu 的真实交互验收
 - `dashboard --json`
+- `dashboard --only-issues`
+- `planning --json`
+- `plugin-install-drift --json`
 - `continuity --json`
 - `queues --json`
 - `lanes --json`
@@ -112,6 +115,20 @@ Smoke：
 
 ```bash
 python3 scripts/runtime/plugin_smoke.py --json
+python3 scripts/runtime/check_task_user_content_leaks.py --json
+python3 scripts/runtime/check_task_user_content_leaks.py --since 2026-04-11T12:18:34+08:00 --json
+python3 scripts/runtime/scrub_task_user_content_history.py --json
+python3 scripts/runtime/planning_acceptance.py --json
+python3 scripts/runtime/create_planning_acceptance_record.py --json
+python3 scripts/runtime/prepare_planning_acceptance.py --json
+python3 scripts/runtime/capture_planning_acceptance_artifacts.py --json
+python3 scripts/runtime/run_planning_acceptance_bundle.py --json
+python3 scripts/runtime/planning_acceptance_suite.py --json
+python3 scripts/runtime/same_session_routing_acceptance.py --json
+python3 scripts/runtime/plugin_install_drift.py --json
+python3 scripts/runtime/main_ops.py plugin-install-drift --json
+python3 scripts/runtime/main_ops.py dashboard --only-issues
+python3 scripts/runtime/stable_acceptance.py --json
 ```
 
 ## 4. Python 测试分组
@@ -172,10 +189,29 @@ python3 scripts/runtime/plugin_smoke.py --json
 ### 4.5 接线与 acceptance 脚本
 
 - [test_plugin_doctor.py](../tests/test_plugin_doctor.py)
+- [test_plugin_install_drift.py](../tests/test_plugin_install_drift.py)
 - [test_plugin_smoke.py](../tests/test_plugin_smoke.py)
+- [test_check_task_user_content_leaks.py](../tests/test_check_task_user_content_leaks.py)
+- [test_scrub_task_user_content_history.py](../tests/test_scrub_task_user_content_history.py)
 - [test_main_acceptance.py](../tests/test_main_acceptance.py)
+- [test_planning_acceptance.py](../tests/test_planning_acceptance.py)
+- [test_create_planning_acceptance_record.py](../tests/test_create_planning_acceptance_record.py)
+- [test_prepare_planning_acceptance.py](../tests/test_prepare_planning_acceptance.py)
+- [test_capture_planning_acceptance_artifacts.py](../tests/test_capture_planning_acceptance_artifacts.py)
+- [test_run_planning_acceptance_bundle.py](../tests/test_run_planning_acceptance_bundle.py)
+- [test_planning_acceptance_suite.py](../tests/test_planning_acceptance_suite.py)
+- [test_same_session_routing.py](../tests/test_same_session_routing.py)
+- [test_same_session_routing_acceptance.py](../tests/test_same_session_routing_acceptance.py)
 - [test_channel_acceptance.py](../tests/test_channel_acceptance.py)
 - [test_stable_acceptance.py](../tests/test_stable_acceptance.py)
+
+其中 same-session routing acceptance 覆盖：
+
+- `merge-before-start`
+- `interrupt-and-restart`
+- `queue-as-new-task`
+- runtime-owned classifier trigger
+- collecting-window materialization
 
 ## 5. Node plugin 测试分组
 
@@ -195,8 +231,9 @@ python3 scripts/runtime/plugin_smoke.py --json
 - terminal / preempt / supersede
 - `sent / skipped / dropped / error / adapter-unavailable`
 - continuation / host delivery / fulfilled shortcut
-- raw `<task_user_content>` marker suppression
-- host / continuation direct-send paths also suppress raw `<task_user_content>` leakage
+- plain-text mode-first delivery contract
+- historical `<task_user_content>` leak audit and scrub tooling
+- decision examples for `no planning / mode=none / mode=immediate-summary / mode=full-answer`
 - promise-guard rehydrate after reload
 - same-audience control-plane lane recovers after timed-out direct send
 - timed-out high-value `[wd]` can be re-enqueued into supervised retry delivery when still worth sending
@@ -217,6 +254,10 @@ python3 scripts/runtime/plugin_smoke.py --json
   - `producerMode`
   - channel capability matrix
 
+补充阅读：
+
+- [task_user_content_decision.md](../docs/task_user_content_decision.md)
+
 ## 6. 通过标准
 
 ### 6.1 自动化 testsuite 通过
@@ -228,6 +269,7 @@ python3 scripts/runtime/plugin_smoke.py --json
 - Node plugin tests 全绿
 - `plugin_doctor.py` 通过
 - `plugin_smoke.py --json` 返回 `"ok": true`
+- `stable_acceptance.py --json` 返回 `"ok": true`
 
 ### 6.2 阶段退出意义
 
@@ -247,7 +289,12 @@ python3 scripts/runtime/plugin_smoke.py --json
 - `[wd]` 是否在用户视角第一时间可见
 - control-plane 消息是否被普通 reply 堵住
 - 是否出现重复 ack / 重复 follow-up / 残留 received task
-- `dashboard / continuity` 是否与预期一致
+- `dashboard / planning / continuity` 是否与预期一致
+
+真实 / 半真实 planning 验收步骤见：
+
+- [planning_acceptance_runbook.md](./planning_acceptance_runbook.md)
+- [planning_acceptance_record_template.md](./planning_acceptance_record_template.md)
 
 ## 7. 当前边界
 
@@ -257,7 +304,7 @@ python3 scripts/runtime/plugin_smoke.py --json
 
 ## 8. Phase 6 最小 starter suite
 
-针对 `llm_tool_task_planning` 这条新线，建议不要一上来把整套 testsuite 做大，而是先跑通一个最小闭环。
+针对 `llm_tool_task_planning` 这条新线，当前已经先跑通了一个最小闭环；后续再在这个闭环上继续扩覆盖。
 
 ### 8.1 最小验证目标
 
@@ -273,35 +320,64 @@ python3 scripts/runtime/plugin_smoke.py --json
 
 #### Python 最小集
 
-优先从 runtime truth source 和 finalize contract 开始：
+当前最小闭环已经覆盖的 Python 侧重点：
 
 - [test_openclaw_hooks.py](../tests/test_openclaw_hooks.py)
-  - plan register / materialize / overdue execution
-- [test_main_task_adapter.py](../tests/test_main_task_adapter.py)
-  - promise guard / finalize anomaly
-- [test_task_policy.py](../tests/test_task_policy.py)
-  - follow-up plan contract / `followup_due_at`
-
-建议新增的最小文件：
-
-- `tests/test_task_planning_tools.py`
   - 覆盖：
-    - `ts_create_followup_plan`
-    - `ts_schedule_followup_from_plan`
-    - `ts_attach_promise_guard`
+    - follow-up plan create / materialize
+    - `promise-without-task` finalize anomaly
+    - overdue continuation claim ordering
+- [test_task_status.py](../tests/test_task_status.py)
+  - 覆盖：
+    - planning anomaly / overdue follow-up truth-source projection
+- [test_health_report.py](../tests/test_health_report.py)
+  - 覆盖：
+    - planning health / anomaly issue projection
+- [test_main_ops.py](../tests/test_main_ops.py)
+  - 覆盖：
+    - dashboard / triage / continuity 对 planning anomaly 的运维投影
+    - plugin-install-drift 在 dashboard / only-issues / triage 间的计数与状态一致性
+- [test_planning_acceptance.py](../tests/test_planning_acceptance.py)
+  - 覆盖：
+    - Phase 6 最小 acceptance 路径
+    - overdue claim + planning / continuity ops projection
+- [test_create_planning_acceptance_record.py](../tests/test_create_planning_acceptance_record.py)
+  - 覆盖：
+    - 记录模板生成
+    - next-step / JSON 输出
+- [test_prepare_planning_acceptance.py](../tests/test_prepare_planning_acceptance.py)
+  - 覆盖：
+    - artifacts 目录准备
+    - 预备入口 JSON 输出
+- [test_capture_planning_acceptance_artifacts.py](../tests/test_capture_planning_acceptance_artifacts.py)
+  - 覆盖：
+    - 验收输出落盘
+    - capture 入口 JSON 输出
+- [test_run_planning_acceptance_bundle.py](../tests/test_run_planning_acceptance_bundle.py)
+  - 覆盖：
+    - bundle 汇总
+    - 失败标签聚合
+- [test_planning_acceptance_suite.py](../tests/test_planning_acceptance_suite.py)
+  - 覆盖：
+    - helper tests + bundle 联合汇总
+- [test_check_task_user_content_leaks.py](../tests/test_check_task_user_content_leaks.py)
+  - 覆盖：
+    - gateway log / latest main session / plugin debug log 的 `<task_user_content>` 泄漏扫描
+    - JSON 返回与非零退出码 contract
+    - suite JSON 输出
+- [test_plugin_install_drift.py](../tests/test_plugin_install_drift.py)
+  - 覆盖：
+    - installable payload 与本地安装态 runtime 漂移检查
 
 #### Node plugin 最小集
 
-优先验证控制面职责没有被这条新线破坏：
+当前最小闭环已经覆盖的 Node plugin 侧重点：
 
 - [plugin/tests/pre-register-and-ack.test.mjs](../plugin/tests/pre-register-and-ack.test.mjs)
   - 首条 `[wd]` 仍为 runtime-owned
 - [plugin/tests/control-plane-lane.test.mjs](../plugin/tests/control-plane-lane.test.mjs)
   - 30 秒 follow-up / fallback 不被 tool path 抢走
-
-建议新增的最小文件：
-
-- `plugin/tests/tool-planning-flow.test.mjs`
+- [plugin/tests/tool-planning-flow.test.mjs](../plugin/tests/tool-planning-flow.test.mjs)
   - 覆盖：
     - post-ack 默认进入 tool-assisted planning
     - fixed runtime-owned control-plane messages 仍走原控制面路径

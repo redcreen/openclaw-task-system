@@ -9,6 +9,7 @@ from typing import Optional
 from delivery_outage import find_outage, load_outages
 from delivery_reconcile import reconcile_delivery_artifacts
 from instruction_executor import summarize_failed_instructions
+from plugin_install_drift import build_install_drift_report
 from plugin_doctor import run_checks
 from task_config import load_task_system_config
 from task_state import TaskPaths, default_paths
@@ -36,10 +37,11 @@ def build_health_report(
     overview = build_system_overview(config_path=config_path, paths=paths)
     stale_findings = reconcile_delivery_artifacts(config_path=config_path, paths=paths, apply_changes=False)
     plugin_checks = run_checks()
+    install_drift = build_install_drift_report()
     failed_instruction_summary = summarize_failed_instructions(paths=resolved_paths)
     acknowledged_outages = load_outages(paths=resolved_paths)
 
-    failing_plugin_checks = [check.name for check in plugin_checks if not check.ok]
+    failing_plugin_checks = [check.name for check in plugin_checks if not check.ok and check.name != "installed_runtime_sync"]
     issue_entries: list[dict[str, object]] = []
 
     if failing_plugin_checks:
@@ -49,6 +51,15 @@ def build_health_report(
                 severity="error",
                 count=len(failing_plugin_checks),
                 remediation="Run `python3 scripts/runtime/plugin_doctor.py` from the task-system root and fix missing plugin paths/config.",
+            )
+        )
+    if not bool(install_drift["ok"]):
+        issue_entries.append(
+            _issue_entry(
+                code=f"plugin-install-drift:{len(install_drift['missing_in_installed'])}",
+                severity="warn",
+                count=len(install_drift["missing_in_installed"]),
+                remediation="Run `python3 scripts/runtime/plugin_install_drift.py --json` to inspect install drift; current OpenClaw local install may be blocked by dangerous-code detection, so do not assume `openclaw plugins install ./plugin` will refresh the installed runtime.",
             )
         )
     acknowledged_failed_items = [
@@ -103,6 +114,37 @@ def build_health_report(
                 remediation="Inspect blocked tasks with `task_status.py --overview` and resume or fail them explicitly through the host flow.",
             )
         )
+    planning = overview.get("planning") if isinstance(overview.get("planning"), dict) else {}
+    promise_without_task_count = int(planning.get("promise_without_task_count", 0) or 0)
+    overdue_followup_count = int(planning.get("overdue_followup_count", 0) or 0)
+    planning_pending_count = int(planning.get("planning_pending_task_count", 0) or 0)
+    if promise_without_task_count:
+        issue_entries.append(
+            _issue_entry(
+                code=f"planning-promise-without-task:{promise_without_task_count}",
+                severity="error",
+                count=promise_without_task_count,
+                remediation="Inspect planning anomalies in `main_ops.py dashboard --json` or `task_status.py --overview`; fix the tool path so every future promise materializes a real follow-up task before finalize.",
+            )
+        )
+    if overdue_followup_count:
+        issue_entries.append(
+            _issue_entry(
+                code=f"planning-overdue-followups:{overdue_followup_count}",
+                severity="warn",
+                count=overdue_followup_count,
+                remediation="Inspect overdue planned follow-ups in `main_ops.py continuity --json` and ensure the continuation runner is progressing or recover the affected sessions.",
+            )
+        )
+    if planning_pending_count and not promise_without_task_count:
+        issue_entries.append(
+            _issue_entry(
+                code=f"planning-pending:{planning_pending_count}",
+                severity="warn",
+                count=planning_pending_count,
+                remediation="Review pending planning tasks to confirm follow-up plans are materialized and finalized as expected.",
+            )
+        )
 
     severities = {entry["severity"] for entry in issue_entries}
     if "error" in severities:
@@ -129,6 +171,7 @@ def build_health_report(
             }
             for check in plugin_checks
         ],
+        "plugin_install_drift": install_drift,
     }
 
 
@@ -156,8 +199,14 @@ def render_markdown(report: dict[str, object]) -> str:
             f"- failed_instruction_unknown_count: {report['failed_instruction_summary']['unknown']}",
             f"- active_stale_delivery_task_count: {overview['active_stale_delivery_task_count']}",
             f"- stale_delivery_task_count: {overview['stale_delivery_task_count']}",
+            f"- planning_tool_path_task_count: {overview['planning']['tool_path_task_count']}",
+            f"- planning_pending_task_count: {overview['planning']['planning_pending_task_count']}",
+            f"- planning_promise_without_task_count: {overview['planning']['promise_without_task_count']}",
+            f"- planning_overdue_followup_count: {overview['planning']['overdue_followup_count']}",
         ]
     )
+    if overview["planning"]["anomaly_counts"]:
+        lines.append(f"- planning_anomaly_counts: {json.dumps(overview['planning']['anomaly_counts'], ensure_ascii=False)}")
 
     lines.append("")
     lines.append("## Plugin Checks")
@@ -165,6 +214,16 @@ def render_markdown(report: dict[str, object]) -> str:
     for check in report["plugin_checks"]:
         status = "ok" if check["ok"] else "missing"
         lines.append(f"- {check['name']}: {status} ({check['detail']})")
+
+    drift = report.get("plugin_install_drift", {})
+    if isinstance(drift, dict):
+        lines.append("")
+        lines.append("## Installed Runtime Drift")
+        lines.append("")
+        lines.append(f"- ok: {drift.get('ok')}")
+        lines.append(f"- installed_runtime_exists: {drift.get('installed_runtime_exists')}")
+        lines.append(f"- missing_in_installed: {json.dumps(drift.get('missing_in_installed', []), ensure_ascii=False)}")
+        lines.append(f"- extra_in_installed: {json.dumps(drift.get('extra_in_installed', []), ensure_ascii=False)}")
 
     if report["issue_entries"]:
         lines.append("")

@@ -36,6 +36,7 @@
 python3 scripts/runtime/main_ops.py health
 python3 scripts/runtime/main_ops.py dashboard
 python3 scripts/runtime/main_ops.py dashboard --json
+python3 scripts/runtime/main_ops.py dashboard --only-issues
 python3 scripts/runtime/main_ops.py triage
 python3 scripts/runtime/main_ops.py triage --json
 ```
@@ -45,6 +46,8 @@ python3 scripts/runtime/main_ops.py triage --json
 - 现在整体是否正常
 - 是否有需要马上处理的问题
 - 当前最该做的下一步是什么
+- install drift 现在是不是已经出现在 dashboard / triage 主视图里
+- 当没有别的 blocked 风险时，install drift 本身是否已经足够让 dashboard 进入 `warn`
 
 ### 2.2 队列与 lane
 
@@ -89,7 +92,59 @@ python3 scripts/runtime/main_ops.py channel-acceptance --json
 - 这一条 session 在当前边界下的 producer 语义是什么
 - 当前 channel acceptance matrix 是否仍然成立
 
-### 2.5 任务控制
+### 2.5 planning 与 Phase 6 运维
+
+```bash
+python3 scripts/runtime/main_ops.py planning
+python3 scripts/runtime/main_ops.py planning --json
+python3 scripts/runtime/check_task_user_content_leaks.py --json
+python3 scripts/runtime/check_task_user_content_leaks.py --since 2026-04-11T12:18:34+08:00 --json
+python3 scripts/runtime/planning_acceptance.py --json
+python3 scripts/runtime/create_planning_acceptance_record.py
+python3 scripts/runtime/create_planning_acceptance_record.py --print-next-steps
+python3 scripts/runtime/create_planning_acceptance_record.py --json
+python3 scripts/runtime/prepare_planning_acceptance.py --json
+python3 scripts/runtime/capture_planning_acceptance_artifacts.py --json
+python3 scripts/runtime/run_planning_acceptance_bundle.py --json
+python3 scripts/runtime/planning_acceptance_suite.py --json
+python3 scripts/runtime/main_ops.py plugin-install-drift --json
+```
+
+适合回答：
+
+- 当前 planning task / pending / anomaly / overdue 是什么
+- tool-assisted follow-up 是否已经物化成真实任务
+- Phase 6 最小闭环是否仍然成立
+- 如何快速新建一份当天的验收记录
+- 如何把记录入口接给其他脚本或自动化
+- 如何自动把关键验收输出落进 artifacts 目录
+- 如何一条命令跑完整个半真实 acceptance bundle
+- 如何一条命令同时跑 helper tests + bundle
+- 当前 installable plugin payload 和本地安装态 runtime 是否已经漂移
+- install drift 是否已经被 dashboard / triage 主视图吸收成直接可见信号
+
+真实 / 半真实通道验收手册见：
+
+- [planning_acceptance_runbook.md](./planning_acceptance_runbook.md)
+- [planning_acceptance_record_template.md](./planning_acceptance_record_template.md)
+- [planning_acceptance_record_2026-04-09.md](./planning_acceptance_record_2026-04-09.md)
+- [planning_acceptance_handoff.md](./planning_acceptance_handoff.md)
+- [planning_acceptance_commit_plan.md](./planning_acceptance_commit_plan.md)
+
+### 2.6 same-session routing 运维
+
+```bash
+python3 scripts/runtime/same_session_routing_acceptance.py --json
+python3 scripts/runtime/stable_acceptance.py --json
+```
+
+适合回答：
+
+- same-session follow-up 是否会被正式路由到 `steering / queueing / control-plane / collect-more`
+- classifier trigger / fallback / collecting-window materialization 是否仍然正常
+- stable acceptance 是否仍然包含这条子项目
+
+### 2.7 任务控制
 
 ```bash
 python3 scripts/runtime/main_ops.py list
@@ -166,6 +221,7 @@ python3 scripts/runtime/enqueue_test_instruction.py --channel slack --account-id
 3. 必要时看 `queues / lanes`
 4. 需要发送与恢复时再看 instruction executor / watchdog cycle
 5. 最后再做清理、取消或 stop 类动作
+6. 如果 triage 提示 install drift，先跑 `main_ops.py plugin-install-drift --json`
 
 ## 5. 验证入口
 
@@ -180,6 +236,18 @@ bash scripts/run_tests.sh
 ```bash
 python3 scripts/runtime/stable_acceptance.py
 python3 scripts/runtime/stable_acceptance.py --json
+```
+
+Phase 6 planning 验收：
+
+```bash
+python3 scripts/runtime/planning_acceptance.py --json
+```
+
+same-session routing 验收：
+
+```bash
+python3 scripts/runtime/same_session_routing_acceptance.py --json
 ```
 
 插件自检：

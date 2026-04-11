@@ -7,6 +7,8 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from plugin_install_drift import build_install_drift_report
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = PROJECT_ROOT / "plugin"
 HOOKS_SCRIPT = PLUGIN_ROOT / "scripts" / "runtime" / "openclaw_hooks.py"
@@ -47,6 +49,7 @@ def resolve_plugin_entry_target() -> Path | None:
 def run_checks() -> list[CheckResult]:
     config_path = choose_config_path()
     plugin_entry_target = resolve_plugin_entry_target()
+    install_drift = build_install_drift_report()
     checks = [
         CheckResult("project_root", PROJECT_ROOT.exists(), str(PROJECT_ROOT)),
         CheckResult("plugin_root", PLUGIN_ROOT.exists(), str(PLUGIN_ROOT)),
@@ -60,6 +63,18 @@ def run_checks() -> list[CheckResult]:
         CheckResult("plugin_runtime_entry", (PLUGIN_ROOT / "src" / "plugin" / "index.ts").exists(), str(PLUGIN_ROOT / "src" / "plugin" / "index.ts")),
         CheckResult("hooks_script", HOOKS_SCRIPT.exists(), str(HOOKS_SCRIPT)),
         CheckResult("config_path", config_path.exists(), str(config_path)),
+        CheckResult(
+            "installed_runtime_sync",
+            bool(install_drift["ok"]),
+            json.dumps(
+                {
+                    "installed_runtime_dir": install_drift["installed_runtime_dir"],
+                    "missing_in_installed": install_drift["missing_in_installed"],
+                    "extra_in_installed": install_drift["extra_in_installed"],
+                },
+                ensure_ascii=False,
+            ),
+        ),
     ]
     return checks
 

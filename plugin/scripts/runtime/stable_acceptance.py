@@ -13,6 +13,8 @@ from channel_acceptance import build_channel_acceptance_summary
 from health_report import build_health_report
 from instruction_executor import retry_failed_instructions
 from main_acceptance import run_main_acceptance
+from planning_acceptance import run_planning_acceptance
+from same_session_routing_acceptance import run_same_session_routing_acceptance
 from plugin_doctor import run_checks
 from plugin_smoke import run_plugin_smoke
 from task_state import TaskPaths
@@ -78,6 +80,24 @@ def run_stable_acceptance() -> dict[str, Any]:
                 step="main-acceptance",
                 ok=bool(main_payload.get("ok")),
                 detail=json.dumps(main_payload, ensure_ascii=False),
+            )
+        )
+
+        planning_payload = run_planning_acceptance()
+        steps.append(
+            StableAcceptanceStep(
+                step="planning-acceptance",
+                ok=bool(planning_payload.get("ok")),
+                detail=json.dumps(planning_payload, ensure_ascii=False),
+            )
+        )
+
+        same_session_payload = run_same_session_routing_acceptance()
+        steps.append(
+            StableAcceptanceStep(
+                step="same-session-routing-acceptance",
+                ok=bool(same_session_payload.get("ok")),
+                detail=json.dumps(same_session_payload, ensure_ascii=False),
             )
         )
 

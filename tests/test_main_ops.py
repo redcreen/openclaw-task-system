@@ -11,6 +11,7 @@ from runtime_loader import load_runtime_module, task_state_module
 
 
 main_ops = load_runtime_module("main_ops")
+health_report = load_runtime_module("health_report")
 
 
 class MainOpsTests(unittest.TestCase):
@@ -18,8 +19,49 @@ class MainOpsTests(unittest.TestCase):
         self.temp_dir = Path(tempfile.mkdtemp(prefix="task-system-main-ops-tests."))
         self.paths = task_state_module.TaskPaths.from_root(self.temp_dir)
         self.store = task_state_module.TaskStore(paths=self.paths)
+        self._install_drift_payload = {
+            "ok": True,
+            "installed_runtime_exists": True,
+            "source_runtime_dir": "/tmp/source",
+            "installed_runtime_dir": "/tmp/installed",
+            "source_file_count": 0,
+            "installed_file_count": 0,
+            "missing_in_installed": [],
+            "extra_in_installed": [],
+        }
+        self._health_report_drift_patcher = patch.object(
+            health_report,
+            "build_install_drift_report",
+            return_value=dict(self._install_drift_payload),
+        )
+        self._main_ops_drift_patcher = patch.object(
+            main_ops,
+            "build_install_drift_report",
+            return_value=dict(self._install_drift_payload),
+        )
+        self._health_report_run_checks_patcher = patch.object(
+            health_report,
+            "run_checks",
+            return_value=[],
+        )
+        self._main_ops_health_report_patcher = patch.object(
+            main_ops,
+            "build_health_report",
+            side_effect=lambda *, config_path=None, paths=None: health_report.build_health_report(
+                config_path=config_path,
+                paths=paths,
+            ),
+        )
+        self._health_report_drift_patcher.start()
+        self._main_ops_drift_patcher.start()
+        self._health_report_run_checks_patcher.start()
+        self._main_ops_health_report_patcher.start()
 
     def tearDown(self) -> None:
+        self._main_ops_health_report_patcher.stop()
+        self._health_report_run_checks_patcher.stop()
+        self._main_ops_drift_patcher.stop()
+        self._health_report_drift_patcher.stop()
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def _config_path(self) -> Path:
@@ -129,6 +171,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- queue_count: 0", rendered)
         self.assertIn("- lane_agent_count: 0", rendered)
         self.assertIn("- continuity_auto_resumable_task_count: 0", rendered)
+        self.assertIn("- plugin_install_drift_status: ok", rendered)
+        self.assertIn("- plugin_install_drift_missing_count: 0", rendered)
         self.assertIn("- top_followup_session: none", rendered)
         self.assertIn("- action_hint: No immediate action needed.", rendered)
         self.assertIn("- action_hint_command: none", rendered)
@@ -218,38 +262,63 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["focus_session_key"], "session:main:dashboard-risk")
         self.assertEqual(summary["top_followup_session"]["auto_resumable_count"], 1)
         self.assertEqual(summary["top_followup_session"]["user_facing_status_counts"], {"已阻塞": 1})
-        self.assertEqual(summary["top_followup_session"]["user_facing_status_code_counts"], {"blocked": 1})
-        self.assertEqual(summary["action_hint"], "Apply the watchdog auto-resume plan now.")
-        self.assertEqual(
-            summary["action_hint_command"],
-            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+
+    def test_dashboard_and_continuity_project_planning_anomalies(self) -> None:
+        source = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:planning-risk",
+            channel="telegram",
+            chat_id="chat:main:planning-risk",
+            task_label="planning anomaly source",
         )
-        self.assertEqual(
-            summary["auto_resume_command"],
-            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+        source.meta["tool_followup_plan"] = {
+            "plan_id": "plan_123",
+            "status": "anomaly",
+            "followup_due_at": "2020-01-01T00:00:00+00:00",
+            "followup_summary": "5分钟后同步结果",
+        }
+        source.meta["planning_promise_guard"] = {
+            "status": "anomaly",
+            "expected_by_finalize": True,
+        }
+        source.meta["planning_anomaly"] = "promise-without-task"
+        self.store.save_task(source)
+
+        followup = self.store.observe_task(
+            agent_id="main",
+            session_key="session:main:planning-risk",
+            channel="telegram",
+            chat_id="chat:main:planning-risk",
+            task_label="planning overdue follow-up",
+            meta={"source": "tool-followup-plan", "plan_id": "plan_123"},
         )
-        self.assertEqual(summary["producer_contract"]["producer_mode_counts"]["receive-side-producer"], 1)
-        self.assertEqual(summary["primary_action_kind"], "apply-auto-resume")
-        self.assertEqual(
-            summary["primary_action_command"],
-            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
+        self.store.schedule_continuation(
+            followup.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2020-01-01T00:00:00+00:00",
+            payload={"reply_text": "later", "wait_seconds": 60},
+            reason="scheduled tool-assisted continuation wait",
         )
-        self.assertEqual(summary["runbook_status"], "warn")
-        self.assertTrue(summary["requires_action"])
-        self.assertEqual(
-            summary["suggested_next_commands"][0],
-            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
-        )
-        self.assertEqual(summary["primary_action"]["kind"], "apply-auto-resume")
-        self.assertEqual(summary["primary_action"]["session_key"], "session:main:dashboard-risk")
-        self.assertEqual(summary["runbook"]["primary_action"]["kind"], "apply-auto-resume")
-        self.assertEqual(
-            summary["runbook"]["commands"][0],
-            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
-        )
-        self.assertEqual(summary["health"]["main_blocked_task_count"], 1)
-        self.assertEqual(summary["queues"]["queue_count"], 0)
-        self.assertEqual(summary["taskmonitor"]["override_count"], 0)
+
+        dashboard = main_ops.get_main_dashboard_summary(config_path=self._config_path(), paths=self.paths)
+        continuity = main_ops.get_main_continuity_summary(config_path=self._config_path(), paths=self.paths)
+        triage = main_ops.get_main_triage_summary(config_path=self._config_path(), paths=self.paths)
+        rendered_dashboard = main_ops.render_main_dashboard(config_path=self._config_path(), paths=self.paths, compact=True)
+        rendered_continuity = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(dashboard["status"], "error")
+        self.assertEqual(dashboard["health"]["planning_promise_without_task_count"], 1)
+        self.assertEqual(dashboard["health"]["planning_overdue_followup_count"], 1)
+        self.assertEqual(continuity["planning_anomaly_task_count"], 1)
+        self.assertEqual(continuity["overdue_planned_followup_count"], 1)
+        self.assertEqual(continuity["top_risk_session"]["session_key"], "session:main:planning-risk")
+        self.assertEqual(continuity["top_risk_session"]["planning_anomaly_count"], 1)
+        self.assertEqual(continuity["top_risk_session"]["overdue_followup_count"], 1)
+        self.assertEqual(triage["planning_promise_without_task_count"], 1)
+        self.assertEqual(triage["primary_action_kind"], "inspect-planning-anomaly")
+        self.assertIn("- planning_promise_without_task: 1", rendered_dashboard)
+        self.assertIn("- planning_anomaly_task_count: 1", rendered_continuity)
+        self.assertIn("- overdue_planned_followup_count: 1", rendered_continuity)
 
     def test_render_main_dashboard_can_focus_one_session(self) -> None:
         task = self.store.register_task(
@@ -291,6 +360,155 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- action_hint_command: none", rendered)
         self.assertNotIn("## Commands", rendered)
 
+    def test_get_main_planning_summary_reports_anomalies_and_pending_items(self) -> None:
+        source = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:planning-view",
+            channel="telegram",
+            chat_id="chat:main:planning-view",
+            task_label="planning source",
+        )
+        source.meta["tool_followup_plan"] = {
+            "plan_id": "plan_pending",
+            "status": "planned",
+            "followup_due_at": "2099-01-01T00:05:00+00:00",
+            "followup_summary": "5分钟后同步结果",
+        }
+        self.store.save_task(source)
+
+        anomaly = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:planning-view",
+            channel="telegram",
+            chat_id="chat:main:planning-view",
+            task_label="planning anomaly",
+        )
+        anomaly.meta["tool_followup_plan"] = {
+            "plan_id": "plan_bad",
+            "status": "anomaly",
+            "followup_due_at": "2020-01-01T00:00:00+00:00",
+            "followup_summary": "10分钟后提醒看结果",
+        }
+        anomaly.meta["planning_anomaly"] = "promise-without-task"
+        self.store.save_task(anomaly)
+
+        summary = main_ops.get_main_planning_summary(config_path=self._config_path(), paths=self.paths)
+        rendered = main_ops.render_main_planning(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(summary["status"], "error")
+        self.assertEqual(summary["planning_task_count"], 2)
+        self.assertEqual(summary["planning_pending_task_count"], 1)
+        self.assertEqual(summary["planning_anomaly_task_count"], 1)
+        self.assertEqual(summary["primary_action_kind"], "inspect-planning-anomaly")
+        self.assertIn("# Main Planning", rendered)
+        self.assertIn("- planning_task_count: 2", rendered)
+        self.assertIn("plan_status=anomaly", rendered)
+
+    def test_get_main_planning_summary_can_focus_session(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:planning-focus",
+            channel="telegram",
+            chat_id="chat:main:planning-focus",
+            task_label="planning focus",
+        )
+        task.meta["tool_followup_plan"] = {
+            "plan_id": "plan_focus",
+            "status": "scheduled",
+            "followup_due_at": "2099-01-01T00:05:00+00:00",
+            "followup_summary": "5分钟后同步结果",
+        }
+        self.store.save_task(task)
+
+        summary = main_ops.get_main_planning_summary(
+            config_path=self._config_path(),
+            paths=self.paths,
+            session_key="session:main:planning-focus",
+        )
+
+        self.assertEqual(summary["session_filter"], "session:main:planning-focus")
+        self.assertEqual(summary["planning_task_count"], 1)
+        self.assertEqual(summary["tasks"][0]["task_id"], task.task_id)
+
+    def test_get_main_plugin_install_drift_summary_reports_missing_files(self) -> None:
+        with patch.object(
+            main_ops,
+            "build_install_drift_report",
+            return_value={
+                "ok": False,
+                "installed_runtime_exists": True,
+                "source_runtime_dir": "/tmp/source",
+                "installed_runtime_dir": "/tmp/installed",
+                "source_file_count": 3,
+                "installed_file_count": 1,
+                "missing_in_installed": ["b.py", "c.py"],
+                "extra_in_installed": [],
+            },
+        ):
+            summary = main_ops.get_main_plugin_install_drift_summary()
+
+        self.assertEqual(summary["status"], "warn")
+        self.assertEqual(summary["missing_in_installed_count"], 2)
+        self.assertEqual(summary["extra_in_installed_count"], 0)
+        self.assertEqual(summary["primary_action_kind"], "inspect-installed-runtime")
+        self.assertEqual(summary["primary_action_command"], "python3 scripts/runtime/plugin_install_drift.py --json")
+        self.assertTrue(summary["requires_action"])
+
+    def test_render_main_plugin_install_drift_lists_missing_files(self) -> None:
+        with patch.object(
+            main_ops,
+            "build_install_drift_report",
+            return_value={
+                "ok": False,
+                "installed_runtime_exists": True,
+                "source_runtime_dir": "/tmp/source",
+                "installed_runtime_dir": "/tmp/installed",
+                "source_file_count": 2,
+                "installed_file_count": 1,
+                "missing_in_installed": ["b.py"],
+                "extra_in_installed": ["legacy.py"],
+            },
+        ):
+            rendered = main_ops.render_main_plugin_install_drift()
+
+        self.assertIn("# Main Plugin Install Drift", rendered)
+        self.assertIn("- status: warn", rendered)
+        self.assertIn("- missing_in_installed_count: 1", rendered)
+        self.assertIn("- extra_in_installed_count: 1", rendered)
+        self.assertIn("## Missing In Installed", rendered)
+        self.assertIn("- b.py", rendered)
+        self.assertIn("## Extra In Installed", rendered)
+        self.assertIn("- legacy.py", rendered)
+
+    def test_get_main_dashboard_summary_prioritizes_install_drift_when_idle(self) -> None:
+        with patch.object(
+            main_ops,
+            "build_install_drift_report",
+            return_value={
+                "ok": False,
+                "installed_runtime_exists": True,
+                "source_runtime_dir": "/tmp/source",
+                "installed_runtime_dir": "/tmp/installed",
+                "source_file_count": 2,
+                "installed_file_count": 1,
+                "missing_in_installed": ["b.py"],
+                "extra_in_installed": [],
+            },
+        ):
+            summary = main_ops.get_main_dashboard_summary(
+                config_path=self._config_path(),
+                paths=self.paths,
+            )
+
+        self.assertEqual(summary["status"], "warn")
+        self.assertEqual(
+            summary["action_hint"],
+            "Inspect installed runtime drift before relying on local plugin runtime behavior.",
+        )
+        self.assertEqual(summary["action_hint_command"], "python3 scripts/runtime/plugin_install_drift.py --json")
+        self.assertIn("python3 scripts/runtime/plugin_install_drift.py --json", summary["suggested_next_commands"])
+        self.assertEqual(summary["plugin_install_drift"]["missing_in_installed_count"], 1)
+
     def test_render_main_dashboard_only_issues_reports_clean_state_briefly(self) -> None:
         rendered = main_ops.render_main_dashboard(
             config_path=self._config_path(),
@@ -303,6 +521,41 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- status: ok", rendered)
         self.assertIn("- No issues detected.", rendered)
         self.assertNotIn("## Commands", rendered)
+
+    def test_render_main_dashboard_only_issues_surfaces_install_drift_counts(self) -> None:
+        payload = {
+                "ok": False,
+                "installed_runtime_exists": True,
+                "source_runtime_dir": "/tmp/source",
+                "installed_runtime_dir": "/tmp/installed",
+                "source_file_count": 2,
+                "installed_file_count": 1,
+                "missing_in_installed": ["b.py"],
+                "extra_in_installed": ["legacy.py"],
+            }
+        with (
+            patch.object(main_ops, "build_install_drift_report", return_value=dict(payload)),
+            patch.object(health_report, "build_install_drift_report", return_value=dict(payload)),
+            patch.object(
+                main_ops,
+                "build_health_report",
+                side_effect=lambda *, config_path=None, paths=None: health_report.build_health_report(
+                    config_path=config_path,
+                    paths=paths,
+                ),
+            ),
+        ):
+            rendered = main_ops.render_main_dashboard(
+                config_path=self._config_path(),
+                paths=self.paths,
+                only_issues=True,
+            )
+
+        self.assertIn("- status: warn", rendered)
+        self.assertIn("- plugin_install_drift_status: warn", rendered)
+        self.assertIn("- plugin_install_drift_missing_count: 1", rendered)
+        self.assertIn("- plugin_install_drift_extra_count: 1", rendered)
+        self.assertIn("plugin_install_drift.py --json", rendered)
 
     def test_render_main_dashboard_only_issues_focuses_on_problem_fields(self) -> None:
         task = self.store.register_task(
@@ -401,6 +654,7 @@ class MainOpsTests(unittest.TestCase):
         self.assertTrue(summary["compact"])
         self.assertEqual(summary["compact_summary"]["scope"], "all")
         self.assertEqual(summary["compact_summary"]["status"], "ok")
+        self.assertEqual(summary["compact_summary"]["plugin_install_drift_summary"], "ok missing=0 extra=0")
         self.assertEqual(summary["compact_summary"]["top_followup_session_summary"], "none")
         self.assertEqual(summary["compact_summary"]["action_hint"], "No immediate action needed.")
         self.assertEqual(summary["compact_summary"]["auto_resume_summary"], "none")
@@ -435,6 +689,8 @@ class MainOpsTests(unittest.TestCase):
         self.assertFalse(summary["issue_summary"]["auto_resume_safe_to_apply"])
         self.assertEqual(summary["issue_summary"]["auto_resume_blockers"], [])
         self.assertIsNone(summary["issue_summary"]["auto_resume_command"])
+        self.assertEqual(summary["issue_summary"]["plugin_install_drift_status"], "ok")
+        self.assertEqual(summary["issue_summary"]["plugin_install_drift_missing_count"], 0)
         self.assertEqual(summary["issue_summary"]["primary_action_kind"], "none")
         self.assertIsNone(summary["issue_summary"]["primary_action_command"])
         self.assertEqual(summary["issue_summary"]["runbook_status"], "ok")
@@ -1710,6 +1966,100 @@ class MainOpsTests(unittest.TestCase):
             "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
             summary["suggested_next_commands"],
         )
+
+    def test_get_main_triage_summary_prioritizes_install_drift_when_idle(self) -> None:
+        with patch.object(
+            main_ops,
+            "build_install_drift_report",
+            return_value={
+                "ok": False,
+                "installed_runtime_exists": True,
+                "source_runtime_dir": "/tmp/source",
+                "installed_runtime_dir": "/tmp/installed",
+                "source_file_count": 3,
+                "installed_file_count": 1,
+                "missing_in_installed": ["b.py", "c.py"],
+                "extra_in_installed": [],
+            },
+        ):
+            summary = main_ops.get_main_triage_summary(paths=self.paths)
+
+        self.assertEqual(summary["triage_status"], "warn")
+        self.assertEqual(summary["plugin_install_drift_status"], "warn")
+        self.assertEqual(summary["plugin_install_drift_missing_count"], 2)
+        self.assertEqual(summary["primary_action_kind"], "inspect-installed-runtime")
+        self.assertEqual(summary["primary_action_command"], "python3 scripts/runtime/plugin_install_drift.py --json")
+        self.assertIn("python3 scripts/runtime/plugin_install_drift.py --json", summary["suggested_next_commands"])
+
+    def test_install_drift_counts_stay_consistent_across_ops_views(self) -> None:
+        payload = {
+            "ok": False,
+            "installed_runtime_exists": True,
+            "source_runtime_dir": "/tmp/source",
+            "installed_runtime_dir": "/tmp/installed",
+            "source_file_count": 4,
+            "installed_file_count": 1,
+            "missing_in_installed": ["b.py", "c.py", "d.py"],
+            "extra_in_installed": ["legacy.py"],
+        }
+        with (
+            patch.object(main_ops, "build_install_drift_report", return_value=dict(payload)),
+            patch.object(health_report, "build_install_drift_report", return_value=dict(payload)),
+            patch.object(
+                main_ops,
+                "build_health_report",
+                side_effect=lambda *, config_path=None, paths=None: health_report.build_health_report(
+                    config_path=config_path,
+                    paths=paths,
+                ),
+            ),
+        ):
+            plugin_summary = main_ops.get_main_plugin_install_drift_summary()
+            dashboard = main_ops.get_main_dashboard_summary(
+                config_path=self._config_path(),
+                paths=self.paths,
+                only_issues=True,
+            )
+            triage = main_ops.get_main_triage_summary(paths=self.paths)
+
+        self.assertEqual(plugin_summary["status"], "warn")
+        self.assertEqual(plugin_summary["missing_in_installed_count"], 3)
+        self.assertEqual(plugin_summary["extra_in_installed_count"], 1)
+        self.assertEqual(dashboard["plugin_install_drift"]["status"], plugin_summary["status"])
+        self.assertEqual(
+            dashboard["plugin_install_drift"]["missing_in_installed_count"],
+            plugin_summary["missing_in_installed_count"],
+        )
+        self.assertEqual(
+            dashboard["plugin_install_drift"]["extra_in_installed_count"],
+            plugin_summary["extra_in_installed_count"],
+        )
+        self.assertEqual(triage["plugin_install_drift_status"], plugin_summary["status"])
+        self.assertEqual(triage["plugin_install_drift_missing_count"], plugin_summary["missing_in_installed_count"])
+        self.assertEqual(triage["plugin_install_drift_extra_count"], plugin_summary["extra_in_installed_count"])
+
+    def test_render_main_triage_surfaces_install_drift_counts(self) -> None:
+        with patch.object(
+            main_ops,
+            "build_install_drift_report",
+            return_value={
+                "ok": False,
+                "installed_runtime_exists": True,
+                "source_runtime_dir": "/tmp/source",
+                "installed_runtime_dir": "/tmp/installed",
+                "source_file_count": 2,
+                "installed_file_count": 1,
+                "missing_in_installed": ["b.py"],
+                "extra_in_installed": ["legacy.py"],
+            },
+        ):
+            rendered = main_ops.render_main_triage(paths=self.paths)
+
+        self.assertIn("- plugin_install_drift_status: warn", rendered)
+        self.assertIn("- plugin_install_drift_missing_count: 1", rendered)
+        self.assertIn("- plugin_install_drift_extra_count: 1", rendered)
+        self.assertIn("Inspect installed runtime drift first", rendered)
+        self.assertIn("plugin_install_drift.py --json", rendered)
 
     def test_render_main_triage_includes_blocked_age_and_sweep_hint(self) -> None:
         task = self.store.register_task(

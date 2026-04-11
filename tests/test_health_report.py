@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from runtime_loader import load_runtime_module, task_state_module
 
@@ -195,6 +196,68 @@ class HealthReportTests(unittest.TestCase):
         self.assertEqual(report["status"], "warn")
         self.assertEqual(report["acknowledged_failed_instruction_count"], 1)
         self.assertIn("## Acknowledged Delivery Outages", markdown)
+
+    def test_build_health_report_surfaces_planning_anomaly_and_overdue_followup(self) -> None:
+        source = self.store.register_task(
+            agent_id="main",
+            session_key="session:planning-health",
+            channel="telegram",
+            chat_id="chat:planning-health",
+            task_label="planning health task",
+        )
+        source.meta["tool_followup_plan"] = {
+            "plan_id": "plan_123",
+            "status": "anomaly",
+            "followup_due_at": "2020-01-01T00:00:00+00:00",
+        }
+        source.meta["planning_promise_guard"] = {
+            "status": "anomaly",
+            "expected_by_finalize": True,
+        }
+        source.meta["planning_anomaly"] = "promise-without-task"
+        self.store.save_task(source)
+
+        followup = self.store.observe_task(
+            agent_id="main",
+            session_key="session:planning-health",
+            channel="telegram",
+            chat_id="chat:planning-health",
+            task_label="planning overdue follow-up",
+            meta={"source": "tool-followup-plan", "plan_id": "plan_123"},
+        )
+        self.store.schedule_continuation(
+            followup.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2020-01-01T00:00:00+00:00",
+            payload={"reply_text": "later", "wait_seconds": 60},
+            reason="scheduled tool-assisted continuation wait",
+        )
+
+        report = health_report.build_health_report(config_path=self.config_path)
+        markdown = health_report.render_markdown(report)
+
+        self.assertEqual(report["status"], "error")
+        self.assertIn("planning-promise-without-task:1", report["issues"])
+        self.assertIn("planning-overdue-followups:1", report["issues"])
+
+    def test_build_health_report_surfaces_plugin_install_drift(self) -> None:
+        with patch.object(
+            health_report,
+            "build_install_drift_report",
+            return_value={
+                "ok": False,
+                "installed_runtime_exists": True,
+                "installed_runtime_dir": "/tmp/installed",
+                "missing_in_installed": ["planning_acceptance.py"],
+                "extra_in_installed": [],
+            },
+        ):
+            report = health_report.build_health_report(config_path=self.config_path)
+            markdown = health_report.render_markdown(report)
+
+        self.assertIn("plugin-install-drift:1", report["issues"])
+        self.assertIn("## Installed Runtime Drift", markdown)
+        self.assertIn("planning_acceptance.py", markdown)
 
 
 if __name__ == "__main__":

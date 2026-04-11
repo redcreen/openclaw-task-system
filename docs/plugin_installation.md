@@ -11,6 +11,7 @@
 
 - [README.md](../README.md)
 - [roadmap.md](./roadmap.md)
+- [local_install_validation_2026-04-09.md](./local_install_validation_2026-04-09.md)
 
 ## 1. 前提
 
@@ -64,6 +65,35 @@ OPENCLAW_TASK_SYSTEM_REF=main bash <(curl -fsSL https://raw.githubusercontent.co
 ```bash
 openclaw plugins install ./plugin
 ```
+
+当前本地源码安装有一个现实边界需要注意：
+
+- `openclaw-task-system` 的 plugin runtime 通过 `child_process.spawn(...)` 调用 Python hooks
+- OpenClaw 2026.4.2 的插件安装器会把这一模式识别为 dangerous code pattern
+- 即使显式加上 `--dangerously-force-unsafe-install`，当前 CLI 仍可能拒绝重新安装这个插件
+
+本地实测报错类似：
+
+```text
+Plugin "openclaw-task-system" installation blocked: dangerous code patterns detected:
+Shell command execution detected (child_process)
+```
+
+因此，当前推荐做法是：
+
+1. 继续维护 `plugin/` installable payload
+2. 用 `plugin_doctor.py`、`plugin_smoke.py`、`stable_acceptance.py` 和 planning acceptance 工具链做源码侧验证
+3. 真正需要切换安装态时，先确认 OpenClaw 后续是否放宽该插件的本地安装策略，或采用项目内部认可的安装路径
+
+不要默认假设 `openclaw plugins install ./plugin` 在当前版本一定可用。
+
+当前如果只是想确认“源码 payload”和“本地安装态”是否已经漂移，不必只记独立脚本名：
+
+- `python3 scripts/runtime/main_ops.py dashboard --only-issues`
+- `python3 scripts/runtime/main_ops.py triage --json`
+- `python3 scripts/runtime/main_ops.py plugin-install-drift --json`
+
+其中 `dashboard / triage` 已经会直接投影 install drift 计数与建议动作；如果只有 install drift 这一类问题，`dashboard` 现在也会直接显示 `warn`。
 
 ## 4. OpenClaw 插件配置
 
@@ -172,6 +202,8 @@ python3 scripts/runtime/configure_openclaw_plugin.py --write
 ```bash
 python3 scripts/runtime/main_ops.py dashboard --json
 python3 scripts/runtime/stable_acceptance.py --json
+python3 scripts/runtime/planning_acceptance_suite.py --json
+python3 scripts/runtime/plugin_install_drift.py --json
 ```
 
 ## 6. 插件当前边界
