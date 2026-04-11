@@ -306,6 +306,63 @@ test("before_dispatch immediate ack suppresses implausible second-level queue et
   }
 });
 
+test("before_dispatch runtime-owned queue receipt still includes queue position details", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    registerResponse: {
+      ...buildRegisterDecision({
+        task_id: "task-routing-queue-receipt",
+        task_status: "queued",
+        queue_position: 4,
+        ahead_count: 3,
+        running_count: 1,
+        active_count: 4,
+        estimated_wait_seconds: 180,
+      }),
+      routing_decision: {
+        execution_decision: "queue-as-new-task",
+      },
+      control_plane_message: {
+        schema: "openclaw.task-system.control-plane.v1",
+        kind: "same-session-routing-receipt",
+        event_name: "same-session-routing-receipt",
+        priority: "p0-receive-ack",
+        task_id: "task-routing-queue-receipt",
+        text: "这次内容已作为独立任务排队，因为它是新的独立目标。",
+      },
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "帮我再开一个独立任务",
+        body: "帮我再开一个独立任务",
+        channel: "feishu",
+        senderId: "user-1",
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+      },
+    );
+
+    assert.equal(sentMessages.length, 1);
+    assert.equal(
+      sentMessages[0]?.text,
+      "[wd] 已收到，当前有 1 条任务正在处理；你的请求已进入队列，前面还有 3 个号，你现在排第 4 位，预计约 3 分钟后轮到处理。",
+    );
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("before_dispatch skips runtime registration for internal collecting-window wake prompt", async () => {
   resetGlobalState();
   const { runtimeRoot, callsPath } = await createFakeRuntimeRoot();

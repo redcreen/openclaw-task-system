@@ -283,6 +283,67 @@ test("agent_end delivers finalize failure control-plane message when runtime ret
   }
 });
 
+test("agent_end no longer sends generic duration-only completion summary to finalize hook", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot({
+    finalizeActiveResponse: {
+      updated: true,
+      control_plane_message: {
+        schema: "openclaw.task-system.control-plane.v1",
+        kind: "task-completed",
+        event_name: "task-completed",
+        priority: "p1-task-management",
+        task_id: "task-123",
+        text: "当前任务已完成。",
+      },
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "帮我继续排查这个问题",
+        body: "帮我继续排查这个问题",
+        channel: "telegram",
+        senderId: "8705812936",
+      },
+      {
+        sessionKey: "agent:main:telegram:direct:8705812936",
+        channelId: "telegram",
+        conversationId: "8705812936",
+        accountId: "default",
+        senderId: "8705812936",
+        agentId: "main",
+      },
+    );
+
+    await plugin.agentEnd(
+      {
+        success: true,
+        messages: [],
+        durationMs: 13285,
+      },
+      {
+        sessionKey: "agent:main:telegram:direct:8705812936",
+        channelId: "telegram",
+        conversationId: "8705812936",
+        accountId: "default",
+        senderId: "8705812936",
+        agentId: "main",
+      },
+    );
+
+    const commands = await readHookCommands(callsPath);
+    const finalizeCall = commands.find((entry) => entry.command === "finalize-active");
+    assert.equal(finalizeCall?.payload?.result_summary, "");
+    assert.equal(sentMessages.at(-1)?.text, "[wd] 当前任务已完成。");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("agent_end task-completed host retry keeps bound feishu delivery target when ctx omits account and chat", async () => {
   resetGlobalState();
   const { runtimeRoot } = await createFakeRuntimeRoot({

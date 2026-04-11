@@ -2173,11 +2173,8 @@ function buildImmediateReceiptMessage(
   if (!registerResult) {
     return fallback;
   }
-  const hookControlPlaneMessage = extractHookControlPlaneMessage(registerResult);
-  if (hookControlPlaneMessage?.message) {
-    return hookControlPlaneMessage.message;
-  }
   const resolvedDecision = resolveRegisterDecision(registerResult);
+  const hookControlPlaneMessage = extractHookControlPlaneMessage(registerResult);
   const taskStatus = normalizeText(resolvedDecision.task_status);
   const queuePosition = toInteger(resolvedDecision.queue_position);
   const aheadCount = Math.max(toInteger(resolvedDecision.ahead_count) ?? 0, 0);
@@ -2185,6 +2182,16 @@ function buildImmediateReceiptMessage(
   const activeCount = Math.max(toInteger(resolvedDecision.active_count) ?? 0, 0);
   const estimatedWaitSeconds = toInteger(resolvedDecision.estimated_wait_seconds);
   const continuationDueAt = normalizeText(String(resolvedDecision.continuation_due_at || ""));
+  const routingDecision =
+    (resolvedDecision.routing_decision && typeof resolvedDecision.routing_decision === "object"
+      ? (resolvedDecision.routing_decision as Record<string, unknown>)
+      : registerResult.routing_decision && typeof registerResult.routing_decision === "object"
+        ? (registerResult.routing_decision as Record<string, unknown>)
+        : null);
+  const runtimeOwnedQueueReceipt =
+    hookControlPlaneMessage?.eventName === "same-session-routing-receipt" &&
+    normalizeText(routingDecision?.execution_decision) === "queue-as-new-task" &&
+    (taskStatus === "queued" || taskStatus === "received");
   const suppressShortQueuedEta =
     (taskStatus === "queued" || taskStatus === "received") &&
     aheadCount > 0 &&
@@ -2192,15 +2199,7 @@ function buildImmediateReceiptMessage(
     estimatedWaitSeconds < 60;
   const estimatedWaitLabel = suppressShortQueuedEta ? null : formatEstimatedWaitLabel(estimatedWaitSeconds);
 
-  if (taskStatus === "paused" && continuationDueAt) {
-    const delayLabel = formatContinuationDelayLabel(continuationDueAt);
-    if (delayLabel) {
-      return `已收到，已安排后续继续执行；${delayLabel}，到点后我会主动回复。`;
-    }
-    return "已收到，已安排后续继续执行；到点后我会主动回复。";
-  }
-
-  if (taskStatus === "queued" || taskStatus === "received") {
+  const buildQueuedReceipt = (): string => {
     const position = queuePosition ?? aheadCount + 1;
     if (runningCount <= 0 && aheadCount > 0) {
       if (estimatedWaitLabel) {
@@ -2218,6 +2217,25 @@ function buildImmediateReceiptMessage(
       return `已收到，当前有 ${runningCount} 条任务正在处理；你的请求已进入队列，前面还有 ${aheadCount} 个号，你现在排第 ${position} 位，${estimatedWaitLabel}轮到处理。`;
     }
     return `已收到，当前有 ${runningCount} 条任务正在处理；你的请求已进入队列，前面还有 ${aheadCount} 个号，你现在排第 ${position} 位。`;
+  };
+
+  if (runtimeOwnedQueueReceipt) {
+    return buildQueuedReceipt();
+  }
+  if (hookControlPlaneMessage?.message) {
+    return hookControlPlaneMessage.message;
+  }
+
+  if (taskStatus === "paused" && continuationDueAt) {
+    const delayLabel = formatContinuationDelayLabel(continuationDueAt);
+    if (delayLabel) {
+      return `已收到，已安排后续继续执行；${delayLabel}，到点后我会主动回复。`;
+    }
+    return "已收到，已安排后续继续执行；到点后我会主动回复。";
+  }
+
+  if (taskStatus === "queued" || taskStatus === "received") {
+    return buildQueuedReceipt();
   }
   if (taskStatus === "running" && activeCount > 1) {
     if (estimatedWaitLabel) {
@@ -2424,9 +2442,7 @@ function summarizeAgentEnd(
   if (gate.text) {
     return gate.text.slice(0, 240);
   }
-  return event.success
-    ? `agent run completed in ${event.durationMs ?? 0}ms`
-    : `agent run failed after ${event.durationMs ?? 0}ms`;
+  return "";
 }
 
 function buildUserContentGateResult(params: {
