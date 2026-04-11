@@ -178,6 +178,32 @@ class TaskPlanningToolsTests(unittest.TestCase):
         self.assertEqual(followup.meta["continuation_payload"]["reply_to_id"], "om_source_message")
         self.assertEqual(followup.meta["continuation_payload"]["thread_id"], "thread_source_message")
 
+    def test_schedule_followup_from_plan_materializes_plain_reply_text(self) -> None:
+        registration = self._register_running_source_task()
+        source_task_id = str(registration["task_id"])
+        created = openclaw_hooks.create_followup_plan_from_payload(
+            {
+                "source_task_id": source_task_id,
+                "followup_kind": "delayed-reply",
+                "followup_due_at": "2026-04-06T11:30:00+08:00",
+                "followup_message": "5 分钟后继续告诉你天气结果",
+            },
+            config_path=self.config_path,
+        )
+
+        scheduled = openclaw_hooks.schedule_followup_from_plan_from_payload(
+            {"plan_id": created["plan_id"]},
+            config_path=self.config_path,
+        )
+
+        self.assertTrue(scheduled["scheduled"])
+        store = task_state_module.TaskStore(paths=self.paths)
+        followup = store.load_task(scheduled["task_id"], allow_archive=False)
+        self.assertEqual(
+            followup.meta["continuation_payload"]["reply_text"],
+            "5 分钟后继续告诉你天气结果",
+        )
+
     def test_finalize_active_marks_promise_without_task_anomaly(self) -> None:
         registration = self._register_running_source_task()
         source_task_id = str(registration["task_id"])

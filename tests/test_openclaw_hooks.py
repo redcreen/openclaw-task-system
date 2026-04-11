@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from runtime_loader import load_runtime_module, task_state_module
@@ -73,6 +74,330 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(decision["classification_reason"], result["classification_reason"])
         self.assertEqual(decision["task_status"], result["task_status"])
         self.assertEqual(decision["queue_position"], result["queue_position"])
+        self.assertIn("routing_decision", result)
+        self.assertEqual(result["routing_decision"], decision["routing_decision"])
+        self.assertEqual(result["routing_decision"]["routing_status"], "decided")
+        self.assertEqual(result["routing_decision"]["classification"], "queueing")
+        self.assertEqual(result["routing_decision"]["execution_decision"], "queue-as-new-task")
+        self.assertIsInstance(result["wd_receipt"], dict)
+        self.assertTrue(str(result["wd_receipt"]["user_visible_wd"]).startswith("[wd]"))
+        self.assertIsInstance(result["control_plane_message"], dict)
+        self.assertEqual(result["control_plane_message"]["event_name"], "same-session-routing-receipt")
+        self.assertEqual(result["control_plane_message"]["priority"], "p0-receive-ack")
+
+    def test_register_from_payload_records_same_session_followup_routing_context(self) -> None:
+        first = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:same-session-followup",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:same-session-followup",
+                "user_id": "ou_test",
+                "user_request": "先帮我整理这份需求",
+            }
+        )
+
+        second = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:same-session-followup",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:same-session-followup",
+                "user_id": "ou_test",
+                "user_request": "再补充一个边界条件",
+                "observe_only": True,
+            }
+        )
+        routing = second["routing_decision"]
+        self.assertEqual(routing["routing_status"], "decided")
+        self.assertTrue(routing["same_session_followup"])
+        self.assertEqual(routing["classification"], "steering")
+        self.assertEqual(routing["execution_decision"], "interrupt-and-restart")
+        self.assertEqual(routing["reason_code"], "active-task-safe-restart")
+        self.assertEqual(routing["active_task_id"], first["task_id"])
+        self.assertEqual(routing["target_task_id"], second["task_id"])
+        self.assertEqual(routing["wd_receipt"]["decision"], "interrupt-and-restart")
+        self.assertTrue(str(second["control_plane_message"]["text"]).startswith("当前任务已按这次更新重新开始"))
+
+        task = task_state_module.TaskStore(paths=self.paths).load_task(second["task_id"])
+        self.assertEqual(task.meta.get("same_session_routing"), routing)
+
+    def test_register_from_payload_reuses_stale_observed_task_with_merge_receipt(self) -> None:
+        first = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:stale-observed-takeover",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:stale-observed-takeover",
+                "user_id": "ou_test",
+                "user_request": "在么",
+                "observe_only": True,
+            }
+        )
+        store = task_state_module.TaskStore(paths=self.paths)
+
+        second = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:stale-observed-takeover",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:stale-observed-takeover",
+                "user_id": "ou_test",
+                "user_request": "帮我写一份简历，自己看情况写",
+                "observe_only": True,
+            }
+        )
+
+        self.assertEqual(second["task_id"], first["task_id"])
+        routing = second["routing_decision"]
+        self.assertTrue(routing["same_session_followup"])
+        self.assertEqual(routing["classification"], "steering")
+        self.assertEqual(routing["execution_decision"], "merge-before-start")
+        self.assertEqual(routing["reason_code"], "stale-observed-task-takeover")
+        self.assertEqual(second["wd_receipt"]["decision"], "merge-before-start")
+        self.assertTrue(str(second["control_plane_message"]["text"]).startswith("这次更新已并入当前任务"))
+
+        reused = store.load_task(first["task_id"])
+        self.assertEqual(reused.meta.get("original_user_request"), "帮我写一份简历，自己看情况写")
+        self.assertEqual(reused.monitor_state, "normal")
+
+    def test_register_from_payload_loads_same_session_classifier_from_config(self) -> None:
+        classifier_script = self.temp_dir / "same_session_classifier.py"
+        classifier_script.write_text(
+            "\n".join(
+                [
+                    "#!/usr/bin/env python3",
+                    "import json",
+                    "import sys",
+                    "payload = json.load(sys.stdin)",
+                    'print(json.dumps({"classification": "queueing", "confidence": 0.91, "needs_confirmation": False, "reason_code": "config-driven-classifier", "reason_text": f\'Classifier handled: {payload.get(\"new_message\")}\'}, ensure_ascii=False))',
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        self.config_path.write_text(
+            json.dumps(
+                {
+                    "taskSystem": {
+                        "storageDir": str(self.paths.data_dir),
+                        "agents": {
+                            "main": {
+                                "sameSessionRouting": {
+                                    "enabled": True,
+                                    "classifier": {
+                                        "enabled": True,
+                                        "command": [sys.executable, str(classifier_script)],
+                                        "timeoutMs": 1000,
+                                        "minConfidence": 0.75,
+                                    },
+                                }
+                            }
+                        },
+                    }
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        first = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:config-classifier",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:config-classifier",
+                "user_id": "ou_test",
+                "user_request": "Please rewrite this resume",
+                "estimated_steps": 3,
+            },
+            config_path=self.config_path,
+        )
+        second = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:config-classifier",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:config-classifier",
+                "user_id": "ou_test",
+                "user_request": "再来一个版本",
+                "observe_only": True,
+            },
+            config_path=self.config_path,
+        )
+
+        routing = second["routing_decision"]
+        self.assertEqual(routing["decision_source"], "classifier")
+        self.assertTrue(routing["classifier_invoked"])
+        self.assertEqual(routing["classification"], "queueing")
+        self.assertEqual(routing["execution_decision"], "queue-as-new-task")
+        self.assertEqual(routing["reason_code"], "config-driven-classifier")
+        self.assertEqual(routing["active_task_id"], first["task_id"])
+
+    def test_register_from_payload_activates_collecting_window_without_registering_task(self) -> None:
+        self.config_path.write_text(
+            json.dumps(
+                {
+                    "taskSystem": {
+                        "storageDir": str(self.paths.data_dir),
+                        "agents": {"main": {"sameSessionRouting": {"collectingWindowSeconds": 9}}},
+                    }
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:collecting-window",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:collecting-window",
+                "user_id": "ou_test",
+                "user_request": "我接下来会连续发三条，你先别开始",
+            },
+            config_path=self.config_path,
+        )
+        self.assertFalse(result["should_register_task"])
+        self.assertIsNone(result["task_id"])
+        self.assertEqual(result["routing_decision"]["classification"], "collect-more")
+        self.assertEqual(result["routing_decision"]["execution_decision"], "enter-collecting-window")
+        self.assertEqual(result["session_state"]["status"], "collecting")
+        self.assertEqual(result["session_state"]["window_seconds"], 9)
+        self.assertEqual(result["session_state"]["buffered_message_count"], 0)
+
+    def test_register_from_payload_buffers_messages_while_collecting_window_is_active(self) -> None:
+        first = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:collecting-window-buffer",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:collecting-window-buffer",
+                "user_id": "ou_test",
+                "user_request": "我接下来会连续发三条，你先别开始",
+            }
+        )
+        self.assertFalse(first["should_register_task"])
+
+        second = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:collecting-window-buffer",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:collecting-window-buffer",
+                "user_id": "ou_test",
+                "user_request": "第一条：整理目录",
+            }
+        )
+        self.assertFalse(second["should_register_task"])
+        self.assertEqual(second["classification_reason"], "collecting-window-buffered")
+        self.assertEqual(second["routing_decision"]["reason_code"], "collecting-window-active")
+        self.assertEqual(second["session_state"]["buffered_message_count"], 1)
+
+    def test_claim_due_collecting_windows_materializes_buffered_request(self) -> None:
+        openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:collecting-window-due",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:collecting-window-due",
+                "user_id": "ou_test",
+                "user_request": "我接下来会连续发三条，你先别开始",
+            }
+        )
+        openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:collecting-window-due",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:collecting-window-due",
+                "user_id": "ou_test",
+                "user_request": "第一条：整理目录",
+            }
+        )
+        openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:collecting-window-due",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:collecting-window-due",
+                "user_id": "ou_test",
+                "user_request": "第二条：补 README",
+            }
+        )
+        session_dir = self.paths.data_dir / "sessions"
+        session_path = next(session_dir.glob("*.json"))
+        state = json.loads(session_path.read_text(encoding="utf-8"))
+        collecting = dict(state["same_session_collecting"])
+        collecting["expires_at"] = (datetime.now(timezone.utc).astimezone() - timedelta(seconds=1)).isoformat()
+        state["same_session_collecting"] = collecting
+        session_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        claimed = openclaw_hooks.claim_due_collecting_windows_from_payload({}, config_path=self.config_path)
+        self.assertEqual(claimed["claimed_count"], 1)
+        task_payload = claimed["tasks"][0]
+        self.assertEqual(task_payload["session_key"], "session:collecting-window-due")
+        self.assertIn("第一条：整理目录", task_payload["combined_user_request"])
+        self.assertIn("第二条：补 README", task_payload["combined_user_request"])
+
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.load_task(task_payload["task_id"], allow_archive=False)
+        self.assertIn("第一条：整理目录", str(task.meta.get("original_user_request") or ""))
+        self.assertIn("第二条：补 README", str(task.meta.get("original_user_request") or ""))
+
+    def test_claim_due_collecting_windows_releases_existing_prestart_task(self) -> None:
+        first = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:collecting-window-existing-task",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:collecting-window-existing-task",
+                "user_id": "ou_test",
+                "user_request": "帮我整理这个目录",
+                "observe_only": True,
+            }
+        )
+        self.assertTrue(first["should_register_task"])
+        openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:collecting-window-existing-task",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:collecting-window-existing-task",
+                "user_id": "ou_test",
+                "user_request": "我接下来会连续发两条，你先别开始",
+            }
+        )
+        session_dir = self.paths.data_dir / "sessions"
+        session_path = next(session_dir.glob("*.json"))
+        state = json.loads(session_path.read_text(encoding="utf-8"))
+        collecting = dict(state["same_session_collecting"])
+        collecting["expires_at"] = (datetime.now(timezone.utc).astimezone() - timedelta(seconds=1)).isoformat()
+        state["same_session_collecting"] = collecting
+        session_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        claimed = openclaw_hooks.claim_due_collecting_windows_from_payload({}, config_path=self.config_path)
+        self.assertEqual(claimed["claimed_count"], 1)
+        task_payload = claimed["tasks"][0]
+        self.assertEqual(task_payload["task_id"], first["task_id"])
 
     def test_sync_source_reply_target_updates_task_meta(self) -> None:
         registered = openclaw_hooks.register_from_payload(
@@ -409,6 +734,143 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(result["control_plane_message"]["user_facing_status_code"], "running")
         self.assertEqual(result["control_plane_message"]["user_facing_status"], "处理中")
 
+    def test_should_send_short_followup_for_running_task_explains_pending_plan_materialization(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:running-plan",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:running-plan",
+            task_label="running planned task",
+        )
+        store.start_task(task.task_id)
+        store.touch_task(
+            task.task_id,
+            user_visible=False,
+            meta={
+                "tool_followup_plan": {
+                    "plan_id": "plan_123",
+                    "status": "planned",
+                    "followup_due_at": "2099-01-01T00:05:00+00:00",
+                    "followup_summary": "5分钟后同步结论",
+                }
+            },
+        )
+
+        result = openclaw_hooks.should_send_short_followup_from_payload({"task_id": task.task_id})
+
+        self.assertTrue(result["should_send"])
+        self.assertIn("正在把 5分钟后同步结论 物化成真实 follow-up 任务", result["followup_message"])
+        self.assertEqual(result["control_plane_message"]["metadata"]["planning_plan_status"], "planned")
+        self.assertEqual(result["control_plane_message"]["metadata"]["planning_followup_summary"], "5分钟后同步结论")
+
+    def test_should_send_short_followup_for_running_task_reports_planning_anomaly(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:running-anomaly",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:running-anomaly",
+            task_label="running anomaly task",
+        )
+        store.start_task(task.task_id)
+        store.touch_task(
+            task.task_id,
+            user_visible=False,
+            meta={
+                "planning_anomaly": "promise-without-task",
+                "planning_promise_guard": {
+                    "promise_summary": "10分钟后提醒看结果",
+                    "status": "anomaly",
+                },
+            },
+        )
+
+        result = openclaw_hooks.should_send_short_followup_from_payload({"task_id": task.task_id})
+
+        self.assertTrue(result["should_send"])
+        self.assertIn("还没有成功落成真实任务", result["followup_message"])
+        self.assertEqual(result["control_plane_message"]["metadata"]["planning_anomaly"], "promise-without-task")
+        self.assertEqual(result["control_plane_message"]["metadata"]["planning_promise_summary"], "10分钟后提醒看结果")
+
+    def test_should_send_short_followup_for_running_task_reports_current_stage(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:running-stage-summary",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:running-stage-summary",
+            task_label="整理发布说明",
+            meta={
+                "original_user_request": "整理发布说明并给出上线建议",
+                "estimated_steps": 4,
+            },
+        )
+        store.start_task(task.task_id)
+
+        result = openclaw_hooks.should_send_short_followup_from_payload({"task_id": task.task_id})
+
+        self.assertTrue(result["should_send"])
+        self.assertIn("正在推进：整理发布说明并给出上线建议", result["followup_message"])
+        self.assertIn("预计约 4 个阶段", result["followup_message"])
+        self.assertIn("第 1 个阶段", result["followup_message"])
+        self.assertEqual(result["control_plane_message"]["metadata"]["running_target"], "整理发布说明并给出上线建议")
+        self.assertEqual(result["control_plane_message"]["metadata"]["estimated_steps"], 4)
+        self.assertEqual(result["control_plane_message"]["metadata"]["progress_update_count"], 0)
+        self.assertEqual(result["control_plane_message"]["metadata"]["current_stage"], 1)
+
+    def test_progress_from_payload_increments_progress_update_count(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:progress-count",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:progress-count",
+            task_label="progress count task",
+            meta={"estimated_steps": 4},
+        )
+        store.start_task(task.task_id)
+
+        updated = openclaw_hooks.progress_from_payload(
+            {
+                "task_id": task.task_id,
+                "progress_note": "已完成仓库扫描",
+            }
+        )
+
+        self.assertEqual(updated["meta"]["progress_update_count"], 1)
+        self.assertTrue(str(updated["meta"]["last_progress_note_at"]).strip())
+
+    def test_should_send_short_followup_for_running_task_uses_stage_summary_after_progress_updates(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:running-stage-progress",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:running-stage-progress",
+            task_label="修复支付回调",
+            meta={"estimated_steps": 4},
+        )
+        store.start_task(task.task_id)
+        store.touch_task(
+            task.task_id,
+            user_visible=False,
+            meta={"progress_update_count": 2},
+        )
+
+        result = openclaw_hooks.should_send_short_followup_from_payload({"task_id": task.task_id})
+
+        self.assertTrue(result["should_send"])
+        self.assertIn("正在推进：修复支付回调", result["followup_message"])
+        self.assertIn("第 3 个阶段", result["followup_message"])
+        self.assertEqual(result["control_plane_message"]["metadata"]["progress_update_count"], 2)
+        self.assertEqual(result["control_plane_message"]["metadata"]["current_stage"], 3)
+
     def test_taskmonitor_control_can_toggle_session(self) -> None:
         off = openclaw_hooks.taskmonitor_control_from_payload(
             {
@@ -625,6 +1087,201 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertTrue(resolved["found"])
         self.assertTrue(resolved["require_structured_user_content"])
         self.assertEqual(resolved["main_user_content_mode"], "none")
+
+    def test_create_followup_plan_and_schedule_materializes_real_followup_task(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:planning-materialize",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:planning-materialize",
+                "user_request": "先查天气，5分钟后回来同步结果",
+                "estimated_steps": 3,
+            },
+            config_path=self.config_path,
+        )
+        task_id = registration["task_id"]
+        assert task_id is not None
+
+        plan = openclaw_hooks.create_followup_plan_from_payload(
+            {
+                "source_task_id": task_id,
+                "followup_kind": "delayed-reply",
+                "followup_due_at": "2099-01-01T00:05:00+00:00",
+                "followup_message": "5分钟后回来同步天气结果",
+                "followup_summary": "5分钟后同步天气结果",
+                "main_user_content_mode": "none",
+                "reply_to_id": "om_source_message",
+                "thread_id": "thread_source_message",
+            },
+            config_path=self.config_path,
+        )
+        self.assertTrue(plan["accepted"])
+
+        scheduled = openclaw_hooks.schedule_followup_from_plan_from_payload(
+            {
+                "source_task_id": task_id,
+                "plan_id": plan["plan_id"],
+            },
+            config_path=self.config_path,
+        )
+        self.assertTrue(scheduled["scheduled"])
+        self.assertEqual(scheduled["status"], task_state_module.STATUS_PAUSED)
+        followup_task_id = scheduled["task_id"]
+
+        store = task_state_module.TaskStore(paths=self.paths)
+        source = store.load_task(task_id, allow_archive=False)
+        followup = store.load_task(followup_task_id, allow_archive=False)
+        self.assertEqual(source.meta["tool_followup_plan"]["status"], "scheduled")
+        self.assertEqual(source.meta["tool_followup_plan"]["followup_task_id"], followup_task_id)
+        self.assertEqual(followup.meta["continuation_kind"], "delayed-reply")
+        self.assertEqual(followup.meta["continuation_due_at"], "2099-01-01T00:05:00+00:00")
+        self.assertEqual(followup.meta["continuation_payload"]["reply_text"], "5分钟后回来同步天气结果")
+
+    def test_create_followup_plan_and_schedule_preserve_plain_followup_message(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:planning-materialize-plain",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:planning-materialize-plain",
+                "user_request": "先查天气，5分钟后回来同步结果",
+                "estimated_steps": 3,
+            },
+            config_path=self.config_path,
+        )
+        task_id = registration["task_id"]
+        assert task_id is not None
+
+        plan = openclaw_hooks.create_followup_plan_from_payload(
+            {
+                "source_task_id": task_id,
+                "followup_kind": "delayed-reply",
+                "followup_due_at": "2099-01-01T00:05:00+00:00",
+                "followup_message": "5分钟后回来同步天气结果",
+                "main_user_content_mode": "none",
+            },
+            config_path=self.config_path,
+        )
+        self.assertTrue(plan["accepted"])
+
+        scheduled = openclaw_hooks.schedule_followup_from_plan_from_payload(
+            {
+                "source_task_id": task_id,
+                "plan_id": plan["plan_id"],
+            },
+            config_path=self.config_path,
+        )
+        self.assertTrue(scheduled["scheduled"])
+
+        store = task_state_module.TaskStore(paths=self.paths)
+        source = store.load_task(task_id, allow_archive=False)
+        followup = store.load_task(scheduled["task_id"], allow_archive=False)
+        self.assertEqual(
+            source.meta["tool_followup_plan"]["followup_message"],
+            "5分钟后回来同步天气结果",
+        )
+        self.assertEqual(
+            source.meta["tool_followup_plan"]["followup_summary"],
+            "5分钟后回来同步天气结果",
+        )
+
+    def test_create_followup_plan_derives_summary_from_time_expression_and_message(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:planning-summary-fallback",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:planning-summary-fallback",
+                "user_request": "先查天气，之后回来汇报",
+                "estimated_steps": 3,
+            },
+            config_path=self.config_path,
+        )
+        task_id = registration["task_id"]
+        assert task_id is not None
+
+        plan = openclaw_hooks.create_followup_plan_from_payload(
+            {
+                "source_task_id": task_id,
+                "followup_kind": "delayed-reply",
+                "followup_due_at": "2099-01-01T00:05:00+00:00",
+                "original_time_expression": "5分钟后",
+                "followup_message": "回来继续汇报天气结果",
+                "main_user_content_mode": "none",
+            },
+            config_path=self.config_path,
+        )
+
+        self.assertTrue(plan["accepted"])
+        self.assertEqual(plan["runtime_contract"]["followup_summary"], "5分钟后回来继续汇报天气结果")
+
+        finalized = openclaw_hooks.finalize_planned_followup_from_payload(
+            {
+                "source_task_id": task_id,
+                "plan_id": plan["plan_id"],
+            },
+            config_path=self.config_path,
+        )
+        self.assertEqual(finalized["followup_summary"], "5分钟后回来继续汇报天气结果")
+
+    def test_finalize_planned_followup_marks_promise_without_task_anomaly(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:planning-anomaly",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:planning-anomaly",
+                "user_request": "10分钟后提醒我看结果",
+                "estimated_steps": 2,
+            },
+            config_path=self.config_path,
+        )
+        task_id = registration["task_id"]
+        assert task_id is not None
+
+        guarded = openclaw_hooks.attach_promise_guard_from_payload(
+            {
+                "source_task_id": task_id,
+                "promise_summary": "10分钟后提醒看结果",
+                "followup_due_at": "2099-01-01T00:10:00+00:00",
+            },
+            config_path=self.config_path,
+        )
+        self.assertTrue(guarded["armed"])
+
+        plan = openclaw_hooks.create_followup_plan_from_payload(
+            {
+                "source_task_id": task_id,
+                "followup_due_at": "2099-01-01T00:10:00+00:00",
+                "followup_message": "10分钟后提醒你看结果",
+                "followup_summary": "10分钟后提醒看结果",
+                "main_user_content_mode": "none",
+            },
+            config_path=self.config_path,
+        )
+        self.assertTrue(plan["accepted"])
+
+        finalized = openclaw_hooks.finalize_planned_followup_from_payload(
+            {
+                "source_task_id": task_id,
+                "plan_id": plan["plan_id"],
+            },
+            config_path=self.config_path,
+        )
+        self.assertFalse(finalized["ok"])
+        self.assertFalse(finalized["promise_fulfilled"])
+        self.assertEqual(finalized["reason"], "promise-without-task")
+
+        store = task_state_module.TaskStore(paths=self.paths)
+        source = store.load_task(task_id, allow_archive=False)
+        self.assertEqual(source.meta["planning_anomaly"], "promise-without-task")
+        self.assertEqual(source.meta["planning_promise_guard"]["status"], "anomaly")
+        self.assertEqual(source.meta["tool_followup_plan"]["status"], "anomaly")
 
     def test_finalize_active_marks_done_on_success(self) -> None:
         registration = openclaw_hooks.register_from_payload(

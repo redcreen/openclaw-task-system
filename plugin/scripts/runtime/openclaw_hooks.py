@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ from openclaw_bridge import (
     OpenClawInboundContext,
     _estimate_wait_seconds,
     _queue_metrics,
+    materialize_due_collecting_windows,
     record_blocked,
     record_completed,
     record_failed,
@@ -33,6 +35,34 @@ GENERIC_SUCCESS_SUMMARIES = {
     "agent run completed",
     "assistant",
 }
+
+TASK_USER_CONTENT_OPEN = "<task_user_content>"
+TASK_USER_CONTENT_CLOSE = "</task_user_content>"
+
+
+def _sanitize_structured_followup_message(text: str) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    pieces: list[str] = []
+    cursor = 0
+    while cursor < len(raw):
+        open_index = raw.find(TASK_USER_CONTENT_OPEN, cursor)
+        if open_index < 0:
+            break
+        content_start = open_index + len(TASK_USER_CONTENT_OPEN)
+        close_index = raw.find(TASK_USER_CONTENT_CLOSE, content_start)
+        if close_index < 0:
+            break
+        candidate = raw[content_start:close_index].strip()
+        if candidate:
+            pieces.append(candidate)
+        cursor = close_index + len(TASK_USER_CONTENT_CLOSE)
+    if pieces:
+        return "\n".join(pieces).strip()
+    if TASK_USER_CONTENT_OPEN in raw or TASK_USER_CONTENT_CLOSE in raw:
+        return ""
+    return raw
 
 
 def _build_control_plane_message(
@@ -73,6 +103,92 @@ def _build_terminal_message_text(task: Any, *, success: bool) -> str:
     return "当前任务已失败。"
 
 
+def _render_same_session_routing_receipt(routing: dict[str, Any]) -> Optional[dict[str, Any]]:
+    decision = str(routing.get("execution_decision") or "").strip()
+    reason_code = str(routing.get("reason_code") or "").strip() or None
+    reason_text = str(routing.get("reason_text") or "").strip() or None
+    target_task_id = str(routing.get("target_task_id") or "").strip() or None
+    session_key = str(routing.get("session_key") or "").strip() or None
+    target_session_key = str(routing.get("target_session_key") or "").strip() or session_key
+    if not decision:
+        return None
+
+    templates = {
+        "merge-before-start": "这次更新已并入当前任务，因为任务还没正式开始执行。",
+        "interrupt-and-restart": "当前任务已按这次更新重新开始，因为现在仍处于可安全重启阶段。",
+        "append-as-next-step": "这次更新已追加为当前任务的下一步，因为执行已产生外部动作。",
+        "queue-as-new-task": "这次内容已作为独立任务排队，因为它是新的独立目标。",
+        "enter-collecting-window": "我会先等待你继续补充，再开始执行。",
+        "handle-as-control-plane": "这条控制指令已收到，我会按当前任务状态处理。",
+    }
+    text = templates.get(decision)
+    if not text:
+        return None
+    return {
+        "decision": decision,
+        "reason_code": reason_code,
+        "reason_text": reason_text,
+        "target_task_id": target_task_id,
+        "target_session_key": target_session_key,
+        "user_visible_wd": f"[wd] {text}",
+    }
+
+
+def _build_same_session_routing_control_plane_message(
+    routing: dict[str, Any],
+) -> Optional[dict[str, Any]]:
+    receipt = _render_same_session_routing_receipt(routing)
+    if not receipt:
+        return None
+    task_id = str(receipt.get("target_task_id") or "").strip() or None
+    metadata = {
+        "routing_decision": routing,
+        "wd_receipt": receipt,
+    }
+    message = _build_control_plane_message(
+        kind="same-session-routing-receipt",
+        event_name="same-session-routing-receipt",
+        priority="p0-receive-ack",
+        text=str(receipt["user_visible_wd"]).replace("[wd]", "", 1).strip(),
+        task=None,
+        session_key=str(receipt.get("target_session_key") or routing.get("session_key") or "").strip() or None,
+        metadata=metadata,
+    )
+    if task_id:
+        message["task_id"] = task_id
+    return message
+
+
+def _render_followup_summary_text(plan: dict[str, Any]) -> Optional[str]:
+    summary = str(plan.get("followup_summary") or "").strip()
+    if summary:
+        return summary
+    due_at = str(plan.get("followup_due_at") or plan.get("due_at") or "").strip()
+    if due_at:
+        return f"{due_at} 的后续同步"
+    return None
+
+
+def _derive_followup_summary(
+    *,
+    followup_summary: str,
+    original_time_expression: str,
+    followup_message: str,
+) -> Optional[str]:
+    summary = str(followup_summary or "").strip()
+    if summary:
+        return summary
+    time_label = str(original_time_expression or "").strip()
+    message = " ".join(str(followup_message or "").strip().split())
+    if time_label and message:
+        if message.startswith(time_label):
+            return message
+        return f"{time_label}{message}"
+    if message:
+        return message
+    return None
+
+
 def _find_inflight_status_entry(
     task_id: str,
     *,
@@ -82,6 +198,67 @@ def _find_inflight_status_entry(
         if str(status.get("task_id") or "") == task_id:
             return status
     return None
+
+
+def _coerce_positive_int(value: Any) -> Optional[int]:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _compact_running_target(task: Any) -> Optional[str]:
+    target = str(task.meta.get("original_user_request") or task.task_label or "").strip()
+    if not target:
+        return None
+    compact = " ".join(target.split())
+    if len(compact) > 48:
+        return f"{compact[:45].rstrip()}..."
+    return compact
+
+
+def _render_wait_hint(estimated_wait_seconds: Optional[int]) -> Optional[str]:
+    if not estimated_wait_seconds:
+        return None
+    if estimated_wait_seconds < 60:
+        return f"预计约 {estimated_wait_seconds} 秒内给你正式结果。"
+    return f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟内给你正式结果。"
+
+
+def _describe_running_progress(task: Any, *, estimated_wait_seconds: Optional[int]) -> dict[str, Any]:
+    target = _compact_running_target(task)
+    estimated_steps = _coerce_positive_int(task.meta.get("estimated_steps"))
+    progress_update_count = _coerce_positive_int(task.meta.get("progress_update_count")) or 0
+    wait_hint = _render_wait_hint(estimated_wait_seconds)
+    message: Optional[str] = None
+    current_stage: Optional[int] = None
+    if estimated_steps:
+        current_stage = min(progress_update_count + 1, estimated_steps)
+        if progress_update_count >= estimated_steps:
+            core = f"预计约 {estimated_steps} 个阶段，当前已进入最后收口。"
+        else:
+            core = f"预计约 {estimated_steps} 个阶段，当前在第 {current_stage} 个阶段。"
+        if target:
+            message = f"已收到你的消息，当前仍在处理中；正在推进：{target}；{core}"
+        else:
+            message = f"已收到你的消息，当前仍在处理中；{core}"
+    elif target and progress_update_count > 0:
+        message = (
+            f"已收到你的消息，当前仍在处理中；正在推进：{target}；"
+            f"已记录 {progress_update_count} 次内部进展。"
+        )
+    elif target:
+        message = f"已收到你的消息，当前仍在处理中；正在推进：{target}，完成后给你正式结果。"
+    if message and wait_hint:
+        message = f"{message}{wait_hint}"
+    return {
+        "running_target": target,
+        "estimated_steps": estimated_steps,
+        "progress_update_count": progress_update_count,
+        "current_stage": current_stage,
+        "progress_message": message,
+    }
 
 
 def load_payload(path: Path) -> dict[str, Any]:
@@ -126,17 +303,71 @@ def _build_context(payload: dict[str, Any]) -> OpenClawInboundContext:
     )
 
 
+def _build_same_session_classifier_from_config(agent_id: str, config_path: Optional[Path]) -> tuple[Optional[Any], float]:
+    runtime_config = load_task_system_config(config_path=config_path)
+    agent_config = runtime_config.agent_config(agent_id)
+    routing_config = agent_config.same_session_routing
+    classifier_config = routing_config.classifier
+    min_confidence = float(classifier_config.min_confidence)
+    if not routing_config.enabled or not classifier_config.enabled or not classifier_config.command:
+        return None, min_confidence
+
+    def classifier(payload: dict[str, Any]) -> dict[str, Any]:
+        completed = subprocess.run(
+            list(classifier_config.command),
+            input=json.dumps(payload, ensure_ascii=False),
+            capture_output=True,
+            text=True,
+            timeout=classifier_config.timeout_ms / 1000,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(completed.stderr.strip() or f"classifier exited with code {completed.returncode}")
+        parsed = json.loads(completed.stdout or "{}")
+        if not isinstance(parsed, dict):
+            raise ValueError("classifier output must be a JSON object")
+        return parsed
+
+    return classifier, min_confidence
+
+
 def register_from_payload(
     payload: dict[str, Any],
     *,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
+    same_session_classifier, same_session_classifier_min_confidence = _build_same_session_classifier_from_config(
+        payload["agent_id"],
+        config_path,
+    )
     decision = register_inbound_task(
         _build_context(payload),
         config_path=config_path,
         observe_only=bool(payload.get("observe_only", False)),
+        same_session_classifier=same_session_classifier,
+        same_session_classifier_min_confidence=same_session_classifier_min_confidence,
     )
     serialized = decision.to_payload()
+    control_plane_message = None
+    if isinstance(serialized.get("routing_decision"), dict):
+        routing = dict(serialized["routing_decision"])
+        wd_receipt = _render_same_session_routing_receipt(routing)
+        if wd_receipt:
+            routing["wd_receipt"] = wd_receipt
+            serialized["routing_decision"] = routing
+            serialized["wd_receipt"] = wd_receipt
+            control_plane_message = _build_same_session_routing_control_plane_message(routing)
+            task_id = str(serialized.get("task_id") or "").strip()
+            if task_id:
+                runtime_config = load_task_system_config(config_path=config_path)
+                store = TaskStore(paths=runtime_config.build_paths())
+                try:
+                    task = store.load_task(task_id, allow_archive=False)
+                except FileNotFoundError:
+                    task = None
+                if task is not None:
+                    task.meta["same_session_routing"] = routing
+                    store.save_task(task)
     return {
         "should_register_task": serialized["should_register_task"],
         "task_id": serialized["task_id"],
@@ -150,7 +381,23 @@ def register_from_payload(
         "queued_count": serialized["queued_count"],
         "estimated_wait_seconds": serialized["estimated_wait_seconds"],
         "continuation_due_at": serialized["continuation_due_at"],
+        "routing_decision": serialized["routing_decision"],
+        "wd_receipt": serialized.get("wd_receipt"),
+        "control_plane_message": control_plane_message,
         "register_decision": serialized,
+        "session_state": serialized.get("session_state"),
+    }
+
+
+def claim_due_collecting_windows_from_payload(
+    payload: dict[str, Any],
+    *,
+    config_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    tasks = materialize_due_collecting_windows(config_path=config_path)
+    return {
+        "claimed_count": len(tasks),
+        "tasks": tasks,
     }
 
 
@@ -224,7 +471,9 @@ def create_followup_plan_from_payload(
 
     followup_kind = str(payload.get("followup_kind") or payload.get("kind") or "delayed-reply").strip()
     followup_due_at = str(payload.get("followup_due_at") or payload.get("due_at") or "").strip()
-    followup_message = str(payload.get("followup_message") or payload.get("reply_text") or "").strip()
+    followup_message = _sanitize_structured_followup_message(
+        str(payload.get("followup_message") or payload.get("reply_text") or "").strip()
+    )
     followup_summary = str(payload.get("followup_summary") or payload.get("summary") or "").strip()
     main_user_content_mode = str(payload.get("main_user_content_mode") or "none").strip() or "none"
     reply_to_id = str(payload.get("reply_to_id") or payload.get("replyToId") or "").strip()
@@ -243,6 +492,11 @@ def create_followup_plan_from_payload(
         return {"accepted": False, "reason": "invalid-followup-due-at"}
 
     plan_id = str(payload.get("plan_id") or "").strip() or f"plan_{uuid4().hex}"
+    derived_followup_summary = _derive_followup_summary(
+        followup_summary=followup_summary,
+        original_time_expression=str(payload.get("original_time_expression") or "").strip(),
+        followup_message=followup_message,
+    )
     plan = {
         "plan_id": plan_id,
         "source_task_id": source_task.task_id,
@@ -250,7 +504,7 @@ def create_followup_plan_from_payload(
         "followup_kind": followup_kind,
         "followup_due_at": followup_due_at,
         "followup_message": followup_message,
-        "followup_summary": followup_summary or None,
+        "followup_summary": derived_followup_summary,
         "main_user_content_mode": main_user_content_mode,
         "dependency": str(payload.get("dependency") or "after-source-task-finalized"),
         "original_time_expression": str(payload.get("original_time_expression") or "").strip() or None,
@@ -268,7 +522,7 @@ def create_followup_plan_from_payload(
             "followup_kind": followup_kind,
             "dependency": plan["dependency"],
             "followup_due_at": followup_due_at,
-            "followup_summary": followup_summary or None,
+            "followup_summary": derived_followup_summary,
             "main_user_content_mode": main_user_content_mode,
         },
     }
@@ -355,7 +609,7 @@ def schedule_followup_from_plan_from_payload(
             }
 
     followup_due_at = str(plan.get("followup_due_at") or "").strip()
-    followup_message = str(plan.get("followup_message") or "").strip()
+    followup_message = _sanitize_structured_followup_message(str(plan.get("followup_message") or "").strip())
     if not followup_due_at or not followup_message:
         return {"scheduled": False, "reason": "invalid-followup-plan"}
     try:
@@ -1063,7 +1317,9 @@ def finalize_active_from_payload(
         if isinstance(post_run_plan, dict):
             followup_kind = str(post_run_plan.get("kind") or "").strip()
             followup_due_at = str(post_run_plan.get("due_at") or "").strip()
-            followup_reply_text = str(post_run_plan.get("reply_text") or "").strip()
+            followup_reply_text = _sanitize_structured_followup_message(
+                str(post_run_plan.get("reply_text") or "").strip()
+            )
             followup_wait_seconds = int(post_run_plan.get("wait_seconds") or 0)
             if followup_kind and followup_due_at and followup_reply_text and followup_wait_seconds > 0:
                 followup_task = store.observe_task(
@@ -1152,6 +1408,14 @@ def should_send_short_followup_from_payload(
         queue_position=queue_position,
         task_status=task.status,
     )
+    plan = task.meta.get("tool_followup_plan") if isinstance(task.meta.get("tool_followup_plan"), dict) else {}
+    guard = task.meta.get("planning_promise_guard") if isinstance(task.meta.get("planning_promise_guard"), dict) else {}
+    planning_anomaly = str(task.meta.get("planning_anomaly") or "").strip()
+    followup_summary = _render_followup_summary_text(plan)
+    plan_status = str(plan.get("status") or "").strip()
+    promise_summary = str(guard.get("promise_summary") or "").strip()
+    blocked_reason = str(task.meta.get("blocked_reason") or task.block_reason or "").strip()
+    running_progress = _describe_running_progress(task, estimated_wait_seconds=estimated_wait_seconds)
 
     followup_message = "已收到你的消息，当前仍在处理中；稍后给你正式结果。"
     if task.status in {"received", "queued"}:
@@ -1177,15 +1441,35 @@ def should_send_short_followup_from_payload(
         last_progress_note = str(task.meta.get("last_progress_note") or "").strip()
         if last_progress_note:
             followup_message = f"已收到你的消息，当前仍在处理中；最近进展：{last_progress_note}"
+        elif planning_anomaly == "promise-without-task":
+            target = promise_summary or followup_summary or "后续同步"
+            followup_message = (
+                f"已收到你的消息，当前仍在处理中；但 {target} 这条后续安排还没有成功落成真实任务，"
+                "我会如实继续推进并在后续状态里说明结果。"
+            )
+        elif plan_status == "planned":
+            target = followup_summary or promise_summary or "后续同步"
+            followup_message = (
+                f"已收到你的消息，当前仍在处理中；正在把 {target} 物化成真实 follow-up 任务，"
+                "完成后会再给你明确安排状态。"
+            )
+        elif plan_status in {"scheduled", "fulfilled"} and followup_summary:
+            followup_message = (
+                f"已收到你的消息，当前仍在处理中；已建立后续安排：{followup_summary}。"
+                "我先继续把眼前这一步收口。"
+            )
+        elif promise_summary:
+            followup_message = (
+                f"已收到你的消息，当前仍在处理中；当前在推进即时部分，同时校验后续安排：{promise_summary}。"
+            )
+        elif blocked_reason:
+            followup_message = f"已收到你的消息，当前仍在处理中；当前阻塞点：{blocked_reason}。"
+        elif running_progress["progress_message"]:
+            followup_message = str(running_progress["progress_message"])
         elif estimated_wait_seconds:
-            if estimated_wait_seconds < 60:
-                followup_message = (
-                    f"已收到你的消息，当前仍在处理中；预计约 {estimated_wait_seconds} 秒内给你正式结果。"
-                )
-            else:
-                followup_message = (
-                    f"已收到你的消息，当前仍在处理中；预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟内给你正式结果。"
-                )
+            wait_hint = _render_wait_hint(estimated_wait_seconds)
+            if wait_hint:
+                followup_message = f"已收到你的消息，当前仍在处理中；{wait_hint}"
         elif active_count > 1 or running_count > 1:
             followup_message = "已收到你的消息，当前仍在处理中；系统还有其他活动任务，我会继续同步进展。"
 
@@ -1210,6 +1494,15 @@ def should_send_short_followup_from_payload(
                 "queue_position": queue_position,
                 "ahead_count": ahead_count,
                 "estimated_wait_seconds": estimated_wait_seconds,
+                "planning_anomaly": planning_anomaly or None,
+                "planning_plan_status": plan_status or None,
+                "planning_followup_summary": followup_summary or None,
+                "planning_promise_summary": promise_summary or None,
+                "blocked_reason": blocked_reason or None,
+                "running_target": running_progress["running_target"],
+                "estimated_steps": running_progress["estimated_steps"],
+                "progress_update_count": running_progress["progress_update_count"],
+                "current_stage": running_progress["current_stage"],
             },
         },
         "queue_position": queue_position,
@@ -1492,6 +1785,8 @@ def dispatch(command: str, payload: dict[str, Any], *, config_path: Optional[Pat
         return watchdog_auto_recover_from_payload(payload, config_path=config_path)
     if command == "claim-due-continuations":
         return claim_due_continuations_from_payload(payload, config_path=config_path)
+    if command == "claim-due-collecting-windows":
+        return claim_due_collecting_windows_from_payload(payload, config_path=config_path)
     if command == "fulfill-due-continuation":
         return fulfill_due_continuation_from_payload(payload, config_path=config_path)
     if command == "continuation-wake":
@@ -1539,7 +1834,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     usage = (
         "usage: openclaw_hooks.py "
-        "<register|create-followup-plan|attach-promise-guard|schedule-followup-from-plan|finalize-planned-followup|sync-followup-reply-target|watchdog-auto-recover|claim-due-continuations|fulfill-due-continuation|continuation-wake|resolve-active|sync-source-reply-target|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control|resume-main-task|cancel-main-queue-task|main-continuity|main-tasks-summary> "
+        "<register|create-followup-plan|attach-promise-guard|schedule-followup-from-plan|finalize-planned-followup|sync-followup-reply-target|watchdog-auto-recover|claim-due-continuations|claim-due-collecting-windows|fulfill-due-continuation|continuation-wake|resolve-active|sync-source-reply-target|progress|progress-active|blocked|blocked-active|completed|completed-active|failed|failed-active|finalize-active|should-send-short-followup|taskmonitor-status|taskmonitor-control|resume-main-task|cancel-main-queue-task|main-continuity|main-tasks-summary> "
         "<payload.json|-> [config.json]"
     )
     if args and args[0] in {"-h", "--help"}:

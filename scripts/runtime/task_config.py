@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,8 +21,11 @@ Hard rules:
 - Do not generate the first [wd]. That is owned by runtime.
 - Do not generate the fixed 30-second progress message. That is owned by runtime.
 - Do not generate fallback or recovery control-plane text unless runtime explicitly delegates that action.
-- Do not tell the user whether a follow-up has been scheduled. Scheduling status is a runtime-owned [wd] message.
-- Do not say “已排上”, “已安排妥当”, “我会在 X 分钟后回来”, or equivalent scheduling-status language in the main reply.
+- For future-first requests, default to main_user_content_mode=none unless an immediate result is explicitly required.
+- Let runtime decide whether the current turn should send no business content, a short summary, or a full answer.
+- If runtime chooses main_user_content_mode=immediate-summary, keep that summary to one short business-facing line.
+- Do not put scheduling status, promise state, or tool-chain state in the user-visible answer.
+- When creating a follow-up plan, provide a human-readable followup_summary so runtime can tell the user what has been arranged.
 - For every future promise, delayed follow-up, reminder, or dependent continuation, use task-system tools by default.
 - Never say that you will come back later unless runtime has accepted a real scheduled follow-up.
 - If task-system tool scheduling fails, times out, or is skipped, say that explicitly to the user.
@@ -30,7 +34,6 @@ Hard rules:
 Decision policy:
 - normal immediate work: stay on the normal agent path
 - fixed control-plane messages: leave to runtime
-- scheduling outcome messages: leave to runtime
 - all other future-action planning: tool-first
 """
 
@@ -65,12 +68,28 @@ class PlanningConfig:
 
 
 @dataclass(frozen=True)
+class SameSessionRoutingClassifierConfig:
+    enabled: bool = False
+    command: tuple[str, ...] = ()
+    timeout_ms: int = 1500
+    min_confidence: float = 0.75
+
+
+@dataclass(frozen=True)
+class SameSessionRoutingConfig:
+    enabled: bool = True
+    collecting_window_seconds: int = 20
+    classifier: SameSessionRoutingClassifierConfig = field(default_factory=SameSessionRoutingClassifierConfig)
+
+
+@dataclass(frozen=True)
 class AgentTaskConfig:
     enabled: bool = True
     auto_start: bool = True
     classification: ClassificationConfig = field(default_factory=ClassificationConfig)
     silence_monitor: SilenceMonitorConfig = field(default_factory=SilenceMonitorConfig)
     planning: PlanningConfig = field(default_factory=PlanningConfig)
+    same_session_routing: SameSessionRoutingConfig = field(default_factory=SameSessionRoutingConfig)
 
 
 @dataclass(frozen=True)
@@ -137,6 +156,31 @@ def _build_planning_config(raw: dict[str, Any]) -> PlanningConfig:
     )
 
 
+def _coerce_command(raw: Any) -> tuple[str, ...]:
+    if isinstance(raw, str):
+        return tuple(part for part in shlex.split(raw) if str(part).strip())
+    if isinstance(raw, (list, tuple)):
+        return tuple(str(part).strip() for part in raw if str(part).strip())
+    return ()
+
+
+def _build_same_session_routing_classifier_config(raw: dict[str, Any]) -> SameSessionRoutingClassifierConfig:
+    return SameSessionRoutingClassifierConfig(
+        enabled=bool(raw.get("enabled", False)),
+        command=_coerce_command(raw.get("command")),
+        timeout_ms=max(100, int(raw.get("timeoutMs", 1500))),
+        min_confidence=max(0.0, min(float(raw.get("minConfidence", 0.75)), 1.0)),
+    )
+
+
+def _build_same_session_routing_config(raw: dict[str, Any]) -> SameSessionRoutingConfig:
+    return SameSessionRoutingConfig(
+        enabled=bool(raw.get("enabled", True)),
+        collecting_window_seconds=max(1, int(raw.get("collectingWindowSeconds", 20))),
+        classifier=_build_same_session_routing_classifier_config(raw.get("classifier", {})),
+    )
+
+
 def _build_agent_config(raw: dict[str, Any]) -> AgentTaskConfig:
     return AgentTaskConfig(
         enabled=bool(raw.get("enabled", True)),
@@ -144,6 +188,7 @@ def _build_agent_config(raw: dict[str, Any]) -> AgentTaskConfig:
         classification=_build_classification_config(raw.get("classification", {})),
         silence_monitor=_build_silence_monitor_config(raw.get("silenceMonitor", {})),
         planning=_build_planning_config(raw.get("planning", {})),
+        same_session_routing=_build_same_session_routing_config(raw.get("sameSessionRouting", {})),
     )
 
 

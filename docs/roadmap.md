@@ -1,6 +1,6 @@
 # OpenClaw Task System Roadmap
 
-> 最后更新：2026-04-05
+> 最后更新：2026-04-11
 > 角色：这是本项目的正式 roadmap。以后默认按这份 roadmap 推进；`docs/todo.md` 只作为临时记录和新增事项收集。
 
 ## 1. 项目是做什么的
@@ -501,9 +501,31 @@ Phase 5 收口结论：
    - 设计稿见：
      - [llm_tool_task_planning.md](./llm_tool_task_planning.md)
 
-## 12. Phase 6 候选：LLM-assisted planning with supervisor-first runtime
+## 12. Phase 6：LLM-assisted planning with supervisor-first runtime
 
-这条候选方向现在已经足够明确，可以开始进入正式实施准备。
+状态：最小闭环已完成
+
+当前已落地的最小闭环包括：
+
+- planning tools 已接入：
+  - `ts_create_followup_plan`
+  - `ts_schedule_followup_from_plan`
+  - `ts_attach_promise_guard`
+  - `ts_finalize_planned_followup`
+- tool-created follow-up plan 会落到 truth source，并能物化成真实 paused follow-up task
+- finalize 已能稳定抓到 `promise-without-task`
+- overdue planned follow-up 已有 continuation 侧自动化验证
+- `planning health` / `promise-without-task` / overdue follow-up 已进入：
+  - task status truth source
+  - health report
+  - dashboard / triage / continuity 投影
+- installable payload 与本地 OpenClaw 安装态 runtime 的 drift 已进入：
+  - `plugin_install_drift.py`
+  - `main_ops.py plugin-install-drift`
+  - `dashboard / dashboard --only-issues / triage` 投影
+- 首条 `[wd]`、30 秒 follow-up、fallback / recovery 仍保持 runtime-owned
+
+这一轮已经不再只是“实施准备”，而是最小可工作的 Phase 6 runtime 已经落地。
 
 核心原则不变：
 
@@ -676,6 +698,20 @@ Phase 6 不应该一上来把全量 testsuite 都绑进来。
 4. 首条 `[wd]`、30 秒 follow-up、fallback / recovery 仍然不依赖 LLM
 5. roadmap、testsuite、architecture、planning design 文档都已同步
 
+### 12.7 Local install observability
+
+虽然当前 `openclaw plugins install ./plugin` 仍可能被 OpenClaw 的 dangerous-code 检测拦住，
+但这条现实边界已经不再是“文档里提一下”的状态，而是正式进入运维视图：
+
+- `plugin_install_drift.py --json` 是源码 payload 与本地安装态 runtime 的 truth source
+- `dashboard --only-issues` 会直接显示 drift 计数
+- `triage --json` 在没有更高优先级 blocked/planning 动作时，会把 install drift 升成主建议动作
+
+这意味着：
+
+- Phase 6 的最小闭环不再只覆盖 planning runtime 本身
+- 也覆盖了“安装态是否真的跟上这轮 runtime 演进”的可观察性
+
 ### 12.6 Continuation lane constraints
 
 For planned delayed follow-ups, the accepted runtime contract is now:
@@ -684,3 +720,41 @@ For planned delayed follow-ups, the accepted runtime contract is now:
 - main-lane activity must not block due continuations
 - one due continuation must not block another continuation in the same session
 - the user-facing session context stays shared, but continuation scheduling uses task-system continuation-lane semantics rather than main-lane busy locks
+
+## 13. 已交付子项目：same-session message routing
+
+状态：已完成
+
+这条已交付能力解决的是：
+
+- 同一 session 内连续输入多条消息时
+- 哪些应该并入当前 task
+- 哪些应该单独排队
+- 哪些应该等待后续消息补齐
+- 哪些属于控制面
+
+已明确避免的方向：
+
+- 继续扩张 regex / phrase list
+- 或把决定权交给主对话 LLM 自己顺手判断
+
+当前已交付形态：
+
+1. runtime 先按当前 task state 做快速判定
+2. 只在歧义场景触发 runtime-owned structured LLM classifier
+3. runtime 再结合执行阶段决定：
+   - `merge-before-start`
+   - `interrupt-and-restart`
+   - `append-as-next-step`
+   - `queue-as-new-task`
+   - `enter-collecting-window`
+4. 每一次自动判定都必须给用户返回 runtime-owned `[wd]` 回执，并简短说明原因
+
+当前交付与验收入口：
+
+- [session_message_routing/README.md](./session_message_routing/README.md)
+- [session_message_routing/decision_contract.md](./session_message_routing/decision_contract.md)
+- [session_message_routing/test_cases.md](./session_message_routing/test_cases.md)
+- [session_message_routing/development_plan.md](./session_message_routing/development_plan.md)
+- `python3 scripts/runtime/same_session_routing_acceptance.py --json`
+- `python3 scripts/runtime/stable_acceptance.py --json`

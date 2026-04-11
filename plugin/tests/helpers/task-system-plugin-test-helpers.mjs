@@ -167,6 +167,7 @@ export async function createFakeRuntimeRoot(options = {}) {
     },
   };
   const claimDueContinuationsResponse = options.claimDueContinuationsResponse ?? { tasks: [] };
+  const claimDueCollectingWindowsResponse = options.claimDueCollectingWindowsResponse ?? { tasks: [] };
   const fulfillDueContinuationResponse = options.fulfillDueContinuationResponse ?? { updated: false };
   const watchdogAutoRecoverResponse = options.watchdogAutoRecoverResponse ?? {};
   const createFollowupPlanResponse = options.createFollowupPlanResponse ?? {
@@ -211,6 +212,7 @@ export async function createFakeRuntimeRoot(options = {}) {
   const serializedMainTasksSummaryResponse = JSON.stringify(JSON.stringify(mainTasksSummaryResponse));
   const serializedTaskmonitorControlResponse = JSON.stringify(JSON.stringify(taskmonitorControlResponse));
   const serializedClaimDueContinuationsResponse = JSON.stringify(JSON.stringify(claimDueContinuationsResponse));
+  const serializedClaimDueCollectingWindowsResponse = JSON.stringify(JSON.stringify(claimDueCollectingWindowsResponse));
   const serializedFulfillDueContinuationResponse = JSON.stringify(JSON.stringify(fulfillDueContinuationResponse));
   const serializedWatchdogAutoRecoverResponse = JSON.stringify(JSON.stringify(watchdogAutoRecoverResponse));
   const serializedCreateFollowupPlanResponse = JSON.stringify(JSON.stringify(createFollowupPlanResponse));
@@ -253,6 +255,8 @@ elif command == "main-tasks-summary":
     print(json.dumps(json.loads(${serializedMainTasksSummaryResponse}), ensure_ascii=False))
 elif command == "claim-due-continuations":
     print(json.dumps(json.loads(${serializedClaimDueContinuationsResponse}), ensure_ascii=False))
+elif command == "claim-due-collecting-windows":
+    print(json.dumps(json.loads(${serializedClaimDueCollectingWindowsResponse}), ensure_ascii=False))
 elif command == "fulfill-due-continuation":
     print(json.dumps(json.loads(${serializedFulfillDueContinuationResponse}), ensure_ascii=False))
 elif command == "watchdog-auto-recover":
@@ -420,6 +424,7 @@ export function createApi(runtimeRoot, sentMessages, pluginConfigOverrides = {})
     beforeAgentStart: handlers.get("before_agent_start"),
     beforePromptBuild: handlers.get("before_prompt_build"),
     beforeModelResolve: handlers.get("before_model_resolve"),
+    beforeMessageWrite: handlers.get("before_message_write"),
     messageSending: handlers.get("message_sending"),
     llmOutput: handlers.get("llm_output"),
     agentEnd: handlers.get("agent_end"),

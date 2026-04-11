@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -155,6 +156,87 @@ def _build_base_status_summary(task_id: str, *, paths: TaskPaths) -> dict[str, o
     }
 
 
+def _parse_iso8601(value: object) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _build_planning_summary(task: dict[str, object], *, now_dt: Optional[datetime] = None) -> dict[str, object]:
+    meta = task.get("meta") if isinstance(task.get("meta"), dict) else {}
+    now_dt = now_dt or datetime.now(timezone.utc).astimezone()
+    tool_plan = meta.get("tool_followup_plan") if isinstance(meta.get("tool_followup_plan"), dict) else None
+    promise_guard = meta.get("planning_promise_guard") if isinstance(meta.get("planning_promise_guard"), dict) else None
+    anomaly = str(meta.get("planning_anomaly") or "").strip() or None
+    anomaly_at = str(meta.get("planning_anomaly_at") or "").strip() or None
+    continuation_kind = str(meta.get("continuation_kind") or "").strip() or None
+    continuation_due_at = str(meta.get("continuation_due_at") or "").strip() or None
+    continuation_due_dt = _parse_iso8601(continuation_due_at)
+    continuation_source = str(meta.get("source") or "").strip() or None
+
+    plan_due_at = str((tool_plan or {}).get("followup_due_at") or "").strip() or None
+    plan_due_dt = _parse_iso8601(plan_due_at)
+    plan_status = str((tool_plan or {}).get("status") or "").strip() or None
+    followup_task_id = str((tool_plan or {}).get("followup_task_id") or "").strip() or None
+    guard_status = str((promise_guard or {}).get("status") or "").strip() or None
+
+    continuation_is_planned_followup = continuation_source == "tool-followup-plan" or bool(meta.get("plan_id"))
+    has_tool_path = bool(tool_plan or promise_guard or anomaly or continuation_is_planned_followup)
+    overdue_active_continuation = bool(
+        continuation_is_planned_followup
+        and continuation_due_dt is not None
+        and continuation_due_dt <= now_dt
+        and str(task.get("status") or "") in {"paused", "running"}
+    )
+    promise_without_task = anomaly == "promise-without-task"
+    planning_expected = bool((promise_guard or {}).get("expected_by_finalize", False))
+    planning_pending = bool(
+        has_tool_path
+        and not promise_without_task
+        and (
+            plan_status in {"planned", "scheduled"}
+            or guard_status in {"armed", "scheduled"}
+        )
+    )
+
+    return {
+        "tool_path_used": has_tool_path,
+        "planning_expected": planning_expected,
+        "planning_pending": planning_pending,
+        "promise_without_task": promise_without_task,
+        "anomaly": anomaly,
+        "anomaly_at": anomaly_at,
+        "has_followup_plan": bool(tool_plan),
+        "plan_id": str((tool_plan or {}).get("plan_id") or "").strip() or None,
+        "plan_status": plan_status,
+        "followup_due_at": plan_due_at or continuation_due_at,
+        "followup_task_id": followup_task_id,
+        "followup_summary": str((tool_plan or {}).get("followup_summary") or "").strip() or None,
+        "main_user_content_mode": str((tool_plan or {}).get("main_user_content_mode") or "").strip()
+        or str((promise_guard or {}).get("main_user_content_mode") or "").strip()
+        or None,
+        "promise_guard_armed": bool(promise_guard),
+        "promise_guard_status": guard_status,
+        "promise_summary": str((promise_guard or {}).get("promise_summary") or "").strip() or None,
+        "continuation_kind": continuation_kind,
+        "continuation_due_at": continuation_due_at,
+        "overdue_followup": overdue_active_continuation,
+        "overdue_on_materialize": bool((tool_plan or {}).get("overdue_on_materialize", False)),
+    }
+
+
+def _build_same_session_routing_summary(task: dict[str, object]) -> Optional[dict[str, object]]:
+    meta = task.get("meta") if isinstance(task.get("meta"), dict) else {}
+    routing = meta.get("same_session_routing") if isinstance(meta.get("same_session_routing"), dict) else None
+    if not routing:
+        return None
+    return dict(routing)
+
+
 def _queue_sort_key(status: dict[str, object]) -> tuple[int, str, str]:
     state = str(status["status"])
     if state == STATUS_RUNNING:
@@ -234,6 +316,8 @@ def build_status_summary(
     task["user_facing_status_code"] = projection["code"]
     task["user_facing_status"] = projection["label"]
     task["user_facing_status_family"] = projection["family"]
+    task["planning"] = _build_planning_summary(task)
+    task["same_session_routing"] = _build_same_session_routing_summary(task)
     return task
 
 
@@ -260,6 +344,22 @@ def build_system_overview(
 
     inflight_counts = Counter(str(status["status"]) for status in inflight_statuses)
     delivery_counts = Counter(str(status["delivery"]["state"]) for status in inflight_statuses)
+    planning_items = [status.get("planning") for status in inflight_statuses if isinstance(status.get("planning"), dict)]
+    planning_anomaly_counts = Counter(
+        str(item.get("anomaly") or "")
+        for item in planning_items
+        if str(item.get("anomaly") or "").strip()
+    )
+    promise_guard_counts = Counter(
+        str(item.get("promise_guard_status") or "")
+        for item in planning_items
+        if str(item.get("promise_guard_status") or "").strip()
+    )
+    plan_status_counts = Counter(
+        str(item.get("plan_status") or "")
+        for item in planning_items
+        if str(item.get("plan_status") or "").strip()
+    )
     active_stale_delivery_task_count = sum(
         1 for status in inflight_statuses if status["delivery"]["stale_intermediate_exists"]
     )
@@ -312,6 +412,18 @@ def build_system_overview(
         "failed_instruction_count": len(list((resolved_paths.data_dir / "failed-instructions").glob("*.json"))),
         "resolved_failed_instruction_count": len(list((resolved_paths.data_dir / "resolved-failed-instructions").glob("*.json"))),
         "dispatch_result_count": len(list((resolved_paths.data_dir / "dispatch-results").glob("*.json"))),
+        "planning": {
+            "tool_path_task_count": sum(1 for item in planning_items if bool(item.get("tool_path_used"))),
+            "planning_expected_task_count": sum(1 for item in planning_items if bool(item.get("planning_expected"))),
+            "planning_pending_task_count": sum(1 for item in planning_items if bool(item.get("planning_pending"))),
+            "promise_guard_armed_count": sum(1 for item in planning_items if bool(item.get("promise_guard_armed"))),
+            "promise_without_task_count": sum(1 for item in planning_items if bool(item.get("promise_without_task"))),
+            "overdue_followup_count": sum(1 for item in planning_items if bool(item.get("overdue_followup"))),
+            "overdue_on_materialize_count": sum(1 for item in planning_items if bool(item.get("overdue_on_materialize"))),
+            "anomaly_counts": dict(sorted(planning_anomaly_counts.items())),
+            "promise_guard_status_counts": dict(sorted(promise_guard_counts.items())),
+            "plan_status_counts": dict(sorted(plan_status_counts.items())),
+        },
         "active_tasks": inflight_statuses,
     }
 
@@ -377,6 +489,25 @@ def render_status_markdown(
         lines.append(f"- block_reason: {status['block_reason']}")
     if status["failure_reason"]:
         lines.append(f"- failure_reason: {status['failure_reason']}")
+    planning = status.get("planning")
+    if isinstance(planning, dict) and planning.get("tool_path_used"):
+        lines.append(f"- planning.tool_path_used: {planning['tool_path_used']}")
+        lines.append(f"- planning.plan_status: {planning.get('plan_status')}")
+        lines.append(f"- planning.followup_due_at: {planning.get('followup_due_at')}")
+        lines.append(f"- planning.promise_guard_status: {planning.get('promise_guard_status')}")
+        lines.append(f"- planning.overdue_followup: {planning.get('overdue_followup')}")
+        lines.append(f"- planning.promise_without_task: {planning.get('promise_without_task')}")
+        if planning.get("anomaly"):
+            lines.append(f"- planning.anomaly: {planning['anomaly']}")
+    same_session_routing = status.get("same_session_routing")
+    if isinstance(same_session_routing, dict):
+        lines.append(f"- same_session_routing.routing_status: {same_session_routing.get('routing_status')}")
+        lines.append(f"- same_session_routing.same_session_followup: {same_session_routing.get('same_session_followup')}")
+        lines.append(f"- same_session_routing.classification: {same_session_routing.get('classification')}")
+        lines.append(
+            f"- same_session_routing.execution_decision: {same_session_routing.get('execution_decision')}"
+        )
+        lines.append(f"- same_session_routing.reason_code: {same_session_routing.get('reason_code')}")
     return "\n".join(lines) + "\n"
 
 
@@ -429,6 +560,15 @@ def render_overview_markdown(
         lines.append(f"- active_delivery_counts: {json.dumps(overview['active_delivery_counts'], ensure_ascii=False)}")
     if overview["archived_status_counts"]:
         lines.append(f"- archived_status_counts: {json.dumps(overview['archived_status_counts'], ensure_ascii=False)}")
+    planning = overview.get("planning")
+    if isinstance(planning, dict):
+        lines.append(f"- planning_tool_path_task_count: {planning['tool_path_task_count']}")
+        lines.append(f"- planning_expected_task_count: {planning['planning_expected_task_count']}")
+        lines.append(f"- planning_pending_task_count: {planning['planning_pending_task_count']}")
+        lines.append(f"- planning_promise_without_task_count: {planning['promise_without_task_count']}")
+        lines.append(f"- planning_overdue_followup_count: {planning['overdue_followup_count']}")
+        if planning["anomaly_counts"]:
+            lines.append(f"- planning_anomaly_counts: {json.dumps(planning['anomaly_counts'], ensure_ascii=False)}")
     if overview["active_tasks"]:
         lines.append("")
         lines.append("## Active Tasks")

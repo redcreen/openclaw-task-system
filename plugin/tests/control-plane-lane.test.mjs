@@ -241,8 +241,6 @@ test("agent_end delivers finalize failure control-plane message when runtime ret
       {
         sessionKey: "agent:main:telegram:direct:8705812936",
         channelId: "telegram",
-        conversationId: "8705812936",
-        accountId: "default",
         senderId: "8705812936",
         agentId: "main",
       },
@@ -266,6 +264,8 @@ test("agent_end delivers finalize failure control-plane message when runtime ret
     assert.equal(sentMessages.length, 2);
     assert.match(sentMessages[0].text, /^\[wd\]/);
     assert.match(sentMessages[1].text, /当前任务已失败：agent_end failure/);
+    assert.equal(sentMessages[1].to, "8705812936");
+    assert.equal(sentMessages[1].accountId, "default");
     assert.equal(sentMessages[0].replyToId, "msg-source-1");
     assert.equal(sentMessages[1].replyToId, "msg-source-1");
     assert.equal(sentMessages[0].threadId, "thread-source-1");
@@ -278,6 +278,92 @@ test("agent_end delivers finalize failure control-plane message when runtime ret
     assert.equal(terminalCommitted?.payload?.blockedBy, "task-failed");
     assert.equal(terminalCleared?.payload?.terminalPhase, "cleared");
     assert.equal(terminalCleared?.payload?.reason, "finalize-active-complete");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("agent_end task-completed host retry keeps bound feishu delivery target when ctx omits account and chat", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    finalizeActiveResponse: {
+      updated: true,
+      control_plane_message: {
+        schema: "openclaw.task-system.control-plane.v1",
+        kind: "task-completed",
+        event_name: "task-completed",
+        priority: "p1-task-management",
+        task_id: "task-123",
+        text: "当前任务已完成：resume 已处理",
+      },
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages, {
+    enableHostFeishuDelivery: true,
+    hostDeliveryPollMs: 20,
+    outboundSendTimeoutMs: 20,
+    outboundSendModeSequence: ["ok", "error", "ok"],
+  });
+
+  try {
+    await plugin.start();
+
+    await plugin.beforeDispatch(
+      {
+        content: "帮我继续处理这个任务",
+        body: "帮我继续处理这个任务",
+        channel: "feishu",
+        senderId: "ou_terminal_retry",
+        messageId: "om_terminal_source",
+        threadId: "thread_terminal_source",
+      },
+      {
+        sessionKey: "agent:main:feishu:direct:ou_terminal_retry",
+        channelId: "feishu",
+        conversationId: "chat-terminal-retry",
+        accountId: "acct-terminal-retry",
+        senderId: "ou_terminal_retry",
+        agentId: "main",
+      },
+    );
+
+    await plugin.agentEnd(
+      {
+        success: true,
+        messages: [],
+        durationMs: 50,
+      },
+      {
+        sessionKey: "agent:main:feishu:direct:ou_terminal_retry",
+        channelId: "feishu",
+        senderId: "ou_terminal_retry",
+        agentId: "main",
+      },
+    );
+
+    const retryEnqueued = await waitForDebugEvent(
+      runtimeRoot,
+      (entry) => entry.event === "task-completed:retry-enqueued",
+      1500,
+    );
+    const hostDelivered = await waitForDebugEvent(
+      runtimeRoot,
+      (entry) => entry.event === "host-feishu-delivery:sent" && entry.payload?.taskId === "task-123",
+      1500,
+    );
+    assert.equal(retryEnqueued?.payload?.reason, "eligible-feishu-host-retry");
+    assert.equal(retryEnqueued?.payload?.replyToId, "om_terminal_source");
+    assert.equal(retryEnqueued?.payload?.threadId, "thread_terminal_source");
+    assert.equal(hostDelivered?.payload?.accountId, "acct-terminal-retry");
+    assert.equal(hostDelivered?.payload?.chatId, "chat-terminal-retry");
+    assert.equal(hostDelivered?.payload?.replyToId, "om_terminal_source");
+    assert.equal(hostDelivered?.payload?.threadId, "thread_terminal_source");
+    assert.equal(sentMessages.length, 2);
+    assert.equal(sentMessages[1]?.to, "chat-terminal-retry");
+    assert.equal(sentMessages[1]?.accountId, "acct-terminal-retry");
+    assert.equal(sentMessages[1]?.replyToId, "om_terminal_source");
+    assert.equal(sentMessages[1]?.threadId, "thread_terminal_source");
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }

@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from main_task_adapter import (
     MainTaskContext,
@@ -16,8 +16,12 @@ from main_task_adapter import (
     resume_main_task,
     sync_main_progress,
 )
+from session_state import SessionStateStore
+from same_session_routing import build_same_session_routing_decision, _is_stale_observed_takeover_candidate
 from task_config import TaskSystemConfig, load_task_system_config
-from task_state import TaskPaths, TaskState, TaskStore, default_paths
+from task_state import TaskPaths, TaskState, TaskStore, default_paths, now_iso
+
+SameSessionRoutingClassifier = Callable[[dict[str, Any]], dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -52,6 +56,8 @@ class BridgeDecision:
     queued_count: int = 0
     estimated_wait_seconds: Optional[int] = None
     continuation_due_at: Optional[str] = None
+    routing_decision: Optional[dict[str, object]] = None
+    session_state: Optional[dict[str, object]] = None
 
     def to_payload(self) -> dict[str, object]:
         return asdict(self)
@@ -90,6 +96,72 @@ def _queue_metrics(
     queued_count = sum(1 for item in ordered_queue if item.status in {"queued", "received"})
     active_count = len(ordered_queue)
     return queue_position, ahead_count, active_count, running_count, queued_count
+
+
+def _queue_state(store: TaskStore, *, agent_id: str) -> dict[str, int]:
+    _, _, active_count, running_count, queued_count = _queue_metrics(store, agent_id=agent_id, task_id=None)
+    return {
+        "active_count": active_count,
+        "running_count": running_count,
+        "queued_count": queued_count,
+    }
+
+
+def _collecting_window_payload(state: Optional[dict[str, Any]]) -> Optional[dict[str, object]]:
+    if not state:
+        return None
+    collecting = state.get("same_session_collecting")
+    if not isinstance(collecting, dict):
+        return None
+    return {
+        "session_key": str(state.get("session_key") or "").strip() or None,
+        "status": str(collecting.get("status") or "").strip() or None,
+        "expires_at": str(collecting.get("expires_at") or "").strip() or None,
+        "window_seconds": int(collecting.get("window_seconds") or 0),
+        "buffered_message_count": int(collecting.get("buffered_message_count") or 0),
+        "existing_task_id": str(collecting.get("existing_task_id") or "").strip() or None,
+        "materialized_task_id": str(collecting.get("materialized_task_id") or "").strip() or None,
+    }
+
+
+def _reuse_stale_observed_task(
+    store: TaskStore,
+    *,
+    task: TaskState,
+    ctx: OpenClawInboundContext,
+    runtime_config: TaskSystemConfig,
+    observe_only: bool,
+) -> TaskState:
+    ts = now_iso()
+    original_request = str(task.meta.get("original_user_request") or "").strip()
+    task.channel = ctx.channel
+    task.account_id = ctx.account_id
+    task.chat_id = ctx.chat_id
+    task.user_id = ctx.user_id
+    task.task_label = ctx.user_request[:80]
+    task.monitor_state = "normal"
+    task.created_at = ts
+    task.updated_at = ts
+    task.last_internal_touch_at = ts
+    task.last_user_visible_update_at = ts
+    task.meta["source"] = "main-task-adapter"
+    task.meta["original_user_request"] = ctx.user_request
+    task.meta["source_reply_to_id"] = ctx.reply_to_id
+    task.meta["source_thread_id"] = ctx.thread_id
+    task.meta["estimated_steps"] = ctx.estimated_steps
+    task.meta["touches_multiple_files"] = ctx.touches_multiple_files
+    task.meta["involves_delegation"] = ctx.involves_delegation
+    task.meta["requires_external_wait"] = ctx.requires_external_wait
+    task.meta["needs_verification"] = ctx.needs_verification
+    task.meta["same_session_takeover"] = {
+        "kind": "stale-observed-task",
+        "reused_at": ts,
+        "previous_request": original_request or None,
+    }
+    store.save_task(task)
+    if runtime_config.agent_config(ctx.agent_id).auto_start and not observe_only:
+        return store.claim_execution_slot(task.task_id)
+    return task
 
 
 def _parse_iso8601(value: Optional[str]) -> Optional[datetime]:
@@ -144,6 +216,8 @@ def _estimate_wait_seconds(
     if task_status == "running":
         slots_ahead = 0
     estimate = max(typical_seconds * (slots_ahead + 1), typical_seconds)
+    if task_status in {"received", "queued"} and slots_ahead > 0 and estimate < 60:
+        return None
     return estimate
 
 
@@ -173,24 +247,144 @@ def register_inbound_task(
     config: Optional[TaskSystemConfig] = None,
     config_path: Optional[Path] = None,
     observe_only: bool = False,
+    same_session_classifier: Optional[SameSessionRoutingClassifier] = None,
+    same_session_classifier_min_confidence: float = 0.7,
 ) -> BridgeDecision:
     runtime_config = config or load_task_system_config(config_path=config_path)
     resolved_paths = paths or runtime_config.build_paths() or default_paths()
+    store = TaskStore(paths=resolved_paths)
+    session_store = SessionStateStore(paths=resolved_paths)
+    active_task = store.find_latest_active_task(
+        agent_id=ctx.agent_id,
+        session_key=ctx.session_key,
+    )
+    observed_task = store.find_latest_observed_task(
+        agent_id=ctx.agent_id,
+        session_key=ctx.session_key,
+    )
+    recoverable = store.find_latest_recoverable_task(
+        agent_id=ctx.agent_id,
+        session_key=ctx.session_key,
+    )
     main_ctx = build_main_task_context(ctx)
     decision = decide_main_task(main_ctx, config=runtime_config)
+    routing_queue_state = _queue_state(store, agent_id=ctx.agent_id)
+    session_state = session_store.load_collecting_state(agent_id=ctx.agent_id, session_key=ctx.session_key)
+    collecting_state = False
+    if isinstance(session_state, dict):
+        collecting = session_state.get("same_session_collecting")
+        collecting_state = isinstance(collecting, dict) and str(collecting.get("status") or "").strip() == "collecting"
+    stale_observed_takeover = (
+        observed_task
+        if active_task is None and recoverable is None and _is_stale_observed_takeover_candidate(observed_task)
+        else None
+    )
+    prestart_task = active_task if active_task is not None and active_task.status == "queued" else observed_task
+
+    def _build_collecting_short_circuit(
+        *,
+        classification_reason: str,
+        session_state_payload: Optional[dict[str, Any]],
+        target_task: Optional[TaskState],
+    ) -> BridgeDecision:
+        routing_decision = build_same_session_routing_decision(
+            session_key=ctx.session_key,
+            user_request=ctx.user_request,
+            should_register_task=False,
+            classification_reason=classification_reason,
+            active_task=active_task,
+            recoverable_task=recoverable,
+            observed_task=observed_task,
+            target_task=target_task,
+            classifier=same_session_classifier,
+            classifier_min_confidence=same_session_classifier_min_confidence,
+            queue_state=routing_queue_state,
+            collecting_state=True,
+        )
+        collecting_payload = _collecting_window_payload(session_state_payload)
+        if collecting_payload is not None:
+            routing_decision["collecting_window"] = collecting_payload
+        return BridgeDecision(
+            should_register_task=False,
+            task_id=target_task.task_id if target_task is not None else None,
+            classification_reason=classification_reason,
+            confidence="high",
+            task_status=target_task.status if target_task is not None else None,
+            queue_position=None,
+            ahead_count=0,
+            active_count=routing_queue_state["active_count"],
+            running_count=routing_queue_state["running_count"],
+            queued_count=routing_queue_state["queued_count"],
+            continuation_due_at=None,
+            routing_decision=routing_decision,
+            session_state=collecting_payload,
+        )
+
+    collecting_window_seconds = runtime_config.agent_config(ctx.agent_id).same_session_routing.collecting_window_seconds
+    explicit_collect_more_probe = build_same_session_routing_decision(
+        session_key=ctx.session_key,
+        user_request=ctx.user_request,
+        should_register_task=True,
+        classification_reason=decision.reason,
+        active_task=active_task,
+        recoverable_task=recoverable,
+        observed_task=observed_task,
+        target_task=prestart_task,
+        queue_state=routing_queue_state,
+        collecting_state=False,
+    )
+    if explicit_collect_more_probe.get("classification") == "collect-more":
+        activated_state = session_store.activate_collecting_window(
+            agent_id=ctx.agent_id,
+            session_key=ctx.session_key,
+            channel=ctx.channel,
+            account_id=ctx.account_id,
+            chat_id=ctx.chat_id,
+            user_id=ctx.user_id,
+            window_seconds=collecting_window_seconds,
+            activation_message=ctx.user_request,
+            existing_task_id=(prestart_task.task_id if prestart_task is not None and prestart_task.status in {"received", "queued"} else None),
+        )
+        return _build_collecting_short_circuit(
+            classification_reason="collecting-window-activated",
+            session_state_payload=activated_state,
+            target_task=prestart_task,
+        )
+    if collecting_state and decision.reason != "control-command":
+        buffered_state = session_store.append_collecting_message(
+            agent_id=ctx.agent_id,
+            session_key=ctx.session_key,
+            message=ctx.user_request,
+            refresh_window_seconds=collecting_window_seconds,
+        ) or session_state
+        return _build_collecting_short_circuit(
+            classification_reason="collecting-window-buffered",
+            session_state_payload=buffered_state,
+            target_task=prestart_task,
+        )
     if not decision.should_register:
+        routing_decision = build_same_session_routing_decision(
+            session_key=ctx.session_key,
+            user_request=ctx.user_request,
+            should_register_task=False,
+            classification_reason=decision.reason,
+            active_task=active_task,
+            recoverable_task=recoverable,
+            observed_task=observed_task,
+            target_task=None,
+            classifier=same_session_classifier,
+            classifier_min_confidence=same_session_classifier_min_confidence,
+            queue_state=routing_queue_state,
+            collecting_state=collecting_state,
+        )
         return BridgeDecision(
             should_register_task=False,
             task_id=None,
             classification_reason=decision.reason,
             confidence=decision.classification.confidence,
+            routing_decision=routing_decision,
+            session_state=_collecting_window_payload(session_state),
         )
-
-    store = TaskStore(paths=resolved_paths)
-    recoverable = store.find_latest_recoverable_task(
-        agent_id=ctx.agent_id,
-        session_key=ctx.session_key,
-    )
     if recoverable is not None and decision.reason != "continuation-task":
         continuation_kind = str(recoverable.meta.get("continuation_kind") or "").strip()
         continuation_due_at = str(recoverable.meta.get("continuation_due_at") or "").strip()
@@ -208,6 +402,22 @@ def register_inbound_task(
             progress_note=f"恢复执行：{ctx.user_request[:120]}",
             paths=store.paths,
         )
+        routing_decision = build_same_session_routing_decision(
+            session_key=ctx.session_key,
+            user_request=ctx.user_request,
+            should_register_task=True,
+            classification_reason="resume-blocked-task",
+            active_task=active_task,
+            recoverable_task=recoverable,
+            observed_task=observed_task,
+            target_task=resumed,
+            classifier=same_session_classifier,
+            classifier_min_confidence=same_session_classifier_min_confidence,
+            queue_state=routing_queue_state,
+            collecting_state=collecting_state,
+        )
+        resumed.meta["same_session_routing"] = routing_decision
+        store.save_task(resumed)
         _, _, active_count, running_count, queued_count = _queue_metrics(
             store,
             agent_id=ctx.agent_id,
@@ -232,14 +442,43 @@ def register_inbound_task(
                 classification_reason="resume-blocked-task",
             ),
             continuation_due_at=str(resumed.meta.get("continuation_due_at") or "") or None,
+            routing_decision=routing_decision,
+            session_state=_collecting_window_payload(session_state),
         )
 
-    task = register_main_task(
-        main_ctx,
-        paths=resolved_paths,
-        config=runtime_config,
-        observe_only=observe_only,
+    observed_task_for_routing = observed_task
+    if stale_observed_takeover is not None:
+        observed_task_for_routing = TaskState(**stale_observed_takeover.to_dict())
+        task = _reuse_stale_observed_task(
+            store,
+            task=stale_observed_takeover,
+            ctx=ctx,
+            runtime_config=runtime_config,
+            observe_only=observe_only,
+        )
+    else:
+        task = register_main_task(
+            main_ctx,
+            paths=resolved_paths,
+            config=runtime_config,
+            observe_only=observe_only,
+        )
+    routing_decision = build_same_session_routing_decision(
+        session_key=ctx.session_key,
+        user_request=ctx.user_request,
+        should_register_task=True,
+        classification_reason=decision.reason,
+        active_task=active_task,
+        recoverable_task=recoverable,
+        observed_task=observed_task_for_routing,
+        target_task=task,
+        classifier=same_session_classifier,
+        classifier_min_confidence=same_session_classifier_min_confidence,
+        queue_state=routing_queue_state,
+        collecting_state=collecting_state,
     )
+    task.meta["same_session_routing"] = routing_decision
+    store.save_task(task)
     queue_position, ahead_count, active_count, running_count, queued_count = _queue_metrics(
         store,
         agent_id=ctx.agent_id,
@@ -264,7 +503,99 @@ def register_inbound_task(
             classification_reason=decision.reason,
         ),
         continuation_due_at=str(task.meta.get("continuation_due_at") or "") or None,
+        routing_decision=routing_decision,
+        session_state=_collecting_window_payload(session_state),
     )
+
+
+def materialize_due_collecting_windows(
+    *,
+    paths: Optional[TaskPaths] = None,
+    config: Optional[TaskSystemConfig] = None,
+    config_path: Optional[Path] = None,
+) -> list[dict[str, object]]:
+    runtime_config = config or load_task_system_config(config_path=config_path)
+    resolved_paths = paths or runtime_config.build_paths() or default_paths()
+    store = TaskStore(paths=resolved_paths)
+    session_store = SessionStateStore(paths=resolved_paths)
+    materialized: list[dict[str, object]] = []
+    for state in session_store.claim_due_collecting_windows():
+        collecting = state.get("same_session_collecting") if isinstance(state.get("same_session_collecting"), dict) else {}
+        buffered_messages = collecting.get("buffered_user_messages") if isinstance(collecting.get("buffered_user_messages"), list) else []
+        existing_task_id = str(collecting.get("existing_task_id") or "").strip() or None
+        session_key = str(state.get("session_key") or "").strip()
+        agent_id = str(state.get("agent_id") or "").strip()
+        channel = str(state.get("channel") or "").strip()
+        account_id = str(state.get("account_id") or "").strip() or None
+        chat_id = str(state.get("chat_id") or "").strip()
+        user_id = str(state.get("user_id") or "").strip() or None
+        reason = "collecting-window-materialized-new-task"
+        task: Optional[TaskState] = None
+        combined_parts = [str(item).strip() for item in buffered_messages if str(item).strip()]
+        if existing_task_id:
+            try:
+                existing_task = store.load_task(existing_task_id, allow_archive=False)
+            except FileNotFoundError:
+                existing_task = None
+            if existing_task is not None and existing_task.status in {"received", "queued"}:
+                original_request = str(existing_task.meta.get("original_user_request") or "").strip()
+                combined_request = "\n".join([item for item in [original_request, *combined_parts] if item]).strip()
+                if combined_request:
+                    existing_task.task_label = combined_request[:80]
+                    existing_task.meta["original_user_request"] = combined_request
+                existing_task.meta["same_session_collecting"] = _collecting_window_payload(state)
+                task = store.claim_execution_slot(existing_task.task_id)
+                reason = "collecting-window-merged-into-existing-task"
+        if task is None:
+            combined_request = "\n".join(combined_parts).strip()
+            if not combined_request:
+                session_store.complete_collecting_window(
+                    session_key=session_key,
+                    materialized_task_id=None,
+                    materialization_reason="collecting-window-expired-empty",
+                )
+                continue
+            ctx = OpenClawInboundContext(
+                agent_id=agent_id,
+                session_key=session_key,
+                channel=channel,
+                account_id=account_id,
+                chat_id=chat_id,
+                user_id=user_id,
+                user_request=combined_request,
+            )
+            main_ctx = build_main_task_context(ctx)
+            main_decision = decide_main_task(main_ctx, config=runtime_config)
+            task = register_main_task(
+                main_ctx,
+                paths=resolved_paths,
+                config=runtime_config,
+                observe_only=main_decision.reason == "observed-task",
+            )
+            task.meta["same_session_collecting"] = _collecting_window_payload(state)
+            store.save_task(task)
+        session_store.complete_collecting_window(
+            session_key=session_key,
+            materialized_task_id=task.task_id if task is not None else None,
+            materialization_reason=reason,
+        )
+        combined_request = str(task.meta.get("original_user_request") or "").strip()
+        materialized.append(
+            {
+                "session_key": session_key,
+                "agent_id": agent_id,
+                "channel": channel,
+                "account_id": account_id,
+                "chat_id": chat_id,
+                "user_id": user_id,
+                "task_id": task.task_id,
+                "task_status": task.status,
+                "materialization_reason": reason,
+                "combined_user_request": combined_request,
+                "buffered_message_count": len(combined_parts),
+            }
+        )
+    return materialized
 
 
 def record_progress(

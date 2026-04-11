@@ -144,12 +144,13 @@ The current mainline roadmap is complete.
 - Phase 3: complete
 - Phase 4: complete
 - Phase 5: complete
+- Phase 6 minimum closure: complete
 
 The automated testsuite is also fully green.
 
 One design boundary is intentionally recorded as open:
 
-- delayed follow-up inside compound requests
+- broader compound-request planning beyond the minimum tool-assisted follow-up closure
 
 See:
 
@@ -169,6 +170,12 @@ See:
 - [`docs/architecture.md`](./docs/architecture.md): architecture and design model
 - [`docs/testsuite.md`](./docs/testsuite.md): test layers and validation rules
 - [`docs/usage_guide.md`](./docs/usage_guide.md): extended usage notes
+- [`docs/planning_acceptance_runbook.md`](./docs/planning_acceptance_runbook.md): real / semi-real planning acceptance runbook
+- [`docs/planning_acceptance_record_template.md`](./docs/planning_acceptance_record_template.md): reusable planning acceptance record template
+- [`docs/planning_acceptance_record_2026-04-09.md`](./docs/planning_acceptance_record_2026-04-09.md): filled semi-real planning acceptance sample
+- [`docs/planning_acceptance_handoff.md`](./docs/planning_acceptance_handoff.md): compact handoff for the current Phase 6 / acceptance work
+- [`docs/planning_acceptance_commit_plan.md`](./docs/planning_acceptance_commit_plan.md): suggested commit split for this worktree
+- [`docs/local_install_validation_2026-04-09.md`](./docs/local_install_validation_2026-04-09.md): local OpenClaw install validation note and current blocker
 - [`docs/plugin_installation.md`](./docs/plugin_installation.md): plugin installation details
 - [`docs/todo.md`](./docs/todo.md): temporary notes only, not the mainline
 - [`plugin/`](./plugin): OpenClaw plugin
@@ -872,6 +879,9 @@ python3 scripts/runtime/configure_openclaw_plugin.py --write
 python3 scripts/runtime/main_ops.py health
 python3 scripts/runtime/main_ops.py dashboard
 python3 scripts/runtime/main_ops.py dashboard --json
+python3 scripts/runtime/main_ops.py dashboard --only-issues
+python3 scripts/runtime/main_ops.py planning
+python3 scripts/runtime/main_ops.py planning --json
 python3 scripts/runtime/main_ops.py triage
 python3 scripts/runtime/main_ops.py triage --json
 ```
@@ -938,10 +948,30 @@ bash scripts/run_tests.sh
 ```bash
 python3 scripts/runtime/plugin_doctor.py --json
 python3 scripts/runtime/plugin_smoke.py --json
+python3 scripts/runtime/check_task_user_content_leaks.py --json
+python3 scripts/runtime/check_task_user_content_leaks.py --since 2026-04-11T12:18:34+08:00 --json
+python3 scripts/runtime/scrub_task_user_content_history.py --json
+python3 scripts/runtime/planning_acceptance.py --json
+python3 scripts/runtime/create_planning_acceptance_record.py
+python3 scripts/runtime/create_planning_acceptance_record.py --print-next-steps
+python3 scripts/runtime/create_planning_acceptance_record.py --json
+python3 scripts/runtime/prepare_planning_acceptance.py --json
+python3 scripts/runtime/capture_planning_acceptance_artifacts.py --json
+python3 scripts/runtime/run_planning_acceptance_bundle.py --json
+python3 scripts/runtime/planning_acceptance_suite.py --json
 python3 scripts/runtime/stable_acceptance.py --json
+python3 scripts/runtime/main_ops.py planning --json
+python3 scripts/runtime/main_ops.py plugin-install-drift --json
 python3 scripts/runtime/main_ops.py dashboard --json
+python3 scripts/runtime/main_ops.py dashboard --only-issues
+python3 scripts/runtime/main_ops.py triage --json
 python3 scripts/runtime/main_ops.py channel-acceptance --json
 ```
+
+交接 / 提交整理参考：
+
+- [`docs/planning_acceptance_handoff.md`](./docs/planning_acceptance_handoff.md)
+- [`docs/planning_acceptance_commit_plan.md`](./docs/planning_acceptance_commit_plan.md)
 
 ### 已经解决的核心问题
 

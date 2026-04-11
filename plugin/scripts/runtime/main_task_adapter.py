@@ -6,7 +6,7 @@ from typing import Optional
 
 from task_policy import TaskClassification, classify_main_task
 from task_config import TaskSystemConfig, load_task_system_config
-from task_state import TaskPaths, TaskState, TaskStore, default_paths
+from task_state import TaskPaths, TaskState, TaskStore, default_paths, now_iso
 
 
 @dataclass(frozen=True)
@@ -143,7 +143,20 @@ def sync_main_progress(
     paths: Optional[TaskPaths] = None,
 ) -> TaskState:
     store = TaskStore(paths=paths or default_paths())
-    meta = {"last_progress_note": progress_note} if progress_note else None
+    note = str(progress_note or "").strip()
+    meta = None
+    if note:
+        task = store.load_task(task_id)
+        current_count = task.meta.get("progress_update_count")
+        try:
+            progress_update_count = int(current_count)
+        except (TypeError, ValueError):
+            progress_update_count = 0
+        meta = {
+            "last_progress_note": note,
+            "last_progress_note_at": now_iso(),
+            "progress_update_count": max(progress_update_count, 0) + 1,
+        }
     return store.touch_task(task_id, user_visible=True, status=status, meta=meta)
 
 

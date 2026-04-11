@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 const INTERNAL_STARTUP_RESUME_MARKER = "[[TASK-SYSTEM-STARTUP-RESUME]]";
+const INTERNAL_COLLECTING_WINDOW_MARKER = "[[TASK-SYSTEM-COLLECTING-WINDOW]]";
 const EARLY_ACK_STATE_KEY = "__openclawTaskSystemEarlyAckState";
 const PRE_REGISTER_STATE_KEY = "__openclawTaskSystemPreRegisterState";
 const RECEIVE_SIDE_PRODUCER_TTL_MS = 12 * 60 * 60 * 1000;
@@ -51,10 +52,10 @@ Hard rules:
 - Do not generate the first [wd]. That is owned by runtime.
 - Do not generate the fixed 30-second progress message. That is owned by runtime.
 - Do not generate fallback or recovery control-plane text unless runtime explicitly delegates that action.
-- Put all user-visible business content inside <task_user_content>...</task_user_content>.
-- Do not put scheduling status, promise state, or tool-chain state inside <task_user_content>.
-- If there is no immediate business content to show, do not emit a <task_user_content> block.
 - For future-first requests, default to main_user_content_mode=none unless an immediate result is explicitly required.
+- Let runtime decide whether the current turn should send no business content, a short summary, or a full answer.
+- If runtime chooses main_user_content_mode=immediate-summary, keep that summary to one short business-facing line.
+- Do not put scheduling status, promise state, or tool-chain state in the user-visible answer.
 - When creating a follow-up plan, provide a human-readable followup_summary so runtime can tell the user what has been arranged.
 - For every future promise, delayed follow-up, reminder, or dependent continuation, use task-system tools by default.
 - Never say that you will come back later unless runtime has accepted a real scheduled follow-up.
@@ -894,87 +895,76 @@ async function withTimeout<T>(
   }
 }
 
-const TASK_USER_CONTENT_OPEN = "<task_user_content>";
-const TASK_USER_CONTENT_CLOSE = "</task_user_content>";
+const INTERNAL_SUMMARY_NOISE_PATTERN =
+  /(内部调度|调度状态|tool_call|tool_calls_section|follow-?up|tool-?chain|\[wd\])/i;
+const TASK_USER_CONTENT_MARKER_PATTERN = /<\/?task_user_content>/gi;
+const IMMEDIATE_SUMMARY_MAX_CHARS = 120;
 
-type StructuredUserContentResult = {
-  text: string;
-  hadBlock: boolean;
-  hadRawMarker: boolean;
-};
+function clampImmediateSummary(text: string): string {
+  const normalized = normalizeText(text);
+  if (!normalized) {
+    return "";
+  }
+  if (normalized.length <= IMMEDIATE_SUMMARY_MAX_CHARS) {
+    return normalized;
+  }
+  return `${normalized.slice(0, IMMEDIATE_SUMMARY_MAX_CHARS - 1).trimEnd()}…`;
+}
 
-function extractStructuredUserContent(text: string): StructuredUserContentResult {
+function buildImmediateSummary(text: string): string {
   const raw = typeof text === "string" ? text : "";
-  if (!raw) {
-    return { text: "", hadBlock: false, hadRawMarker: false };
+  const candidates = raw
+    .split(/\n+/)
+    .flatMap((line) => normalizeText(line).split(/(?<=[。！？!?])/))
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+  if (candidates.length === 0) {
+    return clampImmediateSummary(raw);
   }
-  const pieces: string[] = [];
-  let cursor = 0;
-  while (cursor < raw.length) {
-    const openIndex = raw.indexOf(TASK_USER_CONTENT_OPEN, cursor);
-    if (openIndex === -1) {
-      break;
-    }
-    const contentStart = openIndex + TASK_USER_CONTENT_OPEN.length;
-    const closeIndex = raw.indexOf(TASK_USER_CONTENT_CLOSE, contentStart);
-    if (closeIndex === -1) {
-      break;
-    }
-    const candidate = normalizeText(raw.slice(contentStart, closeIndex));
-    if (candidate) {
-      pieces.push(candidate);
-    }
-    cursor = closeIndex + TASK_USER_CONTENT_CLOSE.length;
-  }
-  return {
-    text: pieces.join("\n").trim(),
-    hadBlock: pieces.length > 0,
-    hadRawMarker: raw.includes(TASK_USER_CONTENT_OPEN) || raw.includes(TASK_USER_CONTENT_CLOSE),
-  };
+  const preferred =
+    candidates.find((entry) => !INTERNAL_SUMMARY_NOISE_PATTERN.test(entry)) || candidates[0] || "";
+  return clampImmediateSummary(preferred);
 }
 
-function resolveUserFacingContent(text: string, options?: { requireStructured?: boolean }): StructuredUserContentResult {
-  const structured = extractStructuredUserContent(text);
-  if (structured.hadBlock) {
-    return { ...structured, hadRawMarker: false };
+function stripInternalUserFacingNoise(text: string): string {
+  const raw = typeof text === "string" ? text : "";
+  const parts = raw
+    .split(/\n+/)
+    .flatMap((entry) => entry.split(/(?<=[。！？!?])/))
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+  if (parts.length === 0) {
+    return "";
   }
-  if (structured.hadRawMarker) {
-    return { text: "", hadBlock: false, hadRawMarker: true };
-  }
-  if (options?.requireStructured) {
-    return { text: "", hadBlock: false, hadRawMarker: false };
-  }
-  return { text: normalizeText(text), hadBlock: false, hadRawMarker: false };
+  const filtered = parts.filter((entry) => !INTERNAL_SUMMARY_NOISE_PATTERN.test(entry));
+  const chosen = filtered.length > 0 ? filtered : parts;
+  return normalizeText(chosen.join(" "));
 }
 
-function sanitizeUserFacingDeliveryText(
-  text: string,
-  options?: { requireStructured?: boolean },
-): {
-  text: string;
-  suppressed: boolean;
-  reason: "raw-task-user-content-marker" | "missing-task-user-content-block" | "empty";
-} {
-  const resolved = resolveUserFacingContent(text, options);
-  if (resolved.hadRawMarker && !resolved.text) {
-    return {
-      text: "",
-      suppressed: true,
-      reason: "raw-task-user-content-marker",
-    };
+function hasRawTaskUserContentMarker(text: string): boolean {
+  const raw = typeof text === "string" ? text : "";
+  return /<\/?task_user_content>/i.test(raw);
+}
+
+function sanitizeUserFacingMessage(text: string): string {
+  const raw = typeof text === "string" ? text : "";
+  const withoutMarkers = raw.replace(TASK_USER_CONTENT_MARKER_PATTERN, " ");
+  return stripInternalUserFacingNoise(withoutMarkers);
+}
+
+function isRuntimeOwnedUserContent(params?: {
+  runtimeControlsUserContent?: boolean;
+  requireStructuredUserContent?: boolean;
+  mainUserContentMode?: "none" | "immediate-summary" | "full-answer";
+}): boolean {
+  if (params?.runtimeControlsUserContent === true) {
+    return true;
   }
-  if (!resolved.text) {
-    return {
-      text: "",
-      suppressed: true,
-      reason: options?.requireStructured ? "missing-task-user-content-block" : "empty",
-    };
+  if (params?.requireStructuredUserContent === true) {
+    return true;
   }
-  return {
-    text: resolved.text,
-    suppressed: false,
-    reason: "empty",
-  };
+  const mode = params?.mainUserContentMode;
+  return mode === "none" || mode === "immediate-summary" || mode === "full-answer";
 }
 
 function buildPlanningRuntimeContext(params: {
@@ -993,11 +983,12 @@ function buildPlanningRuntimeContext(params: {
     "  2. ts_create_followup_plan",
     "  3. ts_schedule_followup_from_plan",
     "  4. ts_finalize_planned_followup",
-    `- put all user-visible business content inside ${TASK_USER_CONTENT_OPEN}...${TASK_USER_CONTENT_CLOSE}`,
-    "- do not put scheduling status, promise state, or tool-chain state inside task_user_content",
     "- for future-first requests, default to main_user_content_mode=none",
+    "- runtime decides whether this turn sends no business content, a short summary, or a full answer",
+    "- if main_user_content_mode=immediate-summary, keep the user-visible summary to one short business-facing line (about 120 chars max)",
+    "- legacy structured user-content blocks may appear, but they are compatibility-only and must not leak to users",
+    "- do not put scheduling status, promise state, or tool-chain state in the user-visible answer",
     "- provide followup_summary so runtime can send a meaningful wd scheduling confirmation",
-    "- if there is no immediate business content to show, do not emit a task_user_content block",
     "- use followup_due_at as an absolute RFC3339 time",
     "- if scheduling is overdue, still schedule and tell the user it is being recovered",
     "- never promise a future reply without a successful task-system tool result",
@@ -1033,9 +1024,7 @@ function mergeActiveTaskBinding(
       typeof recovered?.requireStructuredUserContent === "boolean"
         ? recovered.requireStructuredUserContent
         : existing?.requireStructuredUserContent,
-    mainUserContentMode:
-      normalizeMainUserContentMode(recovered?.mainUserContentMode) ||
-      normalizeMainUserContentMode(existing?.mainUserContentMode),
+    mainUserContentMode: readMainUserContentMode(recovered?.mainUserContentMode) ?? existing?.mainUserContentMode,
   };
   if (!merged.taskId) {
     return null;
@@ -1060,7 +1049,7 @@ function bindingFromResolveActiveResult(result: Record<string, unknown> | null |
     replyToId: normalizeText(result.reply_to_id),
     threadId: normalizeText(result.thread_id),
     requireStructuredUserContent: result.require_structured_user_content === true,
-    mainUserContentMode: normalizeMainUserContentMode(result.main_user_content_mode),
+    mainUserContentMode: readMainUserContentMode(result.main_user_content_mode),
     recoveredFromTruthSource: true,
   };
 }
@@ -1121,6 +1110,10 @@ function isInternalRetryPrompt(prompt: string): boolean {
 
 function isInternalStartupResumePrompt(prompt: string): boolean {
   return normalizeText(prompt).startsWith(INTERNAL_STARTUP_RESUME_MARKER);
+}
+
+function isInternalCollectingWindowPrompt(prompt: string): boolean {
+  return normalizeText(prompt).startsWith(INTERNAL_COLLECTING_WINDOW_MARKER);
 }
 
 function isContinuationWakePrompt(prompt: string): boolean {
@@ -1269,18 +1262,19 @@ async function processFeishuInstruction(
   const chatId = String(payload.chat_id || "").trim();
   const replyToId = normalizeText(payload.reply_to_id);
   const threadId = normalizeText(payload.thread_id);
-  const sanitized = sanitizeUserFacingDeliveryText(String(payload.message || "").trim());
-  const message = sanitized.text;
-  const invalidPayloadReason = !accountId
+  const message = normalizeText(String(payload.message || ""));
+  const invalidPayloadReason = hasRawTaskUserContentMarker(message)
+    ? "raw-task-user-content-marker"
+    : !accountId
     ? "missing-account-id"
     : !chatId
       ? "missing-chat-id"
-      : sanitized.suppressed
-        ? sanitized.reason
+      : !message
+        ? "empty-message"
         : "empty-message";
   const audienceKey = buildControlPlaneAudienceKey("feishu", accountId, chatId);
   const enqueueToken = Date.now();
-  if (!accountId || !chatId || !message) {
+  if (!accountId || !chatId || !message || hasRawTaskUserContentMarker(message)) {
     await writeHostDispatchResult(config, name, payload, {
       action: "send",
       reason: invalidPayloadReason,
@@ -1452,10 +1446,7 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         ? (payload.continuation_payload as Record<string, unknown>)
         : null;
     const isPlannedContentFollowup = Boolean(normalizeText(String(continuationPayload?.plan_id || "")));
-      const sanitizedReplyContent = sanitizeUserFacingDeliveryText(normalizeText(String(payload.reply_text || "")), {
-        requireStructured: isPlannedContentFollowup,
-      });
-    const replyText = decorateTaskManagedFollowupText(sanitizedReplyContent.text, {
+    const replyText = decorateTaskManagedFollowupText(normalizeText(String(payload.reply_text || "")), {
       wd: !isPlannedContentFollowup,
     });
     const replyToId = normalizeText(String(continuationPayload?.reply_to_id || ""));
@@ -1592,6 +1583,47 @@ async function processDueContinuations(api: OpenClawPluginApi, config: Required<
         error: messageText,
       });
     }
+  }
+}
+
+async function processDueCollectingWindows(api: OpenClawPluginApi, config: Required<TaskSystemPluginConfig>): Promise<void> {
+  if (!config.enableContinuationRunner) {
+    return;
+  }
+  const claimed = await callHook(api, config, "claim-due-collecting-windows", {});
+  const tasks = Array.isArray(claimed?.tasks) ? claimed.tasks : [];
+  for (const task of tasks) {
+    const payload = task as Record<string, unknown>;
+    const sessionKey = normalizeText(String(payload.session_key || ""));
+    const taskId = normalizeText(String(payload.task_id || ""));
+    const combinedUserRequest = normalizeText(String(payload.combined_user_request || ""));
+    const materializationReason = normalizeText(String(payload.materialization_reason || ""));
+    if (!sessionKey || !taskId || !combinedUserRequest) {
+      continue;
+    }
+    const wakeMessage = [
+      INTERNAL_COLLECTING_WINDOW_MARKER,
+      "同一 session 的 collecting window 已结束，请开始执行这次合并后的任务请求。",
+      materializationReason ? `materialization_reason: ${materializationReason}` : "",
+      "请将下面这些已收集完成的用户输入视为同一个正式任务，并从当前 workspace 与会话上下文继续执行。",
+      combinedUserRequest,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    await appendDebugLog(config, "collecting-window:due-dispatch", {
+      sessionKey,
+      taskId,
+      materializationReason: materializationReason || null,
+      bufferedRequest: combinedUserRequest.slice(0, 240),
+      runner: "collecting-window",
+      schedulerDecision: "sent",
+      reason: "collecting-window-materialized",
+    });
+    await callGatewayCli(api, config, "sessions.steer", {
+      key: sessionKey,
+      message: wakeMessage,
+      timeoutMs: 10000,
+    });
   }
 }
 
@@ -1791,6 +1823,26 @@ function buildHookBackedControlPlaneMessage(
   };
 }
 
+function resolveControlPlaneDeliveryTarget(
+  binding: ActiveTaskBinding | undefined,
+  ctx: {
+    channelId?: string;
+    accountId?: string;
+    conversationId?: string;
+    replyToId?: string;
+    threadId?: string;
+  },
+  sessionKey: string,
+): Pick<ControlPlaneMessage, "channel" | "accountId" | "chatId" | "replyToId" | "threadId"> {
+  return {
+    channel: binding?.channel || ctx.channelId || "unknown",
+    accountId: binding?.accountId || ctx.accountId || "",
+    chatId: binding?.chatId || ctx.conversationId || sessionKey,
+    replyToId: binding?.replyToId || ctx.replyToId,
+    threadId: binding?.threadId || ctx.threadId,
+  };
+}
+
 function isTerminalControlPlanePriority(priority: ControlPlanePriority): boolean {
   return priority === "p1-task-management";
 }
@@ -1851,7 +1903,7 @@ function decorateTaskManagedFollowupText(text: string, options?: { wd?: boolean 
   const replyPrefix = "[[reply_to_current]]";
   const shouldAddWd = options?.wd !== false;
   if (normalized.startsWith(replyPrefix)) {
-    const rest = normalizeText(normalized.slice(replyPrefix.length));
+    const rest = sanitizeUserFacingMessage(normalized.slice(replyPrefix.length));
     if (!rest) {
       return shouldAddWd ? "[wd]" : "";
     }
@@ -1864,12 +1916,13 @@ function decorateTaskManagedFollowupText(text: string, options?: { wd?: boolean 
     return `[wd] ${rest}`;
   }
   if (!shouldAddWd) {
-    return normalized;
+    return sanitizeUserFacingMessage(normalized);
   }
-  if (normalized.startsWith("[wd]")) {
-    return normalized;
+  const sanitized = sanitizeUserFacingMessage(normalized);
+  if (sanitized.startsWith("[wd]")) {
+    return sanitized;
   }
-  return `[wd] ${normalized}`;
+  return `[wd] ${sanitized}`;
 }
 
 function controlPlaneRetryWindowMs(priority: ControlPlanePriority): number {
@@ -2002,6 +2055,17 @@ function normalizeMainUserContentMode(value: unknown): "none" | "immediate-summa
   return "none";
 }
 
+function readMainUserContentMode(value: unknown): "none" | "immediate-summary" | "full-answer" | undefined {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (normalized === "none" || normalized === "immediate-summary" || normalized === "full-answer") {
+    return normalized;
+  }
+  return undefined;
+}
+
 function formatSentence(text: string): string {
   const normalized = normalizeText(text);
   if (!normalized) {
@@ -2109,6 +2173,10 @@ function buildImmediateReceiptMessage(
   if (!registerResult) {
     return fallback;
   }
+  const hookControlPlaneMessage = extractHookControlPlaneMessage(registerResult);
+  if (hookControlPlaneMessage?.message) {
+    return hookControlPlaneMessage.message;
+  }
   const resolvedDecision = resolveRegisterDecision(registerResult);
   const taskStatus = normalizeText(resolvedDecision.task_status);
   const queuePosition = toInteger(resolvedDecision.queue_position);
@@ -2117,7 +2185,12 @@ function buildImmediateReceiptMessage(
   const activeCount = Math.max(toInteger(resolvedDecision.active_count) ?? 0, 0);
   const estimatedWaitSeconds = toInteger(resolvedDecision.estimated_wait_seconds);
   const continuationDueAt = normalizeText(String(resolvedDecision.continuation_due_at || ""));
-  const estimatedWaitLabel = formatEstimatedWaitLabel(estimatedWaitSeconds);
+  const suppressShortQueuedEta =
+    (taskStatus === "queued" || taskStatus === "received") &&
+    aheadCount > 0 &&
+    estimatedWaitSeconds !== null &&
+    estimatedWaitSeconds < 60;
+  const estimatedWaitLabel = suppressShortQueuedEta ? null : formatEstimatedWaitLabel(estimatedWaitSeconds);
 
   if (taskStatus === "paused" && continuationDueAt) {
     const delayLabel = formatContinuationDelayLabel(continuationDueAt);
@@ -2156,6 +2229,15 @@ function buildImmediateReceiptMessage(
     return "已收到，正在开始处理；如果 30 秒内还没有新的阶段结果，我会先同步当前进展。";
   }
   return fallback;
+}
+
+function hasRuntimeOwnedSameSessionRoutingReceipt(registerResult: Record<string, unknown> | null | undefined): boolean {
+  const hookControlPlaneMessage = extractHookControlPlaneMessage(registerResult);
+  return (
+    hookControlPlaneMessage?.eventName === "same-session-routing-receipt" &&
+    hookControlPlaneMessage.priority === "p0-receive-ack" &&
+    Boolean(hookControlPlaneMessage.message)
+  );
 }
 
 function resolveRegisterDecision(registerResult: Record<string, unknown> | null | undefined): Record<string, unknown> {
@@ -2318,7 +2400,11 @@ function extractTextFromUnknown(value: unknown): string[] {
 
 function summarizeAgentEnd(
   event: { messages: unknown[]; success: boolean; durationMs?: number },
-  options?: { requireStructuredUserContent?: boolean },
+  options?: {
+    runtimeControlsUserContent?: boolean;
+    requireStructuredUserContent?: boolean;
+    mainUserContentMode?: "none" | "immediate-summary" | "full-answer";
+  },
 ): string {
   const assistantMessages = event.messages.filter((entry) => {
     if (!entry || typeof entry !== "object") {
@@ -2329,13 +2415,14 @@ function summarizeAgentEnd(
   });
   const latestAssistant = assistantMessages.at(-1);
   const texts = latestAssistant ? extractTextFromUnknown(latestAssistant).filter(Boolean) : [];
-  const resolved = resolveUserFacingContent(texts.join("\n"), {
-    requireStructured: options?.requireStructuredUserContent,
+  const gate = buildUserContentGateResult({
+    content: texts.join("\n"),
+    runtimeControlsUserContent: isRuntimeOwnedUserContent(options),
+    requireStructuredUserContent: Boolean(options?.requireStructuredUserContent),
+    mainUserContentMode: normalizeMainUserContentMode(options?.mainUserContentMode),
   });
-  const contentTexts = resolved.text ? extractTextFromUnknown(resolved.text).filter(Boolean) : [];
-  const summary = contentTexts.find((entry) => entry.length >= 20) || contentTexts[0];
-  if (summary) {
-    return summary.slice(0, 240);
+  if (gate.text) {
+    return gate.text.slice(0, 240);
   }
   return event.success
     ? `agent run completed in ${event.durationMs ?? 0}ms`
@@ -2344,49 +2431,139 @@ function summarizeAgentEnd(
 
 function buildUserContentGateResult(params: {
   content: string;
+  runtimeControlsUserContent?: boolean;
   requireStructuredUserContent?: boolean;
   mainUserContentMode?: "none" | "immediate-summary" | "full-answer";
 }): {
   text: string;
   action: "pass" | "extract" | "suppress";
-  reason: "main-user-content-mode-none" | "task-user-content-block" | "missing-task-user-content-block" | "raw-task-user-content-marker";
+  reason: "main-user-content-mode-none" | "main-user-content-mode-immediate-summary" | "mode-driven-pass";
 } {
-  const resolved = resolveUserFacingContent(params.content, {
-    requireStructured: Boolean(params.requireStructuredUserContent),
+  const rawMainUserContentMode = params.mainUserContentMode;
+  const mainUserContentMode = normalizeMainUserContentMode(rawMainUserContentMode);
+  const runtimeControlsUserContent = isRuntimeOwnedUserContent({
+    runtimeControlsUserContent: params.runtimeControlsUserContent,
+    requireStructuredUserContent: params.requireStructuredUserContent,
+    mainUserContentMode: rawMainUserContentMode,
   });
-  const mainUserContentMode = normalizeMainUserContentMode(params.mainUserContentMode);
-  if (Boolean(params.requireStructuredUserContent) && mainUserContentMode === "none") {
+  if (runtimeControlsUserContent && mainUserContentMode === "none") {
     return {
       text: "",
       action: "suppress",
       reason: "main-user-content-mode-none",
     };
   }
-  if (resolved.hadRawMarker) {
+  const normalizedInput = normalizeText(params.content);
+  if (runtimeControlsUserContent && mainUserContentMode === "immediate-summary") {
+    const summaryText = buildImmediateSummary(normalizedInput);
     return {
-      text: "",
-      action: "suppress",
-      reason: "raw-task-user-content-marker",
+      text: summaryText,
+      action: summaryText ? "extract" : "suppress",
+      reason: "main-user-content-mode-immediate-summary",
     };
   }
-  const normalizedInput = normalizeText(params.content);
-  if (resolved.text !== normalizedInput) {
+  if (runtimeControlsUserContent) {
+    const sanitizedPlainText = stripInternalUserFacingNoise(normalizedInput);
+    if (sanitizedPlainText && sanitizedPlainText !== normalizedInput) {
+      return {
+        text: sanitizedPlainText,
+        action: "extract",
+        reason: "mode-driven-pass",
+      };
+    }
+  }
+  return {
+    text: normalizedInput,
+    action: "pass",
+    reason: "mode-driven-pass",
+  };
+}
+
+function sanitizeAssistantTranscriptMessage(
+  message: unknown,
+  options?: {
+    requireStructuredUserContent?: boolean;
+    mainUserContentMode?: "none" | "immediate-summary" | "full-answer";
+  },
+): {
+  changed: boolean;
+  blocked: boolean;
+  message?: Record<string, unknown>;
+  reason?:
+    | "main-user-content-mode-none"
+    | "main-user-content-mode-immediate-summary"
+    | "mode-driven-pass";
+} {
+  if (!message || typeof message !== "object") {
+    return { changed: false, blocked: false };
+  }
+  const candidate = message as Record<string, unknown>;
+  if (normalizeText(String(candidate.role || "")) !== "assistant") {
+    return { changed: false, blocked: false };
+  }
+  const content = Array.isArray(candidate.content) ? candidate.content : null;
+  if (!content) {
+    return { changed: false, blocked: false };
+  }
+  let changed = false;
+  let lastReason:
+    | "main-user-content-mode-none"
+    | "main-user-content-mode-immediate-summary"
+    | undefined;
+  const sanitizedContent = content.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return [entry];
+    }
+    const textEntry = entry as Record<string, unknown>;
+    if (normalizeText(String(textEntry.type || "")) !== "text" || typeof textEntry.text !== "string") {
+      return [entry];
+    }
+    const gate = buildUserContentGateResult({
+      content: textEntry.text,
+      runtimeControlsUserContent: isRuntimeOwnedUserContent(options),
+      requireStructuredUserContent: Boolean(options?.requireStructuredUserContent),
+      mainUserContentMode: options?.mainUserContentMode,
+    });
+    if (gate.action === "suppress") {
+      changed = true;
+      lastReason = gate.reason;
+      return [];
+    }
+    if (gate.action === "extract") {
+      changed = true;
+      lastReason = gate.reason;
+      return [{ ...textEntry, text: gate.text }];
+    }
+    return [entry];
+  });
+  if (!changed) {
+    return { changed: false, blocked: false };
+  }
+  if (sanitizedContent.length === 0) {
     return {
-      text: resolved.text,
-      action: resolved.text ? "extract" : "suppress",
-      reason: resolved.hadBlock ? "task-user-content-block" : "missing-task-user-content-block",
+      changed: true,
+      blocked: true,
+      reason: lastReason,
     };
   }
   return {
-    text: resolved.text,
-    action: "pass",
-    reason: resolved.hadBlock ? "task-user-content-block" : "missing-task-user-content-block",
+    changed: true,
+    blocked: false,
+    message: {
+      ...candidate,
+      content: sanitizedContent,
+    },
+    reason: lastReason,
   };
 }
 
 function hasVisibleAssistantOutput(
   event: { messages: unknown[] },
-  options?: { requireStructuredUserContent?: boolean },
+  options?: {
+    runtimeControlsUserContent?: boolean;
+    requireStructuredUserContent?: boolean;
+    mainUserContentMode?: "none" | "immediate-summary" | "full-answer";
+  },
 ): boolean {
   const assistantMessages = event.messages.filter((entry) => {
     if (!entry || typeof entry !== "object") {
@@ -2396,10 +2573,13 @@ function hasVisibleAssistantOutput(
     return typeof role === "string" && role.toLowerCase() === "assistant";
   });
   for (const message of assistantMessages) {
-    const resolved = resolveUserFacingContent(extractTextFromUnknown(message).join("\n"), {
-      requireStructured: options?.requireStructuredUserContent,
+    const gate = buildUserContentGateResult({
+      content: extractTextFromUnknown(message).join("\n"),
+      runtimeControlsUserContent: isRuntimeOwnedUserContent(options),
+      requireStructuredUserContent: Boolean(options?.requireStructuredUserContent),
+      mainUserContentMode: options?.mainUserContentMode,
     });
-    if (extractTextFromUnknown(resolved.text).some((entry) => entry.length > 0)) {
+    if (gate.action !== "suppress" && extractTextFromUnknown(gate.text).some((entry) => entry.length > 0)) {
       return true;
     }
   }
@@ -3127,12 +3307,13 @@ const taskSystemPlugin = {
       if (!config.registerOnBeforeDispatch || !event.content?.trim()) {
         return;
       }
-      if (isInternalStartupResumePrompt(event.content)) {
+      if (isInternalStartupResumePrompt(event.content) || isInternalCollectingWindowPrompt(event.content)) {
         enqueueDebugLog(config, "before_dispatch:startup-resume", {
           sessionKey: normalizeSessionKey(
             event.sessionKey || ctx.sessionKey || buildSessionKey(ctx.channelId ?? event.channel ?? "unknown", ctx.conversationId),
           ),
           channel: event.channel ?? ctx.channelId ?? "unknown",
+          reason: isInternalCollectingWindowPrompt(event.content) ? "collecting-window-wake" : "startup-resume",
         });
         return;
       }
@@ -3333,9 +3514,11 @@ const taskSystemPlugin = {
         typeof registerDecision.task_id === "string" && registerDecision.task_id.trim()
           ? registerDecision.task_id.trim()
           : "";
-      const queuedEarlyAckConsumed =
+      const runtimeOwnedRoutingReceipt = hasRuntimeOwnedSameSessionRoutingReceipt(registerResult);
+      const hadQueuedEarlyAck =
         shouldSendImmediateAck &&
         (Boolean(preRegistered?.earlyAckSent) || consumeQueuedEarlyAck(queueIdentity, queueIds));
+      const queuedEarlyAckConsumed = hadQueuedEarlyAck && !runtimeOwnedRoutingReceipt;
 
       if (
         config.sendImmediateAckOnRegister &&
@@ -3352,6 +3535,19 @@ const taskSystemPlugin = {
           priority: "p0-receive-ack",
           schedulerDecision: "skipped",
           reason: "existing-active-task",
+        });
+      }
+
+      if (hadQueuedEarlyAck && runtimeOwnedRoutingReceipt) {
+        await appendDebugLog(config, "immediate-ack:override", {
+          channel: channelName,
+          accountId,
+          chatId,
+          taskId: registerDecision.task_id ?? null,
+          sessionKey,
+          priority: "p0-receive-ack",
+          schedulerDecision: "override-send",
+          reason: "runtime-owned-same-session-routing-receipt",
         });
       }
 
@@ -3655,7 +3851,15 @@ const taskSystemPlugin = {
       if (!config.syncProgressOnMessageSending || !event.content?.trim()) {
         return;
       }
+      let sendingResult: { content?: string; cancel?: boolean } | undefined;
       const sessionKey = normalizeSessionKey(ctx.sessionKey?.trim() || buildSessionKey(ctx.channelId, ctx.conversationId));
+      await appendDebugLog(config, "message_sending:entered", {
+        agentId: ctx.agentId || config.defaultAgentId,
+        sessionKey,
+        schedulerDecision: "entered",
+        reason: "message-sending-hook-entered",
+        content: normalizeText(event.content).slice(0, 240),
+      });
       const activeTaskBinding =
         (await ensureActiveTaskBinding(sessionKey, {
           agentId: ctx.agentId || config.defaultAgentId,
@@ -3665,12 +3869,17 @@ const taskSystemPlugin = {
         })) || undefined;
       const gate = buildUserContentGateResult({
         content: event.content,
+        runtimeControlsUserContent: isRuntimeOwnedUserContent({
+          requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+          mainUserContentMode: activeTaskBinding?.mainUserContentMode,
+        }),
         requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
-        mainUserContentMode: normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode),
+        mainUserContentMode: activeTaskBinding?.mainUserContentMode,
       });
       if (gate.action === "suppress") {
         if (normalizeText(event.content)) {
           event.content = "";
+          sendingResult = { content: "", cancel: true };
           await appendDebugLog(config, "message_sending:user-content-suppressed", {
             agentId: ctx.agentId || config.defaultAgentId,
             sessionKey,
@@ -3680,6 +3889,7 @@ const taskSystemPlugin = {
         }
       } else if (gate.action === "extract") {
         event.content = gate.text;
+        sendingResult = { content: gate.text };
         await appendDebugLog(config, "message_sending:user-content-extracted", {
           agentId: ctx.agentId || config.defaultAgentId,
           sessionKey,
@@ -3696,7 +3906,7 @@ const taskSystemPlugin = {
             schedulerDecision: "skipped",
             reason: "taskmonitor-disabled",
           });
-          return;
+          return sendingResult;
         }
         const resolvedAgentId = resolveAgentId(ctx.agentId, ctx.sessionKey, config.defaultAgentId);
         const normalizedSessionKey = normalizeSessionKey(ctx.sessionKey);
@@ -3713,7 +3923,7 @@ const taskSystemPlugin = {
             schedulerDecision: "skipped",
             reason: "continuation-fulfilled",
           });
-          return;
+          return sendingResult;
         }
       }
       if (!shouldSyncProgress(event.content, config)) {
@@ -3723,7 +3933,7 @@ const taskSystemPlugin = {
           schedulerDecision: "skipped",
           reason: "progress-sync-filtered",
         });
-        return;
+        return sendingResult;
       }
       const agentId = resolveAgentId(ctx.agentId, sessionKey, config.defaultAgentId);
       await appendDebugLog(config, "message_sending", {
@@ -3739,6 +3949,30 @@ const taskSystemPlugin = {
         task_id: activeTaskBinding?.taskId,
         progress_note: normalizeText(event.content).slice(0, 240),
       });
+      return sendingResult;
+    });
+
+    api.on("before_message_write", (event, ctx) => {
+      const sessionKey = normalizeSessionKey(event.sessionKey || ctx.sessionKey || "");
+      const activeTaskBinding = sessionKey ? activeTaskBindings.get(sessionKey) : undefined;
+      const sanitized = sanitizeAssistantTranscriptMessage(event.message, {
+        requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+        mainUserContentMode: activeTaskBinding?.mainUserContentMode,
+      });
+      if (!sanitized.changed) {
+        return;
+      }
+      enqueueDebugLog(config, "before_message_write:user-content-sanitized", {
+        agentId: ctx.agentId || event.agentId || config.defaultAgentId,
+        sessionKey,
+        schedulerDecision: sanitized.blocked ? "suppressed" : "structured",
+        reason: sanitized.reason || "mode-driven-pass",
+        blocked: sanitized.blocked,
+      });
+      if (sanitized.blocked) {
+        return { block: true };
+      }
+      return sanitized.message ? { message: sanitized.message } : undefined;
     });
 
     api.on("llm_output", async (event, ctx) => {
@@ -3767,8 +4001,12 @@ const taskSystemPlugin = {
         })) || undefined;
       const gate = buildUserContentGateResult({
         content: (event.assistantTexts || []).join("\n"),
+        runtimeControlsUserContent: isRuntimeOwnedUserContent({
+          requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+          mainUserContentMode: activeTaskBinding?.mainUserContentMode,
+        }),
         requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
-        mainUserContentMode: normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode),
+        mainUserContentMode: activeTaskBinding?.mainUserContentMode,
       });
       if (gate.action === "suppress") {
         await appendDebugLog(config, "llm_output:user-content-suppressed", {
@@ -3901,20 +4139,28 @@ const taskSystemPlugin = {
         reason: "agent-end",
       });
       const mainUserContentMode = normalizeMainUserContentMode(activeTaskBinding?.mainUserContentMode);
+      const runtimeControlsUserContent = isRuntimeOwnedUserContent({
+        requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+        mainUserContentMode: activeTaskBinding?.mainUserContentMode,
+      });
       const hasVisibleOutputForFinalize =
-        event.success && Boolean(activeTaskBinding?.requireStructuredUserContent) && mainUserContentMode === "none"
+        event.success && runtimeControlsUserContent && mainUserContentMode === "none"
           ? true
           : event.success
             ? hasVisibleAssistantOutput(event, {
+                runtimeControlsUserContent,
                 requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+                mainUserContentMode,
               })
             : false;
       const resultSummaryForFinalize =
-        event.success && Boolean(activeTaskBinding?.requireStructuredUserContent) && mainUserContentMode === "none"
+        event.success && runtimeControlsUserContent && mainUserContentMode === "none"
           ? "future-first request scheduled for delayed follow-up delivery"
           : event.success
             ? summarizeAgentEnd(event, {
+                runtimeControlsUserContent,
                 requireStructuredUserContent: Boolean(activeTaskBinding?.requireStructuredUserContent),
+                mainUserContentMode,
               })
             : undefined;
       const finalizeResult = await callHook(api, config, "finalize-active", {
@@ -3931,13 +4177,22 @@ const taskSystemPlugin = {
         Boolean(activeTaskBinding?.taskId) &&
         (!event.success || !hasVisibleOutputForFinalize);
       if (shouldDeliverFinalizeControlPlane) {
+        const deliveryTarget = resolveControlPlaneDeliveryTarget(
+          activeTaskBinding,
+          {
+            channelId: ctx.channelId,
+            accountId: ctx.accountId,
+            conversationId: ctx.conversationId,
+          },
+          normalizedSessionKey,
+        );
         await sendControlPlaneMessage(
           buildHookBackedControlPlaneMessage(finalizeResult, {
-            channel: ctx.channelId ?? "unknown",
-            accountId: ctx.accountId ?? "",
-            chatId: ctx.conversationId ?? normalizedSessionKey,
-            replyToId: activeTaskBinding?.replyToId,
-            threadId: activeTaskBinding?.threadId,
+            channel: deliveryTarget.channel,
+            accountId: deliveryTarget.accountId,
+            chatId: deliveryTarget.chatId,
+            replyToId: deliveryTarget.replyToId,
+            threadId: deliveryTarget.threadId,
             sessionKey: normalizedSessionKey,
             taskId: activeTaskBinding?.taskId,
             eventName: event.success ? "task-completed" : "task-failed",
@@ -3989,8 +4244,10 @@ const taskSystemPlugin = {
           if (config.enableContinuationRunner) {
             continuationTimer = setInterval(() => {
               void processDueContinuations(api, config);
+              void processDueCollectingWindows(api, config);
             }, config.continuationPollMs);
             await processDueContinuations(api, config);
+            await processDueCollectingWindows(api, config);
           }
           return;
         }
@@ -4001,8 +4258,10 @@ const taskSystemPlugin = {
         if (config.enableContinuationRunner) {
           continuationTimer = setInterval(() => {
             void processDueContinuations(api, config);
+            void processDueCollectingWindows(api, config);
           }, config.continuationPollMs);
           await processDueContinuations(api, config);
+          await processDueCollectingWindows(api, config);
         }
       },
       async stop() {

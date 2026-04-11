@@ -203,6 +203,46 @@ class OpenClawBridgeTests(unittest.TestCase):
         self.assertEqual(queued.task_status, task_state_module.STATUS_QUEUED)
         self.assertEqual(queued.estimated_wait_seconds, 60)
 
+    def test_register_inbound_task_omits_short_queue_eta_when_backlog_exists(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        done = store.register_task(
+            agent_id="main",
+            session_key="feishu:main:chat:history",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="oc_history",
+            user_id="ou_history",
+            task_label="历史完成任务",
+        )
+        started = store.start_task(done.task_id)
+        archived = store.complete_task(started.task_id, archive=True)
+        archive_path = self.paths.archive_dir / f"{archived.task_id}.json"
+        payload = json.loads(archive_path.read_text(encoding="utf-8"))
+        payload["created_at"] = "2026-04-04T10:00:00+08:00"
+        payload["started_at"] = "2026-04-04T10:00:10+08:00"
+        payload["updated_at"] = "2026-04-04T10:00:20+08:00"
+        task_state_module.atomic_write_json(archive_path, payload)
+
+        first = openclaw_bridge.register_inbound_task(
+            self.make_context("第一个长任务", estimated_steps=4, needs_verification=True),
+            paths=self.paths,
+        )
+        queued = openclaw_bridge.register_inbound_task(
+            self.make_context(
+                "第二个长任务",
+                estimated_steps=4,
+                needs_verification=True,
+                session_key="feishu:main:chat:test-2",
+                chat_id="oc_test_chat_2",
+            ),
+            paths=self.paths,
+        )
+
+        self.assertEqual(first.task_status, task_state_module.STATUS_RUNNING)
+        self.assertEqual(first.estimated_wait_seconds, 10)
+        self.assertEqual(queued.task_status, task_state_module.STATUS_QUEUED)
+        self.assertIsNone(queued.estimated_wait_seconds)
+
     def test_observed_task_does_not_reuse_long_task_wait_estimate(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         done = store.register_task(
@@ -426,3 +466,106 @@ class OpenClawBridgeTests(unittest.TestCase):
 
         still_paused = store.load_task(first.task_id)
         self.assertEqual(still_paused.status, task_state_module.STATUS_PAUSED)
+
+    def test_register_inbound_task_passes_ambiguous_followup_to_runtime_owned_classifier(self) -> None:
+        first = openclaw_bridge.register_inbound_task(
+            self.make_context("Please rewrite this resume", estimated_steps=3),
+            paths=self.paths,
+        )
+        assert first.task_id is not None
+
+        captured: dict[str, object] = {}
+
+        def classifier(payload: dict[str, object]) -> dict[str, object]:
+            captured.update(payload)
+            return {
+                "classification": "queueing",
+                "confidence": 0.88,
+                "needs_confirmation": False,
+                "reason_code": "independent-followup-goal",
+                "reason_text": "The follow-up introduces a separate goal.",
+            }
+
+        followup = openclaw_bridge.register_inbound_task(
+            self.make_context("Can you also check Hangzhou housing prices"),
+            paths=self.paths,
+            observe_only=True,
+            same_session_classifier=classifier,
+        )
+        routing = followup.routing_decision
+        assert routing is not None
+        self.assertTrue(routing["classifier_invoked"])
+        self.assertEqual(routing["decision_source"], "classifier")
+        self.assertEqual(routing["classification"], "queueing")
+        self.assertEqual(routing["execution_decision"], "queue-as-new-task")
+        self.assertEqual(captured["new_message"], "Can you also check Hangzhou housing prices")
+        self.assertEqual(captured["active_task_summary"], "Please rewrite this resume")
+
+    def test_register_inbound_task_uses_fallback_when_classifier_unavailable(self) -> None:
+        first = openclaw_bridge.register_inbound_task(
+            self.make_context("Please rewrite this resume", estimated_steps=3),
+            paths=self.paths,
+        )
+        assert first.task_id is not None
+
+        followup = openclaw_bridge.register_inbound_task(
+            self.make_context("Target startup roles"),
+            paths=self.paths,
+            observe_only=True,
+        )
+        routing = followup.routing_decision
+        assert routing is not None
+        self.assertFalse(routing["classifier_invoked"])
+        self.assertEqual(routing["decision_source"], "classifier-fallback")
+        self.assertEqual(routing["classification"], "queueing")
+        self.assertEqual(routing["execution_decision"], "queue-as-new-task")
+
+    def test_same_session_stale_observed_backlog_is_reused_as_takeover_target(self) -> None:
+        first = openclaw_bridge.register_inbound_task(
+            self.make_context("在么"),
+            paths=self.paths,
+            observe_only=True,
+        )
+        assert first.task_id is not None
+
+        second = openclaw_bridge.register_inbound_task(
+            self.make_context("帮我写一份简历，自己看情况写"),
+            paths=self.paths,
+            observe_only=True,
+        )
+        routing = second.routing_decision
+        assert routing is not None
+        self.assertTrue(routing["same_session_followup"])
+        self.assertEqual(second.task_id, first.task_id)
+        self.assertEqual(routing["active_task_id"], first.task_id)
+        self.assertEqual(routing["target_task_id"], first.task_id)
+        self.assertEqual(routing["classification"], "steering")
+        self.assertEqual(routing["execution_decision"], "merge-before-start")
+        self.assertEqual(routing["reason_code"], "stale-observed-task-takeover")
+
+        store = task_state_module.TaskStore(paths=self.paths)
+        reused = store.load_task(first.task_id)
+        self.assertEqual(reused.task_label, "帮我写一份简历，自己看情况写")
+        self.assertEqual(reused.meta.get("original_user_request"), "帮我写一份简历，自己看情况写")
+        self.assertEqual(reused.monitor_state, "normal")
+
+    def test_same_session_actionable_observed_task_is_not_auto_taken_over(self) -> None:
+        first = openclaw_bridge.register_inbound_task(
+            self.make_context("查天气"),
+            paths=self.paths,
+            observe_only=True,
+        )
+        assert first.task_id is not None
+
+        second = openclaw_bridge.register_inbound_task(
+            self.make_context("帮我写一份简历，自己看情况写"),
+            paths=self.paths,
+            observe_only=True,
+        )
+        routing = second.routing_decision
+        assert routing is not None
+        self.assertNotEqual(second.task_id, first.task_id)
+        self.assertFalse(routing["same_session_followup"])
+        self.assertEqual(routing["classification"], "queueing")
+        self.assertEqual(routing["execution_decision"], "queue-as-new-task")
+        self.assertEqual(routing["reason_code"], "no-active-task-default-new-request")

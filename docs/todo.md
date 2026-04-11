@@ -1,6 +1,6 @@
 # Temporary Notes
 
-> 最后更新：2026-04-05
+> 最后更新：2026-04-11
 > 角色：这是临时记录文件，不是正式主线。默认按 [roadmap.md](./roadmap.md) 推进；只有在明确要求“处理 TODO”时，才回读这里并整理回 roadmap。
 
 ## 当前焦点
@@ -29,6 +29,11 @@
 - 新增了 LLM tool-assisted planning 设计稿：
   - [llm_tool_task_planning.md](./llm_tool_task_planning.md)
 - 已把“task-system 是监工，不是执行者替身”写进 README、architecture、roadmap
+- 已改进 running 态的 30 秒控制面消息：
+  - 优先展示当前推进目标与阶段感，而不再只说“仍在处理中”
+  - progress 更新会记录轻量 `progress_update_count`，供短跟进文案使用
+- 已改进 `followup-scheduled` 的 `[wd]` 摘要 fallback：
+  - 即使模型未显式给出 `followup_summary`，runtime 也会回退到基于时间表达与 follow-up message 的可读摘要
 
 ## 下一个动作
 
@@ -39,17 +44,6 @@
    - 而不是长期主判断路径。
 
 ## 新增待办
-
-- 改进 `仍在处理中` 的 30 秒控制面消息。
-  - 当前问题：
-    - 只说“仍在处理中”对用户来说信息量太低，体感像在傻等。
-  - 目标方向：
-    - 尽量补充有价值的执行信息，例如：
-      - 当前在做什么
-      - 预计还有几步
-      - 当前大致在第几步
-      - 如果卡在外部依赖，要明确说出阻塞点
-    - 如果暂时拿不到结构化进度，也要优先给出比“处理中”更有解释力的状态摘要。
 
 - 把 future-first 请求的即时可见输出策略做成结构化 contract。
   - 当前问题：
@@ -68,6 +62,28 @@
     - `[wd] 已安排妥当：35分钟后提醒你查火车票。`
     - 调度确认消息必须包含人类可读的 follow-up 摘要。
 
+- 扩 Phase 6 到更广的 planning coverage。
+  - 当前状态：
+    - Phase 6 最小闭环已经完成：
+      - tool-created follow-up plan
+      - promise guard
+      - `promise-without-task` anomaly
+      - overdue follow-up claim / ops projection
+  - 下一步方向：
+    - 扩更多 planning anomaly 类型与 recovery 文案
+    - 扩更多 future-first / compound-request 真实例子
+    - 评估更多 channel / agent 是否默认启用 tool-assisted planning
+    - 在最小闭环之上继续补真实通道验收样本
+
+- 收口 install drift 的真实安装态验证。
+  - 当前状态：
+    - drift truth source / dashboard / triage / only-issues 投影已经完成
+    - 本地 OpenClaw 安装仍可能被 dangerous-code 检测拦住
+  - 下一步方向：
+    - 在允许的安装路径下验证 installable payload 真正进入本地安装态
+    - 如果仍不能通过 `openclaw plugins install ./plugin`，明确项目内认可的同步/部署路径
+    - 形成一份更稳定的“源码 payload -> 本地安装态”操作手册
+
 - 提供更简单的 task CLI 查询入口。
   - 当前问题：
     - 运维上要查 task / queue / continuity，仍然主要依赖 `python3 scripts/runtime/main_ops.py ...`。
@@ -79,3 +95,25 @@
       - 查当前 session 的 continuity / queue / lane
     - 优先考虑让“怎么查 task”变成一套低记忆负担的固定命令，而不是要求维护者记住多组脚本参数。
     - 如果短期内还不能做成宿主原生命令，也至少补一层更简单的 task-system CLI 包装与文档示例。
+
+- same-session message routing 子项目已完成收口。
+  - 当前状态：
+    - 连续输入已正式路由到 `steering / queueing / control-plane / collect-more`
+    - runtime-owned classifier、`[wd]` 回执、collecting-window、stable acceptance 已落地
+  - 交付文档与入口：
+    - [session_message_routing/README.md](./session_message_routing/README.md)
+    - [session_message_routing/decision_contract.md](./session_message_routing/decision_contract.md)
+    - [session_message_routing/test_cases.md](./session_message_routing/test_cases.md)
+    - [session_message_routing/development_plan.md](./session_message_routing/development_plan.md)
+    - `python3 scripts/runtime/same_session_routing_acceptance.py --json`
+
+
+task_user_content 问题；
+最初设计是为了解决 task tool 进入llm调用链时， 有些llm回复的中间结果（特别是任务安排类的中间结果，案例是帮我查一下杭州的天气在查一下宁波的天气，2分钟后告诉我杭州天气，3分钟后告诉我宁波天气类似这种；你也可以翻找下日志，看下第一条task_user_content出现时用的用例），不要给用户返回，被task 系统来接管，然后改写； 
+但是这个问题现在污染面有点儿大，如何判断哪些是中间结果，需要被改写？ 
+如果无法判定这一点，或者这一点很难来判断，那么task_user_content 这个机制还不如取消掉； 所以先从根本上分析下，能否准确的判断哪些是中间内容，如果能就继续修改bug，如果不能就彻底废弃；
+参考分析与样例：
+- [task_user_content_decision.md](../docs/task_user_content_decision.md)
+- 当前状态：
+  - Phase 4 已完成：运行时主链路已废弃 `task_user_content` 作为协议
+  - Phase 5 已完成：历史清理工具、物理删除与测试收口已经落地

@@ -57,6 +57,36 @@ class TaskStatusTests(unittest.TestCase):
         self.assertIn("- delivery.stale_intermediate_exists: False", markdown)
         self.assertIn("- delivery.outbox_exists: False", markdown)
 
+    def test_build_status_summary_projects_same_session_routing(self) -> None:
+        task = self.store.observe_task(
+            agent_id="main",
+            session_key="session:routing",
+            channel="feishu",
+            chat_id="chat:routing",
+            task_label="routing task",
+            meta={
+                "same_session_routing": {
+                    "schema": "openclaw.task-system.same-session-routing.v1",
+                    "version": 1,
+                    "routing_status": "recorded-only",
+                    "same_session_followup": True,
+                    "classification": None,
+                    "execution_decision": None,
+                    "reason_code": "phase1-same-session-followup-recorded",
+                }
+            },
+        )
+
+        summary = task_status.build_status_summary(task.task_id, paths=self.paths)
+
+        self.assertIsInstance(summary["same_session_routing"], dict)
+        self.assertEqual(summary["same_session_routing"]["routing_status"], "recorded-only")
+        self.assertTrue(summary["same_session_routing"]["same_session_followup"])
+
+        markdown = task_status.render_status_markdown(task.task_id, paths=self.paths)
+        self.assertIn("- same_session_routing.routing_status: recorded-only", markdown)
+        self.assertIn("- same_session_routing.reason_code: phase1-same-session-followup-recorded", markdown)
+
     def test_list_inflight_statuses_returns_registered_task(self) -> None:
         task = self.store.register_task(
             agent_id="main",
@@ -362,3 +392,56 @@ class TaskStatusTests(unittest.TestCase):
         summary = task_status.build_status_summary(task.task_id, paths=self.paths)
         self.assertTrue(summary["delivery"]["stale_intermediate_exists"])
         self.assertEqual(summary["delivery"]["stale_intermediate_count"], 1)
+
+    def test_build_status_summary_projects_planning_anomaly_and_overdue_followup(self) -> None:
+        source = self.store.register_task(
+            agent_id="main",
+            session_key="session:planning-status",
+            channel="feishu",
+            chat_id="chat:planning-status",
+            task_label="planning source task",
+        )
+        source.meta["tool_followup_plan"] = {
+            "plan_id": "plan_123",
+            "status": "anomaly",
+            "followup_due_at": "2020-01-01T00:00:00+00:00",
+            "followup_summary": "5分钟后同步结果",
+            "main_user_content_mode": "none",
+        }
+        source.meta["planning_promise_guard"] = {
+            "status": "anomaly",
+            "expected_by_finalize": True,
+            "main_user_content_mode": "none",
+        }
+        source.meta["planning_anomaly"] = "promise-without-task"
+        self.store.save_task(source)
+
+        followup = self.store.observe_task(
+            agent_id="main",
+            session_key="session:planning-status",
+            channel="feishu",
+            chat_id="chat:planning-status",
+            task_label="planned follow-up",
+            meta={"source": "tool-followup-plan", "plan_id": "plan_123"},
+        )
+        self.store.schedule_continuation(
+            followup.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2020-01-01T00:00:00+00:00",
+            payload={"reply_text": "稍后同步", "wait_seconds": 60},
+            reason="scheduled tool-assisted continuation wait",
+        )
+
+        source_summary = task_status.build_status_summary(source.task_id, paths=self.paths)
+        followup_summary = task_status.build_status_summary(followup.task_id, paths=self.paths)
+        overview = task_status.build_system_overview(paths=self.paths)
+        markdown = task_status.render_overview_markdown(paths=self.paths)
+
+        self.assertTrue(source_summary["planning"]["promise_without_task"])
+        self.assertEqual(source_summary["planning"]["anomaly"], "promise-without-task")
+        self.assertTrue(followup_summary["planning"]["overdue_followup"])
+        self.assertEqual(overview["planning"]["promise_without_task_count"], 1)
+        self.assertEqual(overview["planning"]["overdue_followup_count"], 1)
+        self.assertEqual(overview["planning"]["anomaly_counts"], {"promise-without-task": 1})
+        self.assertIn("- planning_promise_without_task_count: 1", markdown)
+        self.assertIn("- planning_overdue_followup_count: 1", markdown)

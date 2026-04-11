@@ -153,6 +153,191 @@ test("before_dispatch still reuses receive-side pre-register snapshot after long
   }
 });
 
+test("before_dispatch immediate ack prefers runtime-owned same-session routing receipt", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    registerResponse: {
+      ...buildRegisterDecision({
+        task_id: "task-routing-receipt",
+        task_status: "running",
+        classification_reason: "observed-task",
+      }),
+      control_plane_message: {
+        schema: "openclaw.task-system.control-plane.v1",
+        kind: "same-session-routing-receipt",
+        event_name: "same-session-routing-receipt",
+        priority: "p0-receive-ack",
+        task_id: "task-routing-receipt",
+        text: "当前任务已按这次更新重新开始，因为现在仍处于可安全重启阶段。",
+      },
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "再补充一个边界条件",
+        body: "再补充一个边界条件",
+        channel: "feishu",
+        senderId: "user-1",
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+      },
+    );
+
+    assert.equal(sentMessages.length, 1);
+    assert.equal(
+      sentMessages[0]?.text,
+      "[wd] 当前任务已按这次更新重新开始，因为现在仍处于可安全重启阶段。",
+    );
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("before_dispatch runtime-owned same-session routing receipt overrides queued early ack marker", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    registerResponse: {
+      ...buildRegisterDecision({
+        task_id: "task-routing-receipt-override",
+        task_status: "running",
+        classification_reason: "observed-task",
+      }),
+      control_plane_message: {
+        schema: "openclaw.task-system.control-plane.v1",
+        kind: "same-session-routing-receipt",
+        event_name: "same-session-routing-receipt",
+        priority: "p0-receive-ack",
+        task_id: "task-routing-receipt-override",
+        text: "当前任务已按这次更新重新开始，因为现在仍处于可安全重启阶段。",
+      },
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  globalThis[EARLY_ACK_STATE_KEY].set(buildStateKey("feishu", "acct-1", "chat-1"), [
+    buildEarlyAckMarker(),
+  ]);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "再补充一个边界条件",
+        body: "再补充一个边界条件",
+        channel: "feishu",
+        senderId: "user-1",
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+      },
+    );
+
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    const overrideEvent = debugEvents.find((entry) => entry.event === "immediate-ack:override");
+    const skippedEvent = debugEvents.find((entry) => entry.event === "immediate-ack:skipped");
+    assert.equal(sentMessages.length, 1);
+    assert.equal(
+      sentMessages[0]?.text,
+      "[wd] 当前任务已按这次更新重新开始，因为现在仍处于可安全重启阶段。",
+    );
+    assert.equal(overrideEvent?.payload?.reason, "runtime-owned-same-session-routing-receipt");
+    assert.equal(skippedEvent, undefined);
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("before_dispatch immediate ack suppresses implausible second-level queue eta when backlog exists", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    registerResponse: buildRegisterDecision({
+      task_id: "task-queue-backlog",
+      task_status: "queued",
+      queue_position: 11,
+      ahead_count: 10,
+      running_count: 0,
+      active_count: 11,
+      estimated_wait_seconds: 1,
+    }),
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "帮我排查这个长问题",
+        body: "帮我排查这个长问题",
+        channel: "feishu",
+        senderId: "user-1",
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+      },
+    );
+
+    assert.equal(sentMessages.length, 1);
+    assert.equal(
+      sentMessages[0]?.text,
+      "[wd] 已收到，你的请求已进入队列；前面还有 10 个号，你现在排第 11 位。",
+    );
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("before_dispatch skips runtime registration for internal collecting-window wake prompt", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot();
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "[[TASK-SYSTEM-COLLECTING-WINDOW]]\ncollecting window due",
+        body: "[[TASK-SYSTEM-COLLECTING-WINDOW]]\ncollecting window due",
+        channel: "feishu",
+        senderId: "user-1",
+      },
+      {
+        sessionKey: "agent:main:feishu:acct-1:user-1",
+        channelId: "feishu",
+        conversationId: "chat-1",
+        accountId: "acct-1",
+        senderId: "user-1",
+        agentId: "main",
+      },
+    );
+
+    const commands = await readHookCommands(callsPath);
+    assert.deepEqual(commands, []);
+    assert.equal(sentMessages.length, 0);
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("before_dispatch still consumes queued early ack marker after long queue delay", async () => {
   resetGlobalState();
   const { runtimeRoot, callsPath } = await createFakeRuntimeRoot();
