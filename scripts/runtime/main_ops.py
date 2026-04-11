@@ -2114,6 +2114,14 @@ def get_main_dashboard_summary(
     ):
         action_hint = str(health["planning_primary_recovery_action"].get("summary") or action_hint)
         action_hint_command = str(health["planning_primary_recovery_action"].get("command") or "")
+    elif (
+        health["planning_health_status"] == "warn"
+        and isinstance(health.get("planning_primary_recovery_action"), dict)
+        and str((health["planning_primary_recovery_action"] or {}).get("kind") or "") == "inspect-planner-timeout"
+        and str((health["planning_primary_recovery_action"] or {}).get("command") or "").strip()
+    ):
+        action_hint = str(health["planning_primary_recovery_action"].get("summary") or action_hint)
+        action_hint_command = str(health["planning_primary_recovery_action"].get("command") or "")
     elif health["main_active_task_count"] > 0:
         action_hint = "Review current lanes before changing queue behavior."
         action_hint_command = "python3 scripts/runtime/main_ops.py lanes --json"
@@ -3065,6 +3073,21 @@ def get_main_triage_summary(
         }
         focus_session_key = planning_anomaly_task.get("session_key")
         next_actions.append(f"{primary_action['summary']} `{inspect_command}`")
+    elif (
+        str(planning_health.get("status") or "") == "warn"
+        and isinstance(planning_summary.get("primary_recovery_action"), dict)
+        and str((planning_summary.get("primary_recovery_action") or {}).get("kind") or "") == "inspect-planner-timeout"
+        and str((planning_summary.get("primary_recovery_action") or {}).get("command") or "").strip()
+    ):
+        recovery_action = planning_summary["primary_recovery_action"]
+        primary_action = {
+            "kind": str(recovery_action.get("kind") or "inspect-planner-timeout"),
+            "summary": str(recovery_action.get("summary") or "Inspect the planner timeout before relying on planning health."),
+            "command": str(recovery_action.get("command") or "python3 scripts/runtime/main_ops.py planning --json"),
+            "session_key": recovery_action.get("session_key"),
+        }
+        focus_session_key = recovery_action.get("session_key")
+        next_actions.append(f"{primary_action['summary']} `{primary_action['command']}`")
     elif str(planning_health.get("status") or "") == "warn":
         primary_action = {
             "kind": "inspect-planning-health",

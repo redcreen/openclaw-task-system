@@ -40,6 +40,9 @@
 - 已补 `promise-without-task` 的 recovery 投影与文案：
   - `task_status / health_report / main_ops planning` 会给出结构化 recovery action
   - running 态短跟进会明确“补建真实任务 / 明确撤回承诺”的后续处理方向
+- 已补 `planner-timeout` 的 recovery 投影与文案：
+  - timeout 不再只落回泛化 `planning health` 提示
+  - `dashboard / triage / running short followup` 会优先指向源 task 的恢复动作
 
 ## 下一个动作
 

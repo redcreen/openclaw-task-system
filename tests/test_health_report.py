@@ -272,7 +272,10 @@ class HealthReportTests(unittest.TestCase):
         self.assertIn("planning-timeouts:1", report["issues"])
         self.assertEqual(report["overview"]["planning"]["health"]["status"], "warn")
         self.assertEqual(report["overview"]["planning"]["health"]["primary_reason"], "planner-timeout-observed")
+        self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-planner-timeout")
+        self.assertIn("planner-owned follow-up", report["issue_entries"][0]["remediation"])
         self.assertIn("- planning_health_timeout_rate: 1.0", markdown)
+        self.assertIn("- planning_primary_recovery_action_kind: inspect-planner-timeout", markdown)
 
     def test_build_health_report_surfaces_plugin_install_drift(self) -> None:
         with patch.object(

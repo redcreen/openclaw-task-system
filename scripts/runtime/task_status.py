@@ -287,6 +287,16 @@ def _build_planning_recovery_action(task: dict[str, object], planning: dict[str,
             "command": inspect_command,
             "session_key": session_key,
         }
+    if _planning_timeout_detected(planning):
+        return {
+            "kind": "inspect-planner-timeout",
+            "summary": (
+                "Inspect the source task and decide whether to recreate the planner-owned follow-up "
+                "or ask for the delayed part again after the planner timeout."
+            ),
+            "command": inspect_command,
+            "session_key": session_key,
+        }
     if str(planning.get("anomaly") or "").strip():
         return {
             "kind": "inspect-planning-anomaly",
@@ -320,9 +330,10 @@ def _planning_recovery_priority(action: dict[str, object]) -> tuple[int, str, st
     kind = str(action.get("kind") or "")
     priority = {
         "inspect-promise-without-task": 0,
-        "inspect-planning-anomaly": 1,
-        "inspect-overdue-followup": 2,
-        "inspect-pending-plan": 3,
+        "inspect-planner-timeout": 1,
+        "inspect-planning-anomaly": 2,
+        "inspect-overdue-followup": 3,
+        "inspect-pending-plan": 4,
     }.get(kind, 99)
     return (
         priority,
@@ -571,13 +582,21 @@ def build_system_overview(
         if archived_status:
             archived_counts[str(archived_status)] += 1
     planning_health = build_planning_health_summary([*inflight_statuses, *archived_payloads])
-    planning_recovery_actions = [
-        item["planning"]["recovery_action"]
-        for item in inflight_statuses
-        if isinstance(item.get("planning"), dict)
-        and isinstance(item["planning"].get("recovery_action"), dict)
-        and str(item["planning"]["recovery_action"].get("kind") or "") != "none"
-    ]
+    planning_recovery_actions: list[dict[str, object]] = []
+    for item in inflight_statuses:
+        if (
+            isinstance(item.get("planning"), dict)
+            and isinstance(item["planning"].get("recovery_action"), dict)
+            and str(item["planning"]["recovery_action"].get("kind") or "") != "none"
+        ):
+            planning_recovery_actions.append(item["planning"]["recovery_action"])
+    for archived_payload in archived_payloads:
+        if not isinstance(archived_payload, dict):
+            continue
+        archived_planning = _build_planning_summary(archived_payload)
+        archived_recovery_action = _build_planning_recovery_action(archived_payload, archived_planning)
+        if str(archived_recovery_action.get("kind") or "") != "none":
+            planning_recovery_actions.append(archived_recovery_action)
     planning_recovery_actions = sorted(planning_recovery_actions, key=_planning_recovery_priority)
     planning_recovery_counts = Counter(
         str(action.get("kind") or "")

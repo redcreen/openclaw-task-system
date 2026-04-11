@@ -158,7 +158,14 @@ def build_health_report(
                 code=f"planning-timeouts:{planning_timeout_count}",
                 severity="warn",
                 count=planning_timeout_count,
-                remediation="Inspect `main_ops.py planning --json` to find recent planner timeouts; downgrade planning-dependent behavior until the planner path is stable again.",
+                remediation=(
+                    f"{planning_recovery_action['summary']} "
+                    f"Start with `{planning_recovery_action['command']}`."
+                    if planning_recovery_action
+                    and planning_recovery_action.get("kind") == "inspect-planner-timeout"
+                    and planning_recovery_action.get("command")
+                    else "Inspect `main_ops.py planning --json` to find recent planner timeouts; downgrade planning-dependent behavior until the planner path is stable again."
+                ),
             )
         )
     if planning_pending_count and not promise_without_task_count:

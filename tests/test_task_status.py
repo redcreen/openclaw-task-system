@@ -510,3 +510,29 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(overview["planning"]["health"]["success_rate"], 0.5)
         self.assertEqual(overview["planning"]["health"]["tool_call_completion_rate"], 0.5)
         self.assertEqual(overview["planning"]["primary_recovery_action"]["kind"], "inspect-pending-plan")
+
+    def test_build_status_summary_projects_planner_timeout_recovery_action(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:planning-timeout",
+            channel="feishu",
+            chat_id="chat:planning-timeout",
+            task_label="planner timeout task",
+        )
+        task.meta["tool_followup_plan"] = {
+            "plan_id": "plan_timeout",
+            "status": "timeout",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+        }
+        task.meta["planning_promise_guard"] = {
+            "status": "timeout",
+            "expected_by_finalize": True,
+        }
+        task.meta["planning_anomaly"] = "planner-timeout"
+        self.store.save_task(task)
+
+        summary = task_status.build_status_summary(task.task_id, paths=self.paths)
+        overview = task_status.build_system_overview(paths=self.paths)
+
+        self.assertEqual(summary["planning"]["recovery_action"]["kind"], "inspect-planner-timeout")
+        self.assertEqual(overview["planning"]["primary_recovery_action"]["kind"], "inspect-planner-timeout")

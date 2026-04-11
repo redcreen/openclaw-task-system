@@ -1415,6 +1415,12 @@ def should_send_short_followup_from_payload(
                 f"已收到你的消息，当前仍在处理中；但 {target} 这条后续安排还没有成功落成真实任务，"
                 "如果这条安排仍然需要，我会补建真实任务；如果不需要，会明确撤回这条承诺。"
             )
+        elif planning_anomaly == "planner-timeout":
+            target = promise_summary or followup_summary or "后续安排"
+            followup_message = (
+                f"已收到你的消息，当前仍在处理中；但 {target} 这条 planning 路径刚才超时了，"
+                "我会优先核对源任务，决定是补建 follow-up 还是明确要求你重发 delayed 部分。"
+            )
         elif plan_status == "planned":
             target = followup_summary or promise_summary or "后续同步"
             followup_message = (
@@ -1469,6 +1475,8 @@ def should_send_short_followup_from_payload(
                 "planning_recovery_hint": (
                     "inspect-source-task-and-recreate-or-clear-promise"
                     if planning_anomaly == "promise-without-task"
+                    else "inspect-source-task-after-planner-timeout"
+                    if planning_anomaly == "planner-timeout"
                     else None
                 ),
                 "blocked_reason": blocked_reason or None,

@@ -779,8 +779,9 @@ class MainOpsTests(unittest.TestCase):
         summary = main_ops.get_main_dashboard_summary(config_path=self._config_path(), paths=self.paths)
 
         self.assertEqual(summary["health"]["planning_health_status"], "warn")
-        self.assertEqual(summary["action_hint"], "Inspect planning health before relying on planner-dependent behavior.")
-        self.assertEqual(summary["action_hint_command"], "python3 scripts/runtime/main_ops.py planning --json")
+        self.assertEqual(summary["health"]["planning_primary_recovery_action"]["kind"], "inspect-planner-timeout")
+        self.assertIn("planner-owned follow-up", summary["action_hint"])
+        self.assertEqual(summary["action_hint_command"], f"python3 scripts/runtime/main_ops.py show {task.task_id}")
 
     def test_render_main_continuity_reports_no_risk_when_idle(self) -> None:
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
@@ -840,8 +841,9 @@ class MainOpsTests(unittest.TestCase):
         rendered = main_ops.render_main_triage(config_path=self._config_path(), paths=self.paths)
 
         self.assertEqual(summary["planning_health_status"], "warn")
-        self.assertEqual(summary["primary_action_kind"], "inspect-planning-health")
-        self.assertEqual(summary["primary_action_command"], "python3 scripts/runtime/main_ops.py planning --json")
+        self.assertEqual(summary["primary_action_kind"], "inspect-planner-timeout")
+        self.assertEqual(summary["primary_action_command"], f"python3 scripts/runtime/main_ops.py show {task.task_id}")
+        self.assertIn("planner-owned follow-up", summary["primary_action_summary"])
         self.assertIn("- planning_health_status: warn", rendered)
 
     def test_render_main_continuity_includes_watchdog_blocked_task(self) -> None:

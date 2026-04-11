@@ -800,6 +800,43 @@ class OpenClawHooksTests(unittest.TestCase):
             "inspect-source-task-and-recreate-or-clear-promise",
         )
 
+    def test_should_send_short_followup_for_running_task_reports_planner_timeout(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:running-timeout",
+            channel="feishu",
+            account_id="feishu1-main",
+            chat_id="chat:running-timeout",
+            task_label="running timeout task",
+        )
+        store.start_task(task.task_id)
+        store.touch_task(
+            task.task_id,
+            user_visible=False,
+            meta={
+                "planning_anomaly": "planner-timeout",
+                "planning_promise_guard": {
+                    "promise_summary": "10分钟后同步结果",
+                    "status": "timeout",
+                },
+                "tool_followup_plan": {
+                    "status": "timeout",
+                    "followup_summary": "10分钟后同步结果",
+                },
+            },
+        )
+
+        result = openclaw_hooks.should_send_short_followup_from_payload({"task_id": task.task_id})
+
+        self.assertTrue(result["should_send"])
+        self.assertIn("planning 路径刚才超时了", result["followup_message"])
+        self.assertEqual(result["control_plane_message"]["metadata"]["planning_anomaly"], "planner-timeout")
+        self.assertEqual(
+            result["control_plane_message"]["metadata"]["planning_recovery_hint"],
+            "inspect-source-task-after-planner-timeout",
+        )
+
     def test_should_send_short_followup_for_running_task_reports_current_stage(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         task = store.register_task(
