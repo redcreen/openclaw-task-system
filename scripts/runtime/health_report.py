@@ -149,7 +149,14 @@ def build_health_report(
                 code=f"planning-overdue-followups:{overdue_followup_count}",
                 severity="warn",
                 count=overdue_followup_count,
-                remediation="Inspect overdue planned follow-ups in `main_ops.py continuity --json` and ensure the continuation runner is progressing or recover the affected sessions.",
+                remediation=(
+                    f"{planning_recovery_action['summary']} "
+                    f"Start with `{planning_recovery_action['command']}`."
+                    if planning_recovery_action
+                    and planning_recovery_action.get("kind") == "inspect-overdue-followup"
+                    and planning_recovery_action.get("command")
+                    else "Inspect overdue planned follow-ups in `main_ops.py continuity --json` and ensure the continuation runner is progressing or recover the affected sessions."
+                ),
             )
         )
     if planning_timeout_count:
@@ -174,7 +181,14 @@ def build_health_report(
                 code=f"planning-pending:{planning_pending_count}",
                 severity="warn",
                 count=planning_pending_count,
-                remediation="Review pending planning tasks to confirm follow-up plans are materialized and finalized as expected.",
+                remediation=(
+                    f"{planning_recovery_action['summary']} "
+                    f"Start with `{planning_recovery_action['command']}`."
+                    if planning_recovery_action
+                    and planning_recovery_action.get("kind") == "inspect-pending-plan"
+                    and planning_recovery_action.get("command")
+                    else "Review pending planning tasks to confirm follow-up plans are materialized and finalized as expected."
+                ),
             )
         )
 

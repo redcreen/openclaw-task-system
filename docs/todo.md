@@ -43,6 +43,9 @@
 - 已补 `planner-timeout` 的 recovery 投影与文案：
   - timeout 不再只落回泛化 `planning health` 提示
   - `dashboard / triage / running short followup` 会优先指向源 task 的恢复动作
+- 已把 `overdue follow-up / pending plan` 的恢复动作对齐到 health 与 triage：
+  - 不再只给泛化运维提示
+  - 会直接给 source task / follow-up task 的检查命令
 
 ## 下一个动作
 

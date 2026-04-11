@@ -783,6 +783,31 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("planner-owned follow-up", summary["action_hint"])
         self.assertEqual(summary["action_hint_command"], f"python3 scripts/runtime/main_ops.py show {task.task_id}")
 
+    def test_get_main_dashboard_summary_hints_pending_plan_recovery_when_active(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:planning-pending",
+            channel="telegram",
+            chat_id="chat:main:planning-pending",
+            task_label="planning pending",
+        )
+        task.meta["tool_followup_plan"] = {
+            "plan_id": "plan_pending",
+            "status": "planned",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+        }
+        task.meta["planning_promise_guard"] = {
+            "status": "armed",
+            "expected_by_finalize": True,
+        }
+        self.store.save_task(task)
+
+        summary = main_ops.get_main_dashboard_summary(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(summary["health"]["planning_primary_recovery_action"]["kind"], "inspect-pending-plan")
+        self.assertIn("materializes before finalize", summary["action_hint"])
+        self.assertEqual(summary["action_hint_command"], f"python3 scripts/runtime/main_ops.py show {task.task_id}")
+
     def test_render_main_continuity_reports_no_risk_when_idle(self) -> None:
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
 
@@ -845,6 +870,47 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["primary_action_command"], f"python3 scripts/runtime/main_ops.py show {task.task_id}")
         self.assertIn("planner-owned follow-up", summary["primary_action_summary"])
         self.assertIn("- planning_health_status: warn", rendered)
+
+    def test_get_main_triage_summary_can_prioritize_overdue_followup_recovery(self) -> None:
+        source = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:planning-overdue",
+            channel="telegram",
+            chat_id="chat:main:planning-overdue",
+            task_label="planning overdue source",
+        )
+        source.meta["tool_followup_plan"] = {
+            "plan_id": "plan_overdue",
+            "status": "scheduled",
+            "followup_due_at": "2020-01-01T00:00:00+00:00",
+        }
+        source.meta["planning_promise_guard"] = {
+            "status": "scheduled",
+            "expected_by_finalize": True,
+        }
+        self.store.save_task(source)
+
+        followup = self.store.observe_task(
+            agent_id="main",
+            session_key="session:main:planning-overdue",
+            channel="telegram",
+            chat_id="chat:main:planning-overdue",
+            task_label="planning overdue follow-up",
+            meta={"source": "tool-followup-plan", "plan_id": "plan_overdue"},
+        )
+        self.store.schedule_continuation(
+            followup.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2020-01-01T00:00:00+00:00",
+            payload={"reply_text": "later", "wait_seconds": 60},
+            reason="scheduled tool-assisted continuation wait",
+        )
+
+        summary = main_ops.get_main_triage_summary(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(summary["primary_action_kind"], "inspect-overdue-followup")
+        self.assertEqual(summary["primary_action_command"], f"python3 scripts/runtime/main_ops.py show {followup.task_id}")
+        self.assertIn("continuation runner", summary["primary_action_summary"])
 
     def test_render_main_continuity_includes_watchdog_blocked_task(self) -> None:
         task = self.store.register_task(

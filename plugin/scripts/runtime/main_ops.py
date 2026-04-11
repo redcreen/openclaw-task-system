@@ -2121,6 +2121,14 @@ def get_main_dashboard_summary(
     ):
         action_hint = str(health["planning_primary_recovery_action"].get("summary") or action_hint)
         action_hint_command = str(health["planning_primary_recovery_action"].get("command") or "")
+    elif (
+        health["planning_health_status"] == "warn"
+        and isinstance(health.get("planning_primary_recovery_action"), dict)
+        and str((health["planning_primary_recovery_action"] or {}).get("kind") or "") in {"inspect-overdue-followup", "inspect-pending-plan"}
+        and str((health["planning_primary_recovery_action"] or {}).get("command") or "").strip()
+    ):
+        action_hint = str(health["planning_primary_recovery_action"].get("summary") or action_hint)
+        action_hint_command = str(health["planning_primary_recovery_action"].get("command") or "")
     elif health["main_active_task_count"] > 0:
         action_hint = "Review current lanes before changing queue behavior."
         action_hint_command = "python3 scripts/runtime/main_ops.py lanes --json"
@@ -3082,6 +3090,20 @@ def get_main_triage_summary(
         primary_action = {
             "kind": str(recovery_action.get("kind") or "inspect-planner-timeout"),
             "summary": str(recovery_action.get("summary") or "Inspect the planner timeout before relying on planning health."),
+            "command": str(recovery_action.get("command") or "python3 scripts/runtime/main_ops.py planning --json"),
+            "session_key": recovery_action.get("session_key"),
+        }
+        focus_session_key = recovery_action.get("session_key")
+        next_actions.append(f"{primary_action['summary']} `{primary_action['command']}`")
+    elif (
+        isinstance(planning_summary.get("primary_recovery_action"), dict)
+        and str((planning_summary.get("primary_recovery_action") or {}).get("kind") or "") in {"inspect-overdue-followup", "inspect-pending-plan"}
+        and str((planning_summary.get("primary_recovery_action") or {}).get("command") or "").strip()
+    ):
+        recovery_action = planning_summary["primary_recovery_action"]
+        primary_action = {
+            "kind": str(recovery_action.get("kind") or "inspect-planning-health"),
+            "summary": str(recovery_action.get("summary") or "Inspect the planning recovery path before relying on planner-dependent behavior."),
             "command": str(recovery_action.get("command") or "python3 scripts/runtime/main_ops.py planning --json"),
             "session_key": recovery_action.get("session_key"),
         }

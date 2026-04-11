@@ -277,6 +277,72 @@ class HealthReportTests(unittest.TestCase):
         self.assertIn("- planning_health_timeout_rate: 1.0", markdown)
         self.assertIn("- planning_primary_recovery_action_kind: inspect-planner-timeout", markdown)
 
+    def test_build_health_report_uses_structured_recovery_for_overdue_followup(self) -> None:
+        source = self.store.register_task(
+            agent_id="main",
+            session_key="session:planning-overdue",
+            channel="telegram",
+            chat_id="chat:planning-overdue",
+            task_label="planning overdue source",
+        )
+        source.meta["tool_followup_plan"] = {
+            "plan_id": "plan_overdue",
+            "status": "scheduled",
+            "followup_due_at": "2020-01-01T00:00:00+00:00",
+        }
+        source.meta["planning_promise_guard"] = {
+            "status": "scheduled",
+            "expected_by_finalize": True,
+        }
+        self.store.save_task(source)
+
+        followup = self.store.observe_task(
+            agent_id="main",
+            session_key="session:planning-overdue",
+            channel="telegram",
+            chat_id="chat:planning-overdue",
+            task_label="planning overdue follow-up",
+            meta={"source": "tool-followup-plan", "plan_id": "plan_overdue"},
+        )
+        self.store.schedule_continuation(
+            followup.task_id,
+            continuation_kind="delayed-reply",
+            due_at="2020-01-01T00:00:00+00:00",
+            payload={"reply_text": "later", "wait_seconds": 60},
+            reason="scheduled tool-assisted continuation wait",
+        )
+
+        report = health_report.build_health_report(config_path=self.config_path)
+
+        self.assertIn("planning-overdue-followups:1", report["issues"])
+        self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-overdue-followup")
+        self.assertIn("continuation runner", report["issue_entries"][0]["remediation"])
+
+    def test_build_health_report_uses_structured_recovery_for_pending_plan(self) -> None:
+        source = self.store.register_task(
+            agent_id="main",
+            session_key="session:planning-pending",
+            channel="telegram",
+            chat_id="chat:planning-pending",
+            task_label="planning pending source",
+        )
+        source.meta["tool_followup_plan"] = {
+            "plan_id": "plan_pending",
+            "status": "planned",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+        }
+        source.meta["planning_promise_guard"] = {
+            "status": "armed",
+            "expected_by_finalize": True,
+        }
+        self.store.save_task(source)
+
+        report = health_report.build_health_report(config_path=self.config_path)
+
+        self.assertIn("planning-pending:1", report["issues"])
+        self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-pending-plan")
+        self.assertIn("materializes before finalize", report["issue_entries"][0]["remediation"])
+
     def test_build_health_report_surfaces_plugin_install_drift(self) -> None:
         with patch.object(
             health_report,
