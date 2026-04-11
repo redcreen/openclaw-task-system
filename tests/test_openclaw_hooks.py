@@ -1800,6 +1800,15 @@ class OpenClawHooksTests(unittest.TestCase):
             }
         )
         assert registration["task_id"] is not None
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.load_task(registration["task_id"], allow_archive=False)
+        task.meta["post_run_continuation_plan"] = {
+            "kind": "delayed-reply",
+            "due_at": "2099-01-01T00:05:00+00:00",
+            "reply_text": "5 分钟后回来同步",
+            "wait_seconds": 300,
+        }
+        store.save_task(task)
         finalized = openclaw_hooks.finalize_active_from_payload(
             {
                 "agent_id": "main",
@@ -1812,7 +1821,12 @@ class OpenClawHooksTests(unittest.TestCase):
         )
         self.assertTrue(finalized["updated"])
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
+        self.assertNotIn("post_run_continuation_plan", finalized["task"]["meta"])
         self.assertNotIn("post_run_continuation_task_id", finalized["task"]["meta"])
+        self.assertEqual(
+            finalized["task"]["meta"]["legacy_post_run_continuation_reason"],
+            "structured-tool-plan-required",
+        )
 
     def test_fulfill_due_continuation_matches_due_reply_and_archives_task(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)

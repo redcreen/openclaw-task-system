@@ -95,12 +95,12 @@ This is a planning problem, not a pure pattern-matching problem.
 Current boundary:
 
 - clear single-intent delayed replies are fully supported
-- simple compound follow-up patterns may be recognized as a compatibility bridge
+- simple compound follow-up phrases remain a design boundary, not an auto-materialized runtime path
 - complex or ambiguous compound requests should not rely on hardcoded phrase growth forever
 
 Therefore:
 
-- shipping behavior may include pragmatic stopgaps
+- shipping behavior may keep compatibility wording or acceptance guards, but runtime should not silently fabricate a delayed follow-up from a legacy post-run phrase
 - roadmap direction must move toward structured planning or tool-assisted task decomposition
 - if the LLM planning path is unhealthy, timed out, or skipped, the system must report that honestly instead of pretending the follow-up exists
 - even when tools produce internal planning or scheduling state, that state should not be shown directly to the user; it should first be projected by task-system as `[wd]` control-plane state or later business content
@@ -226,12 +226,12 @@ This question is intentionally left open for the next roadmap discussion.
 当前边界可以明确成：
 
 - 单一意图、表达清晰的 delayed reply：完全支持
-- 简单复合短语：可以作为兼容桥接识别
+- 简单复合短语：仍然只是设计边界，不再由 runtime 静默自动物化 follow-up
 - 复杂或模糊的复合请求：不能长期依赖硬编码短语增长
 
 所以：
 
-- 当前已发布行为里可以包含一些务实止血
+- 当前已发布行为里可以保留兼容提示或验收边界，但 runtime 不应再从 legacy post-run 短语里偷偷补出 follow-up task
 - 但 roadmap 的方向必须转向 structured planning 或 tool-assisted task decomposition
 - 如果 LLM planning 路径不健康、超时或被跳过，系统必须如实告诉用户，而不能假装 follow-up 已经存在
 - 即使 tool 产出了内部 planning / scheduling 状态，这些状态也不应直接回复给用户；它们应先被 task-system 投影成 `[wd]` 控制面信息，或在真正到点时再投影成业务内容

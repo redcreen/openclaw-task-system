@@ -49,6 +49,9 @@
 - 已把 future-first 的 `main_user_content_mode` contract 补进 acceptance 与 ops 投影：
   - `planning_acceptance.py` 会正式验证 `main_user_content_mode=none` 的 immediate-output contract
   - `task_status / main_ops health / planning` 会投影 future-first 计数与主要 mode
+- 已删除 legacy `post_run_continuation_plan` 的静默物化执行路径：
+  - compound/delayed 边界不再假装 runtime 会从旧式 post-run 短语里自动补出 follow-up task
+  - 后续只认可 structured tool plan 或已存在的真实 continuation task
 
 ## 下一个动作
 

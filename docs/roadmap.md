@@ -232,7 +232,7 @@
 当前原则：
 
 - clear single-intent delayed replies: shipped and supported
-- simple compound follow-up phrases: compatibility stopgap only
+- simple compound follow-up phrases: design boundary / compatibility discussion only, not a silent runtime materialization path
 - long-term solution: structured planning or tool-assisted task decomposition
 - task-system should remain supervisor-first, not planner-first
 - scheduling state should be projected only through runtime-owned `[wd]`
