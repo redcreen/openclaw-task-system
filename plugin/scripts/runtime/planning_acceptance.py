@@ -17,6 +17,7 @@ from openclaw_hooks import (
     finalize_planned_followup_from_payload,
     register_from_payload,
     resolve_active_task_from_payload,
+    sync_source_reply_target_from_payload,
     schedule_followup_from_plan_from_payload,
 )
 from task_status import build_status_summary
@@ -142,6 +143,104 @@ def run_planning_acceptance() -> dict[str, Any]:
                             "task_id": source_status.get("task_id"),
                             "planning": source_status.get("planning"),
                         },
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        )
+
+        summary_registration = register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "feishu:main:planning-acceptance:immediate-summary",
+                "channel": "feishu",
+                "account_id": "feishu-main",
+                "chat_id": "chat:planning-acceptance:immediate-summary",
+                "user_id": "ou_acceptance",
+                "user_request": "先整理一版要点，10分钟后回来补最终结论",
+                "estimated_steps": 3,
+            },
+            config_path=config_path,
+        )
+        summary_task_id = str(summary_registration.get("task_id") or "")
+        synced_target = sync_source_reply_target_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "feishu:main:planning-acceptance:immediate-summary",
+                "task_id": summary_task_id,
+                "reply_to_id": "om_acceptance_source_message",
+                "thread_id": "thread_acceptance_source_message",
+            },
+            config_path=config_path,
+        )
+        summary_plan = create_followup_plan_from_payload(
+            {
+                "source_task_id": summary_task_id,
+                "followup_kind": "delayed-reply",
+                "followup_due_at": "2099-01-01T00:10:00+00:00",
+                "followup_message": "10分钟后回来补最终结论",
+                "followup_summary": "10分钟后补最终结论",
+                "main_user_content_mode": "immediate-summary",
+            },
+            config_path=config_path,
+        )
+        summary_projection = resolve_active_task_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "feishu:main:planning-acceptance:immediate-summary",
+                "task_id": summary_task_id,
+            },
+            config_path=config_path,
+        )
+        summary_status = build_status_summary(summary_task_id, config_path=config_path)
+        summary_scheduled = schedule_followup_from_plan_from_payload(
+            {
+                "source_task_id": summary_task_id,
+                "plan_id": str(summary_plan.get("plan_id") or ""),
+            },
+            config_path=config_path,
+        )
+        summary_followup_task = None
+        summary_followup_task_id = str(summary_scheduled.get("task_id") or "")
+        if summary_followup_task_id:
+            try:
+                summary_followup_task = TaskStore(paths=TaskPaths.from_root(temp_dir, data_dir)).load_task(
+                    summary_followup_task_id,
+                    allow_archive=False,
+                ).to_dict()
+            except FileNotFoundError:
+                summary_followup_task = None
+        summary_continuation_payload = (
+            ((summary_followup_task or {}).get("meta") or {}).get("continuation_payload")
+            if isinstance((summary_followup_task or {}).get("meta"), dict)
+            else None
+        )
+        summary_plan_state = (summary_status.get("planning") or {}) if isinstance(summary_status, dict) else {}
+        steps.append(
+            AcceptanceStep(
+                step="project-immediate-summary-and-reply-target-contract",
+                ok=(
+                    bool(summary_registration.get("should_register_task"))
+                    and bool(synced_target.get("updated"))
+                    and bool(summary_plan.get("accepted"))
+                    and str(summary_projection.get("main_user_content_mode") or "") == "immediate-summary"
+                    and bool(summary_projection.get("require_structured_user_content"))
+                    and str(summary_projection.get("reply_to_id") or "") == "om_acceptance_source_message"
+                    and str(summary_projection.get("thread_id") or "") == "thread_acceptance_source_message"
+                    and str(summary_plan_state.get("main_user_content_mode") or "") == "immediate-summary"
+                    and bool(summary_scheduled.get("scheduled"))
+                    and str((summary_continuation_payload or {}).get("reply_to_id") or "") == "om_acceptance_source_message"
+                    and str((summary_continuation_payload or {}).get("thread_id") or "") == "thread_acceptance_source_message"
+                ),
+                detail=json.dumps(
+                    {
+                        "registration": summary_registration,
+                        "synced_target": synced_target,
+                        "plan": summary_plan,
+                        "active_projection": summary_projection,
+                        "planning": summary_plan_state,
+                        "scheduled": summary_scheduled,
+                        "continuation_payload": summary_continuation_payload,
                     },
                     ensure_ascii=False,
                 ),

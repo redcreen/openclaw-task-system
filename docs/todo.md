@@ -98,6 +98,7 @@
     - 在最小闭环之上继续补真实通道验收样本
   - 最近进展：
     - `overdue_on_materialize` 已正式接入 health / dashboard / triage / running short-followup recovery 覆盖
+    - planning acceptance 已补 `immediate-summary + reply target fallback` 真实样本，避免只验证 `future-first:none`
 
 - 收口 install drift 的真实安装态验证。
   - 当前状态：
