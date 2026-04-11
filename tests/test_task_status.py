@@ -581,3 +581,49 @@ class TaskStatusTests(unittest.TestCase):
 
         self.assertEqual(summary["planning"]["recovery_action"]["kind"], "inspect-planner-timeout")
         self.assertEqual(overview["planning"]["primary_recovery_action"]["kind"], "inspect-planner-timeout")
+
+    def test_build_status_summary_projects_overdue_materialization_recovery_action(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:planning-overdue-materialize",
+            channel="feishu",
+            chat_id="chat:planning-overdue-materialize",
+            task_label="late materialized follow-up source",
+        )
+        followup = self.store.observe_task(
+            agent_id="main",
+            session_key="session:planning-overdue-materialize",
+            channel="feishu",
+            chat_id="chat:planning-overdue-materialize",
+            task_label="late materialized follow-up",
+            meta={"source": "tool-followup-plan", "plan_id": "plan_late_materialize"},
+        )
+        task.meta["tool_followup_plan"] = {
+            "plan_id": "plan_late_materialize",
+            "status": "scheduled",
+            "followup_due_at": "2000-01-01T00:00:00+00:00",
+            "followup_task_id": followup.task_id,
+            "followup_summary": "5分钟后同步结果",
+            "overdue_on_materialize": True,
+        }
+        task.meta["planning_promise_guard"] = {
+            "status": "scheduled",
+            "expected_by_finalize": True,
+            "promise_summary": "5分钟后同步结果",
+        }
+        self.store.save_task(task)
+
+        summary = task_status.build_status_summary(task.task_id, paths=self.paths)
+        overview = task_status.build_system_overview(paths=self.paths)
+        markdown = task_status.render_overview_markdown(paths=self.paths)
+
+        self.assertTrue(summary["planning"]["overdue_on_materialize"])
+        self.assertEqual(summary["planning"]["recovery_action"]["kind"], "inspect-overdue-materialization")
+        self.assertEqual(summary["planning"]["followup_task_id"], followup.task_id)
+        self.assertEqual(overview["planning"]["overdue_on_materialize_count"], 1)
+        self.assertEqual(overview["planning"]["health"]["status"], "warn")
+        self.assertEqual(overview["planning"]["health"]["primary_reason"], "overdue-materialization-observed")
+        self.assertEqual(overview["planning"]["primary_recovery_action"]["kind"], "inspect-overdue-materialization")
+        self.assertIn("- planning_overdue_on_materialize_count: 1", markdown)
+        self.assertIn("- planning_health_overdue_on_materialize_rate: 1.0", markdown)
+        self.assertIn("- planning_primary_recovery_action_kind: inspect-overdue-materialization", markdown)

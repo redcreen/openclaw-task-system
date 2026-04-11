@@ -877,6 +877,58 @@ class OpenClawHooksTests(unittest.TestCase):
             "inspect-source-task-and-relink-followup-task",
         )
 
+    def test_should_send_short_followup_for_running_task_reports_overdue_materialization(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = store.register_task(
+            agent_id="main",
+            session_key="session:running-overdue-materialize",
+            channel="telegram",
+            chat_id="chat:running-overdue-materialize",
+            task_label="running overdue materialization task",
+        )
+        store.start_task(task.task_id)
+        task = store.load_task(task.task_id, allow_archive=False)
+        followup = store.observe_task(
+            agent_id="main",
+            session_key="session:running-overdue-materialize",
+            channel="telegram",
+            chat_id="chat:running-overdue-materialize",
+            task_label="late materialized follow-up",
+            meta={"source": "tool-followup-plan", "plan_id": "plan_late_materialize"},
+        )
+        task.meta.update(
+            {
+                "tool_followup_plan": {
+                    "plan_id": "plan_late_materialize",
+                    "status": "scheduled",
+                    "followup_due_at": "2000-01-01T00:00:00+00:00",
+                    "followup_task_id": followup.task_id,
+                    "followup_summary": "5分钟后同步结果",
+                    "overdue_on_materialize": True,
+                },
+                "planning_promise_guard": {
+                    "status": "scheduled",
+                    "expected_by_finalize": True,
+                    "promise_summary": "5分钟后同步结果",
+                },
+            }
+        )
+        store.save_task(task)
+
+        result = openclaw_hooks.should_send_short_followup_from_payload(
+            {"task_id": task.task_id},
+            config_path=self.config_path,
+        )
+
+        self.assertTrue(result["should_send"])
+        self.assertIn("已过原定时间后才落成", result["followup_message"])
+        self.assertIn("重新约定新的时间", result["followup_message"])
+        self.assertEqual(result["control_plane_message"]["metadata"]["planning_anomaly"], None)
+        self.assertEqual(
+            result["control_plane_message"]["metadata"]["planning_recovery_hint"],
+            "inspect-source-task-and-reschedule-late-followup",
+        )
+
     def test_should_send_short_followup_for_running_task_reports_current_stage(self) -> None:
         store = task_state_module.TaskStore(paths=self.paths)
         task = store.register_task(

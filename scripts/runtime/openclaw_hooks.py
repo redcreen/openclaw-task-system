@@ -1458,6 +1458,12 @@ def should_send_short_followup_from_payload(
                 f"已收到你的消息，当前仍在处理中；但 {target} 这条后续安排的真实任务记录缺失了，"
                 "我会先补建或重新关联这条 follow-up，再继续依赖这条 planning 状态。"
             )
+        elif bool(planning_status.get("overdue_on_materialize")):
+            target = followup_summary or promise_summary or "后续安排"
+            followup_message = (
+                f"已收到你的消息，当前仍在处理中；但 {target} 这条后续安排是在已过原定时间后才落成的，"
+                "我会先确认这条 late follow-up 是否仍然有效，必要时重新约定新的时间。"
+            )
         elif plan_status == "planned":
             target = followup_summary or promise_summary or "后续同步"
             followup_message = (
@@ -1514,6 +1520,8 @@ def should_send_short_followup_from_payload(
                     if planning_anomaly == "promise-without-task"
                     else "inspect-source-task-and-relink-followup-task"
                     if planning_anomaly == "followup-task-missing"
+                    else "inspect-source-task-and-reschedule-late-followup"
+                    if bool(planning_status.get("overdue_on_materialize"))
                     else "inspect-source-task-after-planner-timeout"
                     if planning_anomaly == "planner-timeout"
                     else None

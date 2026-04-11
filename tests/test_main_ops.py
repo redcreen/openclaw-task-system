@@ -886,6 +886,52 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("recreate or relink", triage["primary_action_summary"])
         self.assertIn("- planning_followup_task_missing_count: 1", rendered_health)
 
+    def test_dashboard_and_triage_project_overdue_materialization_recovery(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:overdue-materialize",
+            channel="telegram",
+            chat_id="chat:main:overdue-materialize",
+            task_label="late materialized follow-up source",
+        )
+        followup = self.store.observe_task(
+            agent_id="main",
+            session_key="session:main:overdue-materialize",
+            channel="telegram",
+            chat_id="chat:main:overdue-materialize",
+            task_label="late materialized follow-up",
+            meta={"source": "tool-followup-plan", "plan_id": "plan_late_materialize"},
+        )
+        task.meta["tool_followup_plan"] = {
+            "plan_id": "plan_late_materialize",
+            "status": "scheduled",
+            "followup_due_at": "2000-01-01T00:00:00+00:00",
+            "followup_task_id": followup.task_id,
+            "followup_summary": "5分钟后同步结果",
+            "overdue_on_materialize": True,
+        }
+        task.meta["planning_promise_guard"] = {
+            "status": "scheduled",
+            "expected_by_finalize": True,
+            "promise_summary": "5分钟后同步结果",
+        }
+        self.store.save_task(task)
+
+        dashboard = main_ops.get_main_dashboard_summary(config_path=self._config_path(), paths=self.paths)
+        triage = main_ops.get_main_triage_summary(config_path=self._config_path(), paths=self.paths)
+        rendered_health = main_ops.render_main_health(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(dashboard["status"], "warn")
+        self.assertEqual(dashboard["health"]["planning_overdue_on_materialize_count"], 1)
+        self.assertEqual(dashboard["health"]["planning_primary_recovery_action"]["kind"], "inspect-overdue-materialization")
+        self.assertIn("late-materialized follow-up", dashboard["action_hint"])
+        self.assertEqual(dashboard["action_hint_command"], f"python3 scripts/runtime/main_ops.py show {task.task_id}")
+        self.assertEqual(triage["planning_overdue_on_materialize_count"], 1)
+        self.assertEqual(triage["primary_action_kind"], "inspect-overdue-materialization")
+        self.assertEqual(triage["primary_action_command"], f"python3 scripts/runtime/main_ops.py show {task.task_id}")
+        self.assertIn("fresh due time", triage["primary_action_summary"])
+        self.assertIn("- planning_overdue_on_materialize_count: 1", rendered_health)
+
     def test_render_main_continuity_reports_no_risk_when_idle(self) -> None:
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
 

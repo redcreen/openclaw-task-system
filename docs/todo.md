@@ -96,6 +96,8 @@
     - 扩更多 future-first / compound-request 真实例子
     - 评估更多 channel / agent 是否默认启用 tool-assisted planning
     - 在最小闭环之上继续补真实通道验收样本
+  - 最近进展：
+    - `overdue_on_materialize` 已正式接入 health / dashboard / triage / running short-followup recovery 覆盖
 
 - 收口 install drift 的真实安装态验证。
   - 当前状态：

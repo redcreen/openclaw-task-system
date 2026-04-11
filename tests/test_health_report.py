@@ -311,6 +311,49 @@ class HealthReportTests(unittest.TestCase):
         self.assertIn("- planning_health_followup_task_missing_rate: 1.0", markdown)
         self.assertIn("- planning_primary_recovery_action_kind: inspect-missing-followup-task", markdown)
 
+    def test_build_health_report_surfaces_overdue_materialization(self) -> None:
+        source = self.store.register_task(
+            agent_id="main",
+            session_key="session:planning-overdue-materialize",
+            channel="telegram",
+            chat_id="chat:planning-overdue-materialize",
+            task_label="late materialized planning task",
+        )
+        followup = self.store.observe_task(
+            agent_id="main",
+            session_key="session:planning-overdue-materialize",
+            channel="telegram",
+            chat_id="chat:planning-overdue-materialize",
+            task_label="late materialized follow-up",
+            meta={"source": "tool-followup-plan", "plan_id": "plan_late_materialize"},
+        )
+        source.meta["tool_followup_plan"] = {
+            "plan_id": "plan_late_materialize",
+            "status": "scheduled",
+            "followup_due_at": "2000-01-01T00:00:00+00:00",
+            "followup_task_id": followup.task_id,
+            "followup_summary": "5分钟后同步结果",
+            "overdue_on_materialize": True,
+        }
+        source.meta["planning_promise_guard"] = {
+            "status": "scheduled",
+            "expected_by_finalize": True,
+            "promise_summary": "5分钟后同步结果",
+        }
+        self.store.save_task(source)
+
+        report = health_report.build_health_report(config_path=self.config_path)
+        markdown = health_report.render_markdown(report)
+
+        self.assertEqual(report["status"], "warn")
+        self.assertIn("planning-overdue-materializations:1", report["issues"])
+        self.assertEqual(report["overview"]["planning"]["health"]["primary_reason"], "overdue-materialization-observed")
+        self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-overdue-materialization")
+        self.assertIn("late-materialized follow-up", report["issue_entries"][0]["remediation"])
+        self.assertIn("- planning_overdue_on_materialize_count: 1", markdown)
+        self.assertIn("- planning_health_overdue_on_materialize_rate: 1.0", markdown)
+        self.assertIn("- planning_primary_recovery_action_kind: inspect-overdue-materialization", markdown)
+
     def test_build_health_report_uses_structured_recovery_for_overdue_followup(self) -> None:
         source = self.store.register_task(
             agent_id="main",

@@ -270,6 +270,7 @@ def _planning_health_candidate(planning: dict[str, object]) -> bool:
         or str(planning.get("promise_guard_status") or "").strip()
         or bool(planning.get("promise_without_task"))
         or bool(planning.get("followup_task_missing"))
+        or bool(planning.get("overdue_on_materialize"))
     )
 
 
@@ -295,6 +296,7 @@ def _planning_success(planning: dict[str, object]) -> bool:
     if (
         bool(planning.get("promise_without_task"))
         or bool(planning.get("followup_task_missing"))
+        or bool(planning.get("overdue_on_materialize"))
         or _planning_timeout_detected(planning)
         or str(planning.get("anomaly") or "").strip()
     ):
@@ -326,6 +328,16 @@ def _build_planning_recovery_action(task: dict[str, object], planning: dict[str,
             "summary": (
                 f"Inspect the source task and either recreate or relink the missing follow-up task for {target} "
                 "before relying on the scheduled follow-up state."
+            ),
+            "command": inspect_command,
+            "session_key": session_key,
+        }
+    if bool(planning.get("overdue_on_materialize")):
+        return {
+            "kind": "inspect-overdue-materialization",
+            "summary": (
+                f"Inspect the source task and confirm the late-materialized follow-up for {target} is still valid, "
+                "or reschedule it explicitly with a fresh due time."
             ),
             "command": inspect_command,
             "session_key": session_key,
@@ -374,10 +386,11 @@ def _planning_recovery_priority(action: dict[str, object]) -> tuple[int, str, st
     priority = {
         "inspect-promise-without-task": 0,
         "inspect-missing-followup-task": 1,
-        "inspect-planner-timeout": 2,
-        "inspect-planning-anomaly": 3,
-        "inspect-overdue-followup": 4,
-        "inspect-pending-plan": 5,
+        "inspect-overdue-materialization": 2,
+        "inspect-planner-timeout": 3,
+        "inspect-planning-anomaly": 4,
+        "inspect-overdue-followup": 5,
+        "inspect-pending-plan": 6,
     }.get(kind, 99)
     return (
         priority,
@@ -430,6 +443,7 @@ def build_planning_health_summary(
     tool_call_completion_count = sum(1 for item in recent if _planning_tool_path_completed(item["planning"]))
     promise_without_task_count = sum(1 for item in recent if bool(item["planning"].get("promise_without_task")))
     followup_task_missing_count = sum(1 for item in recent if bool(item["planning"].get("followup_task_missing")))
+    overdue_on_materialize_count = sum(1 for item in recent if bool(item["planning"].get("overdue_on_materialize")))
     if sample_task_count == 0:
         status = "unknown"
         primary_reason = "no-recent-planning-sample"
@@ -439,6 +453,9 @@ def build_planning_health_summary(
     elif followup_task_missing_count > 0:
         status = "error"
         primary_reason = "followup-task-missing-present"
+    elif overdue_on_materialize_count > 0:
+        status = "warn"
+        primary_reason = "overdue-materialization-observed"
     elif timeout_count > 0:
         status = "warn"
         primary_reason = "planner-timeout-observed"
@@ -458,11 +475,13 @@ def build_planning_health_summary(
         "tool_call_completion_count": tool_call_completion_count,
         "promise_without_task_count": promise_without_task_count,
         "followup_task_missing_count": followup_task_missing_count,
+        "overdue_on_materialize_count": overdue_on_materialize_count,
         "success_rate": _rate(success_count, sample_task_count),
         "timeout_rate": _rate(timeout_count, sample_task_count),
         "tool_call_completion_rate": _rate(tool_call_completion_count, sample_task_count),
         "promise_without_task_rate": _rate(promise_without_task_count, sample_task_count),
         "followup_task_missing_rate": _rate(followup_task_missing_count, sample_task_count),
+        "overdue_on_materialize_rate": _rate(overdue_on_materialize_count, sample_task_count),
         "sample_task_ids": [item["task_id"] for item in recent],
     }
 
@@ -784,6 +803,7 @@ def render_status_markdown(
         lines.append(f"- planning.followup_task_missing: {planning.get('followup_task_missing')}")
         lines.append(f"- planning.promise_guard_status: {planning.get('promise_guard_status')}")
         lines.append(f"- planning.overdue_followup: {planning.get('overdue_followup')}")
+        lines.append(f"- planning.overdue_on_materialize: {planning.get('overdue_on_materialize')}")
         lines.append(f"- planning.promise_without_task: {planning.get('promise_without_task')}")
         if planning.get("anomaly"):
             lines.append(f"- planning.anomaly: {planning['anomaly']}")
@@ -861,6 +881,7 @@ def render_overview_markdown(
         lines.append(f"- planning_promise_without_task_count: {planning['promise_without_task_count']}")
         lines.append(f"- planning_followup_task_missing_count: {planning['followup_task_missing_count']}")
         lines.append(f"- planning_overdue_followup_count: {planning['overdue_followup_count']}")
+        lines.append(f"- planning_overdue_on_materialize_count: {planning['overdue_on_materialize_count']}")
         lines.append(
             f"- planning_primary_main_user_content_mode: {planning.get('primary_main_user_content_mode') or 'none'}"
         )
@@ -874,6 +895,7 @@ def render_overview_markdown(
             lines.append(f"- planning_health_tool_call_completion_rate: {health['tool_call_completion_rate']}")
             lines.append(f"- planning_health_promise_without_task_rate: {health['promise_without_task_rate']}")
             lines.append(f"- planning_health_followup_task_missing_rate: {health['followup_task_missing_rate']}")
+            lines.append(f"- planning_health_overdue_on_materialize_rate: {health['overdue_on_materialize_rate']}")
         primary_recovery_action = (
             planning.get("primary_recovery_action")
             if isinstance(planning.get("primary_recovery_action"), dict)
