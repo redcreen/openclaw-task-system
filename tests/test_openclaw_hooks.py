@@ -84,6 +84,8 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertIsInstance(result["control_plane_message"], dict)
         self.assertEqual(result["control_plane_message"]["event_name"], "same-session-routing-receipt")
         self.assertEqual(result["control_plane_message"]["priority"], "p0-receive-ack")
+        self.assertIn("排第", str(result["control_plane_message"]["text"]))
+        self.assertIn("排第", str(result["wd_receipt"]["user_visible_wd"]))
 
     def test_register_from_payload_records_same_session_followup_routing_context(self) -> None:
         first = openclaw_hooks.register_from_payload(
@@ -1754,6 +1756,42 @@ class OpenClawHooksTests(unittest.TestCase):
         )
         self.assertTrue(finalized["updated"])
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
+
+    def test_finalize_active_uses_task_target_for_generic_completion_receipt(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:generic-completion-receipt",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:generic-completion-receipt",
+                "user_request": "帮我继续排查这个问题并回我结果",
+                "estimated_steps": 3,
+            }
+        )
+        assert registration["task_id"] is not None
+        openclaw_hooks.activate_latest_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:generic-completion-receipt",
+                "task_id": registration["task_id"],
+            }
+        )
+        finalized = openclaw_hooks.finalize_active_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": "session:generic-completion-receipt",
+                "task_id": registration["task_id"],
+                "success": True,
+                "has_visible_output": True,
+                "result_summary": "",
+            }
+        )
+        self.assertTrue(finalized["updated"])
+        self.assertEqual(
+            finalized["control_plane_message"]["text"],
+            "当前任务已完成：帮我继续排查这个问题并回我结果",
+        )
 
     def test_finalize_active_marks_done_after_progress_even_with_generic_summary(self) -> None:
         registration = openclaw_hooks.register_from_payload(

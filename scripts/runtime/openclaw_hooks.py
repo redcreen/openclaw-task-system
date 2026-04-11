@@ -68,7 +68,17 @@ def _build_control_plane_message(
 def _build_terminal_message_text(task: Any, *, success: bool) -> str:
     summary = str(task.meta.get("result_summary") or "").strip()
     if success:
-        return f"当前任务已完成。{summary}" if summary else "当前任务已完成。"
+        normalized_summary = summary.lower()
+        generic_summary = (
+            normalized_summary in GENERIC_SUCCESS_SUMMARIES
+            or summary.startswith("{")
+        )
+        if summary and not generic_summary:
+            return f"当前任务已完成：{summary}"
+        target = _compact_running_target(task)
+        if target:
+            return f"当前任务已完成：{target}"
+        return "当前任务已完成。"
     failure_reason = str(getattr(task, "failure_reason", "") or task.meta.get("failure_reason") or "").strip()
     if failure_reason:
         return f"当前任务已失败：{failure_reason}"
@@ -129,6 +139,41 @@ def _build_same_session_routing_control_plane_message(
     if task_id:
         message["task_id"] = task_id
     return message
+
+
+def _build_queue_receipt_text(
+    *,
+    queue_position: Optional[int],
+    ahead_count: int,
+    running_count: int,
+    estimated_wait_seconds: Optional[int],
+) -> str:
+    position = queue_position or max(ahead_count + 1, 1)
+    suppress_short_eta = ahead_count > 0 and estimated_wait_seconds is not None and estimated_wait_seconds < 60
+    if estimated_wait_seconds and not suppress_short_eta:
+        if ahead_count > 0 and running_count <= 0:
+            return (
+                f"已收到，你的请求已进入队列；前面还有 {ahead_count} 个号，"
+                f"你现在排第 {position} 位，预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到处理。"
+            )
+        if running_count <= 0:
+            return (
+                f"已收到，你的请求已进入队列；你现在排第 {position} 位，"
+                f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到处理。"
+            )
+        return (
+            f"已收到，当前有 {running_count} 条任务正在处理；你的请求已进入队列，"
+            f"前面还有 {ahead_count} 个号，你现在排第 {position} 位，"
+            f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到处理。"
+        )
+    if ahead_count > 0 and running_count <= 0:
+        return f"已收到，你的请求已进入队列；前面还有 {ahead_count} 个号，你现在排第 {position} 位。"
+    if running_count <= 0:
+        return f"已收到，你的请求已进入队列；你现在排第 {position} 位。"
+    return (
+        f"已收到，当前有 {running_count} 条任务正在处理；你的请求已进入队列，"
+        f"前面还有 {ahead_count} 个号，你现在排第 {position} 位。"
+    )
 
 
 def _render_followup_summary_text(plan: dict[str, Any]) -> Optional[str]:
@@ -329,6 +374,25 @@ def register_from_payload(
             serialized["routing_decision"] = routing
             serialized["wd_receipt"] = wd_receipt
             control_plane_message = _build_same_session_routing_control_plane_message(routing)
+            if (
+                control_plane_message
+                and str(routing.get("execution_decision") or "").strip() == "queue-as-new-task"
+            ):
+                queue_text = _build_queue_receipt_text(
+                    queue_position=serialized.get("queue_position"),
+                    ahead_count=int(serialized.get("ahead_count") or 0),
+                    running_count=int(serialized.get("running_count") or 0),
+                    estimated_wait_seconds=(
+                        int(serialized["estimated_wait_seconds"])
+                        if serialized.get("estimated_wait_seconds") is not None
+                        else None
+                    ),
+                )
+                wd_receipt["user_visible_wd"] = f"[wd] {queue_text}"
+                serialized["wd_receipt"] = wd_receipt
+                routing["wd_receipt"] = wd_receipt
+                serialized["routing_decision"] = routing
+                control_plane_message["text"] = queue_text
             task_id = str(serialized.get("task_id") or "").strip()
             if task_id:
                 runtime_config = load_task_system_config(config_path=config_path)

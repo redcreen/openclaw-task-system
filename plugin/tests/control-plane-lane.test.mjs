@@ -337,7 +337,7 @@ test("agent_end no longer sends generic duration-only completion summary to fina
 
     const commands = await readHookCommands(callsPath);
     const finalizeCall = commands.find((entry) => entry.command === "finalize-active");
-    assert.equal(finalizeCall?.payload?.result_summary, "");
+    assert.ok(!finalizeCall?.payload?.result_summary);
     assert.equal(sentMessages.at(-1)?.text, "[wd] 当前任务已完成。");
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);

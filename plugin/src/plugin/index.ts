@@ -1804,6 +1804,21 @@ function extractHookControlPlaneMessage(payload: Record<string, unknown> | null 
   };
 }
 
+function extractHookControlPlaneMetadata(payload: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const raw = payload.control_plane_message;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return null;
+  }
+  const metadata = (raw as Record<string, unknown>).metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  return metadata as Record<string, unknown>;
+}
+
 function buildHookBackedControlPlaneMessage(
   hookPayload: Record<string, unknown> | null | undefined,
   fallback: Omit<ControlPlaneMessage, "eventName" | "priority" | "taskId" | "message"> & {
@@ -2182,11 +2197,16 @@ function buildImmediateReceiptMessage(
   const activeCount = Math.max(toInteger(resolvedDecision.active_count) ?? 0, 0);
   const estimatedWaitSeconds = toInteger(resolvedDecision.estimated_wait_seconds);
   const continuationDueAt = normalizeText(String(resolvedDecision.continuation_due_at || ""));
+  const hookControlPlaneMetadata = extractHookControlPlaneMetadata(registerResult);
   const routingDecision =
     (resolvedDecision.routing_decision && typeof resolvedDecision.routing_decision === "object"
       ? (resolvedDecision.routing_decision as Record<string, unknown>)
       : registerResult.routing_decision && typeof registerResult.routing_decision === "object"
         ? (registerResult.routing_decision as Record<string, unknown>)
+        : hookControlPlaneMetadata?.routing_decision &&
+            typeof hookControlPlaneMetadata.routing_decision === "object" &&
+            !Array.isArray(hookControlPlaneMetadata.routing_decision)
+          ? (hookControlPlaneMetadata.routing_decision as Record<string, unknown>)
         : null);
   const runtimeOwnedQueueReceipt =
     hookControlPlaneMessage?.eventName === "same-session-routing-receipt" &&
