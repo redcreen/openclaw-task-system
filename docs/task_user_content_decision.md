@@ -378,3 +378,106 @@ Phase 4 contract：
 - `task_user_content` 现在只保留在历史泄漏审计和历史文件 scrub 工具里
 
 这才是能收敛的方向。
+
+## 11. 2026-04-11 收口结论
+
+### 11.1 直接回答
+
+能否准确判断“哪些是中间内容，需要被 runtime 改写”？
+
+- 如果判断依据是自然语言文本：不能稳定判断
+- 如果判断依据是结构化 planning 状态：可以稳定决定“当前发不发业务内容”
+
+因此结论不是“继续修 `task_user_content` 文本协议”，而是：
+
+- 彻底废弃它作为运行时协议
+- 继续保留结构化状态判定
+- 仅保留历史泄漏审计与硬拦截
+
+### 11.2 真实证据
+
+#### 证据 A：最早想解决的问题，确实来自 future-first / delayed planning
+
+历史 session reset 里能看到这类真实样例：
+
+- `半小时后提醒我查天气`
+- `35 分钟之后提醒我查火车票，40 分钟之后提醒我查飞机票`
+- `你帮我查一下宁波舟山的天气，明天的天气2分钟后告诉我，后天的天气3分钟后告诉我`
+- `2分钟后提醒我查明天义乌到宁波的火车票，3分钟后提醒我查飞机票；然后帮我查目的地的天气；2分半后告诉我天气`
+
+这些例子说明：
+
+- 真实问题不是“模型吐了某个标签”
+- 而是 future-first / compound / delayed 请求里，当前输出和未来输出的边界需要被 runtime 接管
+
+#### 证据 B：`task_user_content` 实际污染过的，不只是“中间态”
+
+历史网关日志里泄漏过的内容包括：
+
+- `失败：当前环境缺少可用的本地语音转写工具...`
+- `转写这一步没跑成...`
+- `装好了，whisper-cpp 已成功安装完成...`
+
+这些内容本身其实是用户可见的正常结果或说明，只是被错误包进了 `<task_user_content>`。
+
+这说明：
+
+- `task_user_content` 不能可靠表示“中间内容”
+- 它也会包住正常应该发给用户的最终内容
+- 所以系统不能依赖它来判断“该不该改写”
+
+#### 证据 C：当前代码里它已经不再参与业务判定
+
+当前仓库里 `task_user_content` 的剩余用途只有两类：
+
+1. 插件侧 sanitize / hard-block
+   - 清洗或拦截 raw `<task_user_content>` marker，避免再次外发
+2. 历史审计与历史清理
+   - `check_task_user_content_leaks.py`
+   - `scrub_task_user_content_history.py`
+
+它已经不再是：
+
+- planning prompt 主协议
+- runtime 业务判定依据
+- tests 默认输入输出 contract
+
+#### 证据 D：当前新链路已无新增泄漏
+
+执行：
+
+- `python3 scripts/runtime/check_task_user_content_leaks.py --json`
+
+当前结果：
+
+- `ok: true`
+- `total: 0`
+
+说明当前新日志和最新 session 已经不再把它当成正常运行时协议使用。
+
+### 11.3 最终决定
+
+最终决定如下：
+
+1. 不再继续修 `task_user_content` 机制本身
+2. 不再尝试定义“哪些文本长得像中间态”
+3. 当前能否发业务内容，只允许由结构化 planning 状态决定
+4. `task_user_content` 只保留三种历史角色：
+   - raw marker sanitize
+   - raw marker hard-block
+   - 历史泄漏审计 / 历史文件 scrub
+
+### 11.4 后续边界
+
+后续如果再出现“当前不该发业务内容，却发了”的问题，应归到这些方向排查：
+
+1. `main_user_content_mode` 判定错误
+2. `promise_guard / followup_plan` truth source 不完整
+3. `message_sending / before_message_write` 的 mode-first gate 有漏洞
+4. control-plane / business-content 分层不一致
+
+不应再回到：
+
+- 新增 `<task_user_content>` 协议
+- 继续扩大 marker 解析分支
+- 通过文本规则猜“这段像不像中间结果”

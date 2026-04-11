@@ -129,12 +129,19 @@
     - `python3 scripts/runtime/same_session_routing_acceptance.py --json`
 
 
-task_user_content 问题；
-最初设计是为了解决 task tool 进入llm调用链时， 有些llm回复的中间结果（特别是任务安排类的中间结果，案例是帮我查一下杭州的天气在查一下宁波的天气，2分钟后告诉我杭州天气，3分钟后告诉我宁波天气类似这种；你也可以翻找下日志，看下第一条task_user_content出现时用的用例），不要给用户返回，被task 系统来接管，然后改写； 
-但是这个问题现在污染面有点儿大，如何判断哪些是中间结果，需要被改写？ 
-如果无法判定这一点，或者这一点很难来判断，那么task_user_content 这个机制还不如取消掉； 所以先从根本上分析下，能否准确的判断哪些是中间内容，如果能就继续修改bug，如果不能就彻底废弃；
-参考分析与样例：
-- [task_user_content_decision.md](../docs/task_user_content_decision.md)
+`task_user_content` 子问题已完成收口。
+
+- 结论：
+  - 不能稳定判断“哪些文本是中间内容，需要 runtime 改写”
+  - 可以稳定判断的，只有结构化 planning 状态，而不是自然语言文本
+  - 因此 `task_user_content` 已永久废弃为运行时协议，不再继续沿这条机制修 bug
+- 当前只保留三类历史用途：
+  - raw marker sanitize
+  - raw marker hard-block
+  - 历史泄漏审计 / 历史文件 scrub
+- 参考分析与证据：
+  - [task_user_content_decision.md](./task_user_content_decision.md)
 - 当前状态：
   - Phase 4 已完成：运行时主链路已废弃 `task_user_content` 作为协议
   - Phase 5 已完成：历史清理工具、物理删除与测试收口已经落地
+  - 2026-04-11 已完成最终去留判断：后续不再以 `task_user_content` 为产品/技术主线
