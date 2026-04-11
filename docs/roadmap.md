@@ -1,3 +1,5 @@
+[English](roadmap.md) | [中文](roadmap.zh-CN.md)
+
 # OpenClaw Task System Roadmap
 
 > 最后更新：2026-04-11
@@ -252,7 +254,7 @@
 - 说清楚项目是什么
 - 说清楚北极星目标
 - 固定实施边界
-- 明确“TODO 是临时记录，roadmap 才是正式主线”
+- 明确“临时记录只是收集区，roadmap 才是正式主线”
 
 状态：已完成
 
@@ -459,7 +461,7 @@ Phase 5 收口结论：
 
 - 正式主线以本文件为准
 - `docs/todo.md` 只作为临时记录
-- 当明确要求“处理 TODO”时：
+- 当明确要求“处理临时记录”时：
   1. 读取 `docs/todo.md`
   2. 提炼新增事项
   3. 合并回本 roadmap
@@ -468,7 +470,7 @@ Phase 5 收口结论：
 也就是说：
 
 - roadmap 负责“我们为什么做、做什么、先后顺序是什么”
-- TODO 负责“最近临时出现了什么、需要记下来什么”
+- 临时记录负责“最近出现了什么、需要记下来什么”
 
 ## 10. 当前默认下一步
 
@@ -752,9 +754,9 @@ For planned delayed follow-ups, the accepted runtime contract is now:
 
 当前交付与验收入口：
 
-- [session_message_routing/README.md](./session_message_routing/README.md)
-- [session_message_routing/decision_contract.md](./session_message_routing/decision_contract.md)
-- [session_message_routing/test_cases.md](./session_message_routing/test_cases.md)
-- [session_message_routing/development_plan.md](./session_message_routing/development_plan.md)
+- [session_message_routing/README.md](reference/session_message_routing/README.md)
+- [session_message_routing/decision_contract.md](reference/session_message_routing/decision_contract.md)
+- [session_message_routing/test_cases.md](reference/session_message_routing/test_cases.md)
+- [session_message_routing/development_plan.md](reference/session_message_routing/development_plan.md)
 - `python3 scripts/runtime/same_session_routing_acceptance.py --json`
 - `python3 scripts/runtime/stable_acceptance.py --json`

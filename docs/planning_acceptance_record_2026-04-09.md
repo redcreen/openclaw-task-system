@@ -1,3 +1,5 @@
+[English](planning_acceptance_record_2026-04-09.md) | [中文](planning_acceptance_record_2026-04-09.zh-CN.md)
+
 # Planning Acceptance Record 2026-04-09
 
 本记录对应一次 `Phase 6` 半真实验收样本。

@@ -1,3 +1,5 @@
+[English](external_comparison.md) | [中文](external_comparison.zh-CN.md)
+
 # External Comparison
 
 > 角色：这份文档记录外部参考项目的对比结论，帮助本项目判断哪些设计值得借鉴，哪些不该照搬。

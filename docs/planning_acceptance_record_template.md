@@ -1,3 +1,5 @@
+[English](planning_acceptance_record_template.md) | [中文](planning_acceptance_record_template.zh-CN.md)
+
 # Planning Acceptance Record Template
 
 本模板用于记录一次真实 / 半真实 `Phase 6` 验收。

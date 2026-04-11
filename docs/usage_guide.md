@@ -1,3 +1,5 @@
+[English](usage_guide.md) | [中文](usage_guide.zh-CN.md)
+
 # OpenClaw Task System Usage Guide
 
 本文件只讲两件事：

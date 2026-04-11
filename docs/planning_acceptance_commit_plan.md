@@ -1,3 +1,5 @@
+[English](planning_acceptance_commit_plan.md) | [中文](planning_acceptance_commit_plan.zh-CN.md)
+
 # Planning Acceptance Commit Plan
 
 本文件用于把当前这轮 worktree 改动整理成更容易 review 的提交批次。

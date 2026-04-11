@@ -1,3 +1,5 @@
+[English](plugin_installation.md) | [中文](plugin_installation.zh-CN.md)
+
 # Plugin Installation Guide
 
 本文件只负责：

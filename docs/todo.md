@@ -1,3 +1,5 @@
+[English](todo.md) | [中文](todo.zh-CN.md)
+
 # Temporary Notes
 
 > 最后更新：2026-04-11
@@ -128,10 +130,10 @@
     - 连续输入已正式路由到 `steering / queueing / control-plane / collect-more`
     - runtime-owned classifier、`[wd]` 回执、collecting-window、stable acceptance 已落地
   - 交付文档与入口：
-    - [session_message_routing/README.md](./session_message_routing/README.md)
-    - [session_message_routing/decision_contract.md](./session_message_routing/decision_contract.md)
-    - [session_message_routing/test_cases.md](./session_message_routing/test_cases.md)
-    - [session_message_routing/development_plan.md](./session_message_routing/development_plan.md)
+    - [session_message_routing/README.md](reference/session_message_routing/README.md)
+    - [session_message_routing/decision_contract.md](reference/session_message_routing/decision_contract.md)
+    - [session_message_routing/test_cases.md](reference/session_message_routing/test_cases.md)
+    - [session_message_routing/development_plan.md](reference/session_message_routing/development_plan.md)
     - `python3 scripts/runtime/same_session_routing_acceptance.py --json`
 
 

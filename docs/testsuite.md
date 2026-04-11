@@ -1,3 +1,5 @@
+[English](testsuite.md) | [中文](testsuite.zh-CN.md)
+
 # Test Suite
 
 > 最后更新：2026-04-11

@@ -1,0 +1,267 @@
+{
+  "repoKind": "repo",
+  "userCustomized": true,
+  "tier": "medium",
+  "officialModules": [],
+  "rootKeep": [
+    "README.md"
+  ],
+  "requiredPaths": [
+    "docs/reference/README.md",
+    "docs/reference/README.zh-CN.md",
+    "docs/workstreams/README.md",
+    "docs/workstreams/README.zh-CN.md",
+    "docs/archive/README.md",
+    "docs/archive/README.zh-CN.md",
+    "reports/generated/README.md"
+  ],
+  "docsHomeLinks": {
+    "en": [
+      "reference/README.md",
+      "workstreams/README.md",
+      "archive/README.md"
+    ],
+    "zh": [
+      "reference/README.zh-CN.md",
+      "workstreams/README.zh-CN.md",
+      "archive/README.zh-CN.md"
+    ]
+  },
+  "publicDocIncludeGlobs": [
+    "README.md",
+    "CHANGELOG.md",
+    "RELEASE.md",
+    "release.md",
+    "docs/*.md",
+    "docs/adr/*.md",
+    "docs/adr/**/*.md",
+    "docs/reference/*.md",
+    "docs/reference/**/*.md",
+    "docs/workstreams/*.md",
+    "docs/workstreams/**/*.md",
+    "docs/how-to/*.md",
+    "docs/how-to/**/*.md",
+    "integrations/**/README.md"
+  ],
+  "publicDocExcludeGlobs": [
+    ".codex/**",
+    "docs/archive/**",
+    "reports/**",
+    "workspace/**",
+    "releases/**",
+    "scripts/**",
+    "src/**",
+    "test/**",
+    "evals/**"
+  ],
+  "ownershipRules": [
+    {
+      "glob": ".codex/*.md",
+      "role": "living"
+    },
+    {
+      "glob": ".codex/**/*.md",
+      "role": "living"
+    },
+    {
+      "glob": "README.md",
+      "role": "durable"
+    },
+    {
+      "glob": "README.zh-CN.md",
+      "role": "durable"
+    },
+    {
+      "glob": "CHANGELOG.md",
+      "role": "durable"
+    },
+    {
+      "glob": "CHANGELOG.zh-CN.md",
+      "role": "durable"
+    },
+    {
+      "glob": "RELEASE.md",
+      "role": "durable"
+    },
+    {
+      "glob": "RELEASE.zh-CN.md",
+      "role": "durable"
+    },
+    {
+      "glob": "release.md",
+      "role": "durable"
+    },
+    {
+      "glob": "docs/*.md",
+      "role": "durable"
+    },
+    {
+      "glob": "docs/**/*.md",
+      "role": "durable"
+    },
+    {
+      "glob": "docs/reference/*.md",
+      "role": "durable"
+    },
+    {
+      "glob": "docs/reference/**/*.md",
+      "role": "durable"
+    },
+    {
+      "glob": "docs/archive/*.md",
+      "role": "archive"
+    },
+    {
+      "glob": "docs/archive/**/*.md",
+      "role": "archive"
+    },
+    {
+      "glob": "integrations/**/*.md",
+      "role": "durable"
+    },
+    {
+      "glob": "plugin/*.md",
+      "role": "internal"
+    },
+    {
+      "glob": "plugin/**/*.md",
+      "role": "internal"
+    },
+    {
+      "glob": "docs/workstreams/*.md",
+      "role": "durable"
+    },
+    {
+      "glob": "docs/workstreams/**/*.md",
+      "role": "durable"
+    },
+    {
+      "glob": "reports/generated/*.md",
+      "role": "generated"
+    },
+    {
+      "glob": "reports/generated/**/*.md",
+      "role": "generated"
+    },
+    {
+      "glob": "workspace/*.md",
+      "role": "working"
+    },
+    {
+      "glob": "workspace/**/*.md",
+      "role": "working"
+    },
+    {
+      "glob": "releases/*.md",
+      "role": "release"
+    },
+    {
+      "glob": "releases/**/*.md",
+      "role": "release"
+    },
+    {
+      "glob": "tests/*.md",
+      "role": "internal"
+    },
+    {
+      "glob": "tests/**/*.md",
+      "role": "internal"
+    },
+    {
+      "glob": "scripts/**/*.md",
+      "role": "internal"
+    },
+    {
+      "glob": "src/**/*.md",
+      "role": "internal"
+    },
+    {
+      "glob": "test/**/*.md",
+      "role": "internal"
+    },
+    {
+      "glob": "evals/**/*.md",
+      "role": "generated"
+    }
+  ],
+  "questionOwners": {
+    "architecture": {
+      "allowed": [
+        "docs/architecture.md",
+        "docs/architecture.zh-CN.md"
+      ],
+      "allowedGlobs": [
+        "docs/reference/*architecture*.md",
+        "docs/reference/**/architecture/**",
+        "docs/workstreams/*/architecture.md",
+        "docs/workstreams/*/architecture.zh-CN.md"
+      ],
+      "tokens": [
+        "architecture"
+      ]
+    },
+    "roadmap": {
+      "allowed": [
+        "docs/roadmap.md",
+        "docs/roadmap.zh-CN.md"
+      ],
+      "allowedGlobs": [
+        "docs/reference/*roadmap*.md",
+        "docs/reference/**/roadmaps/**",
+        "docs/workstreams/*/roadmap.md",
+        "docs/workstreams/*/roadmap.zh-CN.md"
+      ],
+      "tokens": [
+        "roadmap"
+      ]
+    },
+    "test-plan": {
+      "allowed": [
+        "docs/test-plan.md",
+        "docs/test-plan.zh-CN.md",
+        "docs/testsuite.md",
+        "docs/testsuite.zh-CN.md"
+      ],
+      "allowedGlobs": [
+        "docs/reference/*test*.md",
+        "docs/reference/**/testing/**"
+      ],
+      "tokens": [
+        "test-plan",
+        "testsuite",
+        "test-suite"
+      ]
+    },
+    "release": {
+      "allowed": [
+        "release.md",
+        "RELEASE.md",
+        "RELEASE.zh-CN.md",
+        "CHANGELOG.md",
+        "CHANGELOG.zh-CN.md"
+      ],
+      "allowedGlobs": [
+        "docs/reference/*release*.md",
+        "docs/reference/**/release*.md",
+        "releases/*.md",
+        "releases/**/*.md"
+      ],
+      "tokens": [
+        "release",
+        "changelog"
+      ]
+    }
+  },
+  "questionExcludeGlobs": [
+    ".codex/**",
+    "docs/adr/**",
+    "docs/archive/**",
+    "reports/generated/**",
+    "workspace/**",
+    "scripts/**",
+    "src/**",
+    "test/**",
+    "evals/**"
+  ],
+  "explicitMoves": {}
+}

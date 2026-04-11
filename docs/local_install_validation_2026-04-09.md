@@ -1,3 +1,5 @@
+[English](local_install_validation_2026-04-09.md) | [中文](local_install_validation_2026-04-09.zh-CN.md)
+
 # Local Install Validation 2026-04-09
 
 本记录用于说明当前本地 OpenClaw 安装态与 `plugin/` 源码 payload 的验证结论。

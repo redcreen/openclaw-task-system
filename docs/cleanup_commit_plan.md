@@ -1,3 +1,5 @@
+[English](cleanup_commit_plan.md) | [中文](cleanup_commit_plan.zh-CN.md)
+
 # Cleanup Commit Plan
 
 > 更新日期：2026-04-11
@@ -105,10 +107,10 @@
 
 建议包含：
 
-- `docs/session_message_routing/README.md`
-- `docs/session_message_routing/decision_contract.md`
-- `docs/session_message_routing/development_plan.md`
-- `docs/session_message_routing/test_cases.md`
+- `docs/reference/session_message_routing/README.md`
+- `docs/reference/session_message_routing/decision_contract.md`
+- `docs/reference/session_message_routing/development_plan.md`
+- `docs/reference/session_message_routing/test_cases.md`
 - `scripts/runtime/same_session_routing.py`
 - `scripts/runtime/same_session_routing_acceptance.py`
 - `scripts/runtime/session_state.py`
@@ -191,4 +193,3 @@
    - `docs/planning_acceptance_record_2026-04-11.md`
 2. 删除或忽略 `t1`
 3. 不要把 `docs/artifacts/planning_acceptance_2026-04-11/*` 混进提交
-

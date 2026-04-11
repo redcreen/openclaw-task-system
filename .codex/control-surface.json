@@ -1,0 +1,9 @@
+{
+  "tier": "medium",
+  "officialModules": [],
+  "requiredFiles": [
+    ".codex/brief.md",
+    ".codex/plan.md",
+    ".codex/status.md"
+  ]
+}

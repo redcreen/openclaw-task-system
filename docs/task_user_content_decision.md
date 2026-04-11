@@ -1,3 +1,5 @@
+[English](task_user_content_decision.md) | [中文](task_user_content_decision.zh-CN.md)
+
 # task_user_content decision note
 
 > 目标：把 `task_user_content` 这件事讲清楚，方便人快速判断这套机制该继续修，还是该废弃。

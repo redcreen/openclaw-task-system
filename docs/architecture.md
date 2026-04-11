@@ -1,3 +1,5 @@
+[English](architecture.md) | [中文](architecture.zh-CN.md)
+
 # OpenClaw Task System Architecture
 
 > 角色：这是本项目的正式架构文档。它回答“系统由哪些层组成、这些层为什么存在、它们如何协同工作”。

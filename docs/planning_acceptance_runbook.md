@@ -1,3 +1,5 @@
+[English](planning_acceptance_runbook.md) | [中文](planning_acceptance_runbook.zh-CN.md)
+
 # Planning Acceptance Runbook
 
 本手册用于做 `Phase 6` 的真实 / 半真实验收。
