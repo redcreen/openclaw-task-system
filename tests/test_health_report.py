@@ -239,6 +239,37 @@ class HealthReportTests(unittest.TestCase):
         self.assertEqual(report["status"], "error")
         self.assertIn("planning-promise-without-task:1", report["issues"])
         self.assertIn("planning-overdue-followups:1", report["issues"])
+        self.assertEqual(report["overview"]["planning"]["health"]["status"], "error")
+        self.assertIn("- planning_health_status: error", markdown)
+
+    def test_build_health_report_surfaces_planning_timeouts(self) -> None:
+        source = self.store.register_task(
+            agent_id="main",
+            session_key="session:planning-timeout",
+            channel="telegram",
+            chat_id="chat:planning-timeout",
+            task_label="planning timeout task",
+        )
+        source.meta["tool_followup_plan"] = {
+            "plan_id": "plan_timeout",
+            "status": "timeout",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+        }
+        source.meta["planning_promise_guard"] = {
+            "status": "timeout",
+            "expected_by_finalize": True,
+        }
+        source.meta["planning_anomaly"] = "planner-timeout"
+        self.store.save_task(source)
+
+        report = health_report.build_health_report(config_path=self.config_path)
+        markdown = health_report.render_markdown(report)
+
+        self.assertEqual(report["status"], "warn")
+        self.assertIn("planning-timeouts:1", report["issues"])
+        self.assertEqual(report["overview"]["planning"]["health"]["status"], "warn")
+        self.assertEqual(report["overview"]["planning"]["health"]["primary_reason"], "planner-timeout-observed")
+        self.assertIn("- planning_health_timeout_rate: 1.0", markdown)
 
     def test_build_health_report_surfaces_plugin_install_drift(self) -> None:
         with patch.object(

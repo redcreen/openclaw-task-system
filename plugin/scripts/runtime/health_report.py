@@ -115,9 +115,11 @@ def build_health_report(
             )
         )
     planning = overview.get("planning") if isinstance(overview.get("planning"), dict) else {}
+    planning_health = planning.get("health") if isinstance(planning.get("health"), dict) else {}
     promise_without_task_count = int(planning.get("promise_without_task_count", 0) or 0)
     overdue_followup_count = int(planning.get("overdue_followup_count", 0) or 0)
     planning_pending_count = int(planning.get("planning_pending_task_count", 0) or 0)
+    planning_timeout_count = int(planning_health.get("timeout_count", 0) or 0)
     if promise_without_task_count:
         issue_entries.append(
             _issue_entry(
@@ -134,6 +136,15 @@ def build_health_report(
                 severity="warn",
                 count=overdue_followup_count,
                 remediation="Inspect overdue planned follow-ups in `main_ops.py continuity --json` and ensure the continuation runner is progressing or recover the affected sessions.",
+            )
+        )
+    if planning_timeout_count:
+        issue_entries.append(
+            _issue_entry(
+                code=f"planning-timeouts:{planning_timeout_count}",
+                severity="warn",
+                count=planning_timeout_count,
+                remediation="Inspect `main_ops.py planning --json` to find recent planner timeouts; downgrade planning-dependent behavior until the planner path is stable again.",
             )
         )
     if planning_pending_count and not promise_without_task_count:
@@ -205,6 +216,19 @@ def render_markdown(report: dict[str, object]) -> str:
             f"- planning_overdue_followup_count: {overview['planning']['overdue_followup_count']}",
         ]
     )
+    planning_health = overview["planning"].get("health") if isinstance(overview["planning"].get("health"), dict) else None
+    if isinstance(planning_health, dict):
+        lines.extend(
+            [
+                f"- planning_health_status: {planning_health['status']}",
+                f"- planning_health_primary_reason: {planning_health['primary_reason']}",
+                f"- planning_health_sample_task_count: {planning_health['sample_task_count']}",
+                f"- planning_health_success_rate: {planning_health['success_rate']}",
+                f"- planning_health_timeout_rate: {planning_health['timeout_rate']}",
+                f"- planning_health_tool_call_completion_rate: {planning_health['tool_call_completion_rate']}",
+                f"- planning_health_promise_without_task_rate: {planning_health['promise_without_task_rate']}",
+            ]
+        )
     if overview["planning"]["anomaly_counts"]:
         lines.append(f"- planning_anomaly_counts: {json.dumps(overview['planning']['anomaly_counts'], ensure_ascii=False)}")
 

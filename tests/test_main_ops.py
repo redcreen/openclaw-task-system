@@ -399,9 +399,12 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["planning_task_count"], 2)
         self.assertEqual(summary["planning_pending_task_count"], 1)
         self.assertEqual(summary["planning_anomaly_task_count"], 1)
+        self.assertEqual(summary["planning_health"]["status"], "error")
+        self.assertEqual(summary["planning_health"]["promise_without_task_rate"], 0.5)
         self.assertEqual(summary["primary_action_kind"], "inspect-planning-anomaly")
         self.assertIn("# Main Planning", rendered)
         self.assertIn("- planning_task_count: 2", rendered)
+        self.assertIn("- planning_health_status: error", rendered)
         self.assertIn("plan_status=anomaly", rendered)
 
     def test_get_main_planning_summary_can_focus_session(self) -> None:
@@ -723,6 +726,33 @@ class MainOpsTests(unittest.TestCase):
         )
         self.assertEqual(summary["primary_action"]["kind"], "enable-taskmonitor")
 
+    def test_get_main_dashboard_summary_hints_planning_health_when_degraded_and_idle(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:planning-health",
+            channel="telegram",
+            chat_id="chat:main:planning-health",
+            task_label="planning timeout",
+        )
+        task.meta["tool_followup_plan"] = {
+            "plan_id": "plan_timeout",
+            "status": "timeout",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+        }
+        task.meta["planning_promise_guard"] = {
+            "status": "timeout",
+            "expected_by_finalize": True,
+        }
+        task.meta["planning_anomaly"] = "planner-timeout"
+        self.store.save_task(task)
+        self.store.complete_task(task.task_id)
+
+        summary = main_ops.get_main_dashboard_summary(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(summary["health"]["planning_health_status"], "warn")
+        self.assertEqual(summary["action_hint"], "Inspect planning health before relying on planner-dependent behavior.")
+        self.assertEqual(summary["action_hint_command"], "python3 scripts/runtime/main_ops.py planning --json")
+
     def test_render_main_continuity_reports_no_risk_when_idle(self) -> None:
         rendered = main_ops.render_main_continuity(config_path=self._config_path(), paths=self.paths)
 
@@ -756,6 +786,34 @@ class MainOpsTests(unittest.TestCase):
         self.assertEqual(summary["control_plane_message"]["priority"], "p1-task-management")
         self.assertFalse(summary["control_plane_message"]["metadata"]["auto_resume_ready"])
         self.assertEqual(summary["control_plane_message"]["metadata"]["top_risk_session_user_status_counts"], {})
+
+    def test_get_main_triage_summary_can_prioritize_planning_health(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:planning-triage",
+            channel="telegram",
+            chat_id="chat:main:planning-triage",
+            task_label="planning timeout triage",
+        )
+        task.meta["tool_followup_plan"] = {
+            "plan_id": "plan_timeout",
+            "status": "timeout",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+        }
+        task.meta["planning_promise_guard"] = {
+            "status": "timeout",
+            "expected_by_finalize": True,
+        }
+        task.meta["planning_anomaly"] = "planner-timeout"
+        self.store.save_task(task)
+
+        summary = main_ops.get_main_triage_summary(config_path=self._config_path(), paths=self.paths)
+        rendered = main_ops.render_main_triage(config_path=self._config_path(), paths=self.paths)
+
+        self.assertEqual(summary["planning_health_status"], "warn")
+        self.assertEqual(summary["primary_action_kind"], "inspect-planning-health")
+        self.assertEqual(summary["primary_action_command"], "python3 scripts/runtime/main_ops.py planning --json")
+        self.assertIn("- planning_health_status: warn", rendered)
 
     def test_render_main_continuity_includes_watchdog_blocked_task(self) -> None:
         task = self.store.register_task(

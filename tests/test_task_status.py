@@ -443,5 +443,56 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(overview["planning"]["promise_without_task_count"], 1)
         self.assertEqual(overview["planning"]["overdue_followup_count"], 1)
         self.assertEqual(overview["planning"]["anomaly_counts"], {"promise-without-task": 1})
+        self.assertEqual(overview["planning"]["health"]["status"], "error")
+        self.assertEqual(overview["planning"]["health"]["primary_reason"], "promise-without-task-present")
         self.assertIn("- planning_promise_without_task_count: 1", markdown)
         self.assertIn("- planning_overdue_followup_count: 1", markdown)
+        self.assertIn("- planning_health_status: error", markdown)
+
+    def test_build_system_overview_projects_planning_health_from_archived_and_active_tasks(self) -> None:
+        healthy = self.store.register_task(
+            agent_id="main",
+            session_key="session:planning-healthy",
+            channel="feishu",
+            chat_id="chat:planning-healthy",
+            task_label="healthy planning task",
+        )
+        healthy.meta["tool_followup_plan"] = {
+            "plan_id": "plan_ok",
+            "status": "fulfilled",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+        }
+        healthy.meta["planning_promise_guard"] = {
+            "status": "fulfilled",
+            "expected_by_finalize": True,
+        }
+        self.store.save_task(healthy)
+        self.store.complete_task(healthy.task_id)
+
+        pending = self.store.register_task(
+            agent_id="main",
+            session_key="session:planning-pending",
+            channel="feishu",
+            chat_id="chat:planning-pending",
+            task_label="pending planning task",
+        )
+        pending.meta["tool_followup_plan"] = {
+            "plan_id": "plan_pending",
+            "status": "planned",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+        }
+        pending.meta["planning_promise_guard"] = {
+            "status": "armed",
+            "expected_by_finalize": True,
+        }
+        self.store.save_task(pending)
+
+        overview = task_status.build_system_overview(paths=self.paths)
+
+        self.assertEqual(overview["planning"]["health"]["status"], "warn")
+        self.assertEqual(overview["planning"]["health"]["primary_reason"], "tool-path-not-fully-closed")
+        self.assertEqual(overview["planning"]["health"]["sample_task_count"], 2)
+        self.assertEqual(overview["planning"]["health"]["success_count"], 1)
+        self.assertEqual(overview["planning"]["health"]["tool_call_completion_count"], 1)
+        self.assertEqual(overview["planning"]["health"]["success_rate"], 0.5)
+        self.assertEqual(overview["planning"]["health"]["tool_call_completion_rate"], 0.5)

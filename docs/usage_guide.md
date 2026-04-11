@@ -113,6 +113,8 @@ python3 scripts/runtime/main_ops.py plugin-install-drift --json
 适合回答：
 
 - 当前 planning task / pending / anomaly / overdue 是什么
+- 当前 `planning health` 是否退化
+- 最近 planning 样本里的 timeout / completion / promise-without-task 比例是什么
 - tool-assisted follow-up 是否已经物化成真实任务
 - Phase 6 最小闭环是否仍然成立
 - 如何快速新建一份当天的验收记录

@@ -13,6 +13,7 @@ from user_status import project_user_facing_status
 
 FINAL_INSTRUCTION_DIRS = ("processed-instructions", "failed-instructions")
 INTERMEDIATE_DELIVERY_DIRS = ("outbox", "sent", "delivery-ready", "send-instructions")
+PLANNING_HEALTH_SAMPLE_SIZE = 20
 
 
 def _artifact_path(paths: TaskPaths, directory: str, task_id: str) -> Path:
@@ -166,6 +167,13 @@ def _parse_iso8601(value: object) -> Optional[datetime]:
         return None
 
 
+def _task_sort_key(task: dict[str, object]) -> tuple[str, str]:
+    return (
+        str(task.get("updated_at") or task.get("created_at") or ""),
+        str(task.get("task_id") or ""),
+    )
+
+
 def _build_planning_summary(task: dict[str, object], *, now_dt: Optional[datetime] = None) -> dict[str, object]:
     meta = task.get("meta") if isinstance(task.get("meta"), dict) else {}
     now_dt = now_dt or datetime.now(timezone.utc).astimezone()
@@ -227,6 +235,114 @@ def _build_planning_summary(task: dict[str, object], *, now_dt: Optional[datetim
         "overdue_followup": overdue_active_continuation,
         "overdue_on_materialize": bool((tool_plan or {}).get("overdue_on_materialize", False)),
     }
+
+
+def _planning_health_candidate(planning: dict[str, object]) -> bool:
+    return bool(
+        planning.get("has_followup_plan")
+        or planning.get("planning_expected")
+        or str(planning.get("plan_status") or "").strip()
+        or str(planning.get("promise_guard_status") or "").strip()
+        or bool(planning.get("promise_without_task"))
+    )
+
+
+def _planning_timeout_detected(planning: dict[str, object]) -> bool:
+    anomaly = str(planning.get("anomaly") or "").strip().lower()
+    plan_status = str(planning.get("plan_status") or "").strip().lower()
+    guard_status = str(planning.get("promise_guard_status") or "").strip().lower()
+    return "timeout" in anomaly or plan_status == "timeout" or guard_status == "timeout"
+
+
+def _planning_tool_path_completed(planning: dict[str, object]) -> bool:
+    plan_status = str(planning.get("plan_status") or "").strip().lower()
+    guard_status = str(planning.get("promise_guard_status") or "").strip().lower()
+    return (
+        plan_status in {"scheduled", "fulfilled", "anomaly"}
+        or guard_status in {"scheduled", "fulfilled", "anomaly"}
+    )
+
+
+def _planning_success(planning: dict[str, object]) -> bool:
+    if bool(planning.get("promise_without_task")) or _planning_timeout_detected(planning):
+        return False
+    plan_status = str(planning.get("plan_status") or "").strip().lower()
+    guard_status = str(planning.get("promise_guard_status") or "").strip().lower()
+    return plan_status in {"scheduled", "fulfilled"} or guard_status in {"scheduled", "fulfilled"}
+
+
+def _rate(count: int, total: int) -> Optional[float]:
+    if total <= 0:
+        return None
+    return round(count / total, 4)
+
+
+def build_planning_health_summary(
+    tasks: list[dict[str, object]],
+    *,
+    sample_size: int = PLANNING_HEALTH_SAMPLE_SIZE,
+) -> dict[str, object]:
+    candidates: list[dict[str, object]] = []
+    for task in tasks:
+        if not isinstance(task, dict):
+            continue
+        planning = task.get("planning") if isinstance(task.get("planning"), dict) else _build_planning_summary(task)
+        if not isinstance(planning, dict) or not bool(planning.get("tool_path_used")):
+            continue
+        if not _planning_health_candidate(planning):
+            continue
+        candidates.append(
+            {
+                "task_id": str(task.get("task_id") or ""),
+                "updated_at": str(task.get("updated_at") or task.get("created_at") or ""),
+                "planning": planning,
+            }
+        )
+    recent = sorted(candidates, key=lambda item: (item["updated_at"], item["task_id"]), reverse=True)[:sample_size]
+    sample_task_count = len(recent)
+    success_count = sum(1 for item in recent if _planning_success(item["planning"]))
+    timeout_count = sum(1 for item in recent if _planning_timeout_detected(item["planning"]))
+    tool_call_completion_count = sum(1 for item in recent if _planning_tool_path_completed(item["planning"]))
+    promise_without_task_count = sum(1 for item in recent if bool(item["planning"].get("promise_without_task")))
+    if sample_task_count == 0:
+        status = "unknown"
+        primary_reason = "no-recent-planning-sample"
+    elif promise_without_task_count > 0:
+        status = "error"
+        primary_reason = "promise-without-task-present"
+    elif timeout_count > 0:
+        status = "warn"
+        primary_reason = "planner-timeout-observed"
+    elif tool_call_completion_count < sample_task_count:
+        status = "warn"
+        primary_reason = "tool-path-not-fully-closed"
+    else:
+        status = "ok"
+        primary_reason = "recent-planning-sample-healthy"
+    return {
+        "status": status,
+        "primary_reason": primary_reason,
+        "sample_task_count": sample_task_count,
+        "sample_size": sample_size,
+        "success_count": success_count,
+        "timeout_count": timeout_count,
+        "tool_call_completion_count": tool_call_completion_count,
+        "promise_without_task_count": promise_without_task_count,
+        "success_rate": _rate(success_count, sample_task_count),
+        "timeout_rate": _rate(timeout_count, sample_task_count),
+        "tool_call_completion_rate": _rate(tool_call_completion_count, sample_task_count),
+        "promise_without_task_rate": _rate(promise_without_task_count, sample_task_count),
+        "sample_task_ids": [item["task_id"] for item in recent],
+    }
+
+
+def _load_archived_tasks(*, paths: TaskPaths) -> list[dict[str, object]]:
+    tasks: list[dict[str, object]] = []
+    for archived_path in sorted(paths.archive_dir.glob("*.json")):
+        payload = _load_json_if_exists(archived_path)
+        if isinstance(payload, dict):
+            tasks.append(payload)
+    return tasks
 
 
 def _build_same_session_routing_summary(task: dict[str, object]) -> Optional[dict[str, object]]:
@@ -387,12 +503,13 @@ def build_system_overview(
             stale_delivery_task_count += 1
             stale_delivery_artifact_count += stale_count
 
+    archived_payloads = _load_archived_tasks(paths=resolved_paths)
     archived_counts: Counter[str] = Counter()
-    for archived_path in sorted(resolved_paths.archive_dir.glob("*.json")):
-        archived_payload = _load_json_if_exists(archived_path) or {}
+    for archived_payload in archived_payloads:
         archived_status = archived_payload.get("status")
         if archived_status:
             archived_counts[str(archived_status)] += 1
+    planning_health = build_planning_health_summary([*inflight_statuses, *archived_payloads])
 
     return {
         "active_task_count": len(inflight_statuses),
@@ -423,6 +540,7 @@ def build_system_overview(
             "anomaly_counts": dict(sorted(planning_anomaly_counts.items())),
             "promise_guard_status_counts": dict(sorted(promise_guard_counts.items())),
             "plan_status_counts": dict(sorted(plan_status_counts.items())),
+            "health": planning_health,
         },
         "active_tasks": inflight_statuses,
     }
@@ -567,6 +685,15 @@ def render_overview_markdown(
         lines.append(f"- planning_pending_task_count: {planning['planning_pending_task_count']}")
         lines.append(f"- planning_promise_without_task_count: {planning['promise_without_task_count']}")
         lines.append(f"- planning_overdue_followup_count: {planning['overdue_followup_count']}")
+        health = planning.get("health") if isinstance(planning.get("health"), dict) else None
+        if isinstance(health, dict):
+            lines.append(f"- planning_health_status: {health['status']}")
+            lines.append(f"- planning_health_primary_reason: {health['primary_reason']}")
+            lines.append(f"- planning_health_sample_task_count: {health['sample_task_count']}")
+            lines.append(f"- planning_health_success_rate: {health['success_rate']}")
+            lines.append(f"- planning_health_timeout_rate: {health['timeout_rate']}")
+            lines.append(f"- planning_health_tool_call_completion_rate: {health['tool_call_completion_rate']}")
+            lines.append(f"- planning_health_promise_without_task_rate: {health['promise_without_task_rate']}")
         if planning["anomaly_counts"]:
             lines.append(f"- planning_anomaly_counts: {json.dumps(planning['anomaly_counts'], ensure_ascii=False)}")
     if overview["active_tasks"]:

@@ -26,7 +26,7 @@ from producer_contract import (
 )
 from silence_monitor import scan_tasks
 from task_config import load_task_system_config
-from task_status import list_inflight_statuses, render_overview_markdown, render_status_markdown
+from task_status import build_planning_health_summary, list_inflight_statuses, render_overview_markdown, render_status_markdown
 from task_state import STATUS_QUEUED, STATUS_RUNNING, TaskPaths, TaskStore, default_paths
 from taskmonitor_state import get_taskmonitor_enabled, list_taskmonitor_overrides, set_taskmonitor_enabled
 from user_status import project_user_facing_status
@@ -96,6 +96,8 @@ def render_main_health(
         f"- planning_pending_task_count: {summary['planning_pending_task_count']}",
         f"- planning_promise_without_task_count: {summary['planning_promise_without_task_count']}",
         f"- planning_overdue_followup_count: {summary['planning_overdue_followup_count']}",
+        f"- planning_health_status: {summary['planning_health_status']}",
+        f"- planning_health_timeout_count: {summary['planning_health_timeout_count']}",
         f"- failed_instruction_count: {summary['failed_instruction_count']}",
         f"- active_stale_delivery_task_count: {summary['active_stale_delivery_task_count']}",
     ]
@@ -128,6 +130,9 @@ def get_main_health_summary(
         "planning_pending_task_count": int(planning.get("planning_pending_task_count", 0) or 0),
         "planning_promise_without_task_count": int(planning.get("promise_without_task_count", 0) or 0),
         "planning_overdue_followup_count": int(planning.get("overdue_followup_count", 0) or 0),
+        "planning_health_status": str((planning.get("health") or {}).get("status") or "unknown"),
+        "planning_health_timeout_count": int(((planning.get("health") or {}).get("timeout_count") or 0)),
+        "planning_health_sample_task_count": int(((planning.get("health") or {}).get("sample_task_count") or 0)),
         "failed_instruction_count": overview["failed_instruction_count"],
         "active_stale_delivery_task_count": overview["active_stale_delivery_task_count"],
         "blocked_main_tasks": blocked_main,
@@ -227,6 +232,7 @@ def get_main_planning_summary(
     for command in suggested_next_commands:
         if command and command not in deduped_commands:
             deduped_commands.append(command)
+    planning_health = build_planning_health_summary(planning_items)
     return {
         "session_filter": normalized_session_key or "all",
         "status": status,
@@ -234,6 +240,7 @@ def get_main_planning_summary(
         "planning_pending_task_count": len(pending_items),
         "planning_anomaly_task_count": len(anomaly_items),
         "overdue_planned_followup_count": len(overdue_items),
+        "planning_health": planning_health,
         "primary_action_kind": primary_action["kind"],
         "primary_action_command": primary_action["command"],
         "requires_action": status != "ok",
@@ -259,6 +266,12 @@ def render_main_planning(
         f"- planning_pending_task_count: {summary['planning_pending_task_count']}",
         f"- planning_anomaly_task_count: {summary['planning_anomaly_task_count']}",
         f"- overdue_planned_followup_count: {summary['overdue_planned_followup_count']}",
+        f"- planning_health_status: {summary['planning_health']['status']}",
+        f"- planning_health_primary_reason: {summary['planning_health']['primary_reason']}",
+        f"- planning_health_sample_task_count: {summary['planning_health']['sample_task_count']}",
+        f"- planning_health_success_rate: {summary['planning_health']['success_rate']}",
+        f"- planning_health_timeout_rate: {summary['planning_health']['timeout_rate']}",
+        f"- planning_health_tool_call_completion_rate: {summary['planning_health']['tool_call_completion_rate']}",
         f"- primary_action_kind: {summary['primary_action_kind']}",
         f"- primary_action_command: {summary['primary_action_command'] or 'none'}",
     ]
@@ -1869,6 +1882,8 @@ def render_main_dashboard(
                 f"- continuity_risk: auto={summary['continuity']['auto_resumable_task_count']} manual={summary['continuity']['manual_review_task_count']}",
                 f"- planning_promise_without_task_count: {summary['health']['planning_promise_without_task_count']}",
                 f"- planning_overdue_followup_count: {summary['health']['planning_overdue_followup_count']}",
+                f"- planning_health_status: {summary['health']['planning_health_status']}",
+                f"- planning_health_timeout_count: {summary['health']['planning_health_timeout_count']}",
                 f"- plugin_install_drift_status: {summary['plugin_install_drift']['status']}",
                 f"- plugin_install_drift_missing_count: {summary['plugin_install_drift']['missing_in_installed_count']}",
                 f"- plugin_install_drift_extra_count: {summary['plugin_install_drift']['extra_in_installed_count']}",
@@ -1909,6 +1924,7 @@ def render_main_dashboard(
             f"- continuity_risk: auto={compact_summary['continuity_auto_resumable_task_count']} manual={compact_summary['continuity_manual_review_task_count']}",
             f"- planning_promise_without_task: {compact_summary['planning_promise_without_task_count']}",
             f"- planning_overdue_followup: {compact_summary['planning_overdue_followup_count']}",
+            f"- planning_health: {compact_summary['planning_health_summary']}",
             f"- plugin_install_drift: {compact_summary['plugin_install_drift_summary']}",
             f"- producer: {compact_summary['producer_summary']}",
             f"- channel_acceptance: {compact_summary['channel_acceptance_summary']}",
@@ -1933,6 +1949,8 @@ def render_main_dashboard(
         f"- continuity_manual_review_task_count: {summary['continuity']['manual_review_task_count']}",
         f"- planning_promise_without_task_count: {summary['health']['planning_promise_without_task_count']}",
         f"- planning_overdue_followup_count: {summary['health']['planning_overdue_followup_count']}",
+        f"- planning_health_status: {summary['health']['planning_health_status']}",
+        f"- planning_health_timeout_count: {summary['health']['planning_health_timeout_count']}",
         f"- plugin_install_drift_status: {summary['plugin_install_drift']['status']}",
         f"- plugin_install_drift_missing_count: {summary['plugin_install_drift']['missing_in_installed_count']}",
         f"- plugin_install_drift_extra_count: {summary['plugin_install_drift']['extra_in_installed_count']}",
@@ -2032,6 +2050,8 @@ def get_main_dashboard_summary(
         status = "warn"
     if health["planning_promise_without_task_count"] > 0:
         status = "error"
+    elif health["planning_health_status"] == "warn" and status == "ok":
+        status = "warn"
     action_hint = "No immediate action needed."
     action_hint_command = None
     continuity_primary_action = continuity.get("primary_action", {})
@@ -2045,6 +2065,9 @@ def get_main_dashboard_summary(
     elif health["main_active_task_count"] > 0:
         action_hint = "Review current lanes before changing queue behavior."
         action_hint_command = "python3 scripts/runtime/main_ops.py lanes --json"
+    elif health["planning_health_status"] == "warn":
+        action_hint = "Inspect planning health before relying on planner-dependent behavior."
+        action_hint_command = "python3 scripts/runtime/main_ops.py planning --json"
     elif bool(install_drift.get("requires_action")) and str(install_drift.get("primary_action_command") or "").strip():
         action_hint = "Inspect installed runtime drift before relying on local plugin runtime behavior."
         action_hint_command = str(install_drift["primary_action_command"])
@@ -2064,6 +2087,9 @@ def get_main_dashboard_summary(
         "continuity_manual_review_task_count": continuity["manual_review_task_count"],
         "planning_promise_without_task_count": health["planning_promise_without_task_count"],
         "planning_overdue_followup_count": health["planning_overdue_followup_count"],
+        "planning_health_summary": (
+            f"{health['planning_health_status']} timeouts={health['planning_health_timeout_count']}"
+        ),
         "plugin_install_drift_summary": (
             f"{install_drift['status']} missing={install_drift['missing_in_installed_count']} extra={install_drift['extra_in_installed_count']}"
         ),
@@ -2132,6 +2158,8 @@ def get_main_dashboard_summary(
         "continuity_manual_review_task_count": continuity["manual_review_task_count"],
         "planning_promise_without_task_count": health["planning_promise_without_task_count"],
         "planning_overdue_followup_count": health["planning_overdue_followup_count"],
+        "planning_health_status": health["planning_health_status"],
+        "planning_health_timeout_count": health["planning_health_timeout_count"],
         "plugin_install_drift_status": install_drift.get("status"),
         "plugin_install_drift_missing_count": int(install_drift.get("missing_in_installed_count", 0) or 0),
         "plugin_install_drift_extra_count": int(install_drift.get("extra_in_installed_count", 0) or 0),
@@ -2901,6 +2929,7 @@ def get_main_triage_summary(
     }
     focus_session_key = None
     planning_summary = report["overview"].get("planning") if isinstance(report["overview"].get("planning"), dict) else {}
+    planning_health = planning_summary.get("health") if isinstance(planning_summary.get("health"), dict) else {}
     planning_anomaly_task = next(
         (
             item
@@ -2973,6 +3002,14 @@ def get_main_triage_summary(
         }
         focus_session_key = planning_anomaly_task.get("session_key")
         next_actions.append(f"Inspect planning anomaly first: `{inspect_command}`")
+    elif str(planning_health.get("status") or "") == "warn":
+        primary_action = {
+            "kind": "inspect-planning-health",
+            "summary": "Inspect planning health before relying on planner-dependent behavior.",
+            "command": "python3 scripts/runtime/main_ops.py planning --json",
+            "session_key": None,
+        }
+        next_actions.append("Inspect planning health first: `python3 scripts/runtime/main_ops.py planning --json`")
     elif bool(install_drift.get("requires_action")) and str(install_drift.get("primary_action_command") or "").strip():
         primary_action = {
             "kind": str(install_drift.get("primary_action_kind") or "inspect-installed-runtime"),
@@ -3036,6 +3073,7 @@ def get_main_triage_summary(
             or failed_summary["retryable"]
             or failed_summary["non_retryable"]
             or failed_summary["unknown"]
+            or str(planning_health.get("status") or "") == "warn"
             or bool(install_drift.get("requires_action"))
         )
         else "ok"
@@ -3055,6 +3093,9 @@ def get_main_triage_summary(
         "blocked_main_task_count": len(blocked_main),
         "planning_promise_without_task_count": int(report["overview"].get("planning", {}).get("promise_without_task_count", 0) or 0),
         "planning_overdue_followup_count": int(report["overview"].get("planning", {}).get("overdue_followup_count", 0) or 0),
+        "planning_health_status": str(planning_health.get("status") or "unknown"),
+        "planning_health_timeout_count": int(planning_health.get("timeout_count", 0) or 0),
+        "planning_health_sample_task_count": int(planning_health.get("sample_task_count", 0) or 0),
         "retryable_failed_instruction_count": failed_summary["retryable"],
         "persistent_retryable_failed_instruction_count": failed_summary["persistent_retryable"],
         "non_retryable_failed_instruction_count": failed_summary["non_retryable"],
@@ -3102,6 +3143,9 @@ def render_main_triage(
         f"- blocked_main_task_count: {summary['blocked_main_task_count']}",
         f"- planning_promise_without_task_count: {summary['planning_promise_without_task_count']}",
         f"- planning_overdue_followup_count: {summary['planning_overdue_followup_count']}",
+        f"- planning_health_status: {summary['planning_health_status']}",
+        f"- planning_health_timeout_count: {summary['planning_health_timeout_count']}",
+        f"- planning_health_sample_task_count: {summary['planning_health_sample_task_count']}",
         f"- retryable_failed_instruction_count: {summary['retryable_failed_instruction_count']}",
         f"- persistent_retryable_failed_instruction_count: {summary['persistent_retryable_failed_instruction_count']}",
         f"- non_retryable_failed_instruction_count: {summary['non_retryable_failed_instruction_count']}",

@@ -34,11 +34,14 @@
   - progress 更新会记录轻量 `progress_update_count`，供短跟进文案使用
 - 已改进 `followup-scheduled` 的 `[wd]` 摘要 fallback：
   - 即使模型未显式给出 `followup_summary`，runtime 也会回退到基于时间表达与 follow-up message 的可读摘要
+- 已补 `LLM planning health` 最小信号：
+  - 基于 runtime truth source 投影 `recent success / timeout / tool-call completion / promise-without-task`
+  - 已进入 `task_status / health_report / main_ops planning / dashboard / triage`
 
 ## 下一个动作
 
-1. 评估并实现 `LLM planning health` 信号。
-2. 设计 `promise-without-task` 检测与 anomaly 投影。
+1. 继续扩 planning health 的真实样本覆盖与降级策略。
+2. 设计更多 `promise-without-task` 相关 anomaly 投影与 recovery 文案。
 3. 把当前 runtime 中的 compound/delayed 语义 stopgap 逐步收敛成：
    - 明确的兼容桥接
    - 而不是长期主判断路径。
