@@ -79,7 +79,17 @@ python3 scripts/runtime/main_ops.py planning
 python3 scripts/runtime/main_ops.py planning --json
 python3 scripts/runtime/planning_acceptance.py --json
 python3 scripts/runtime/planning_acceptance_suite.py --json
+python3 scripts/runtime/planning_acceptance_suite.py --dry-run --json
+python3 scripts/runtime/run_planning_acceptance_bundle.py --dry-run --json
 python3 scripts/runtime/main_ops.py plugin-install-drift --json
+```
+
+Use the `--dry-run` variants when you want to exercise the planning evidence workflow without writing records or artifacts back into the repo docs tree.
+
+If the full dry-run bundle is green and the change touches planning/runtime contracts, release-facing acceptance coverage, or the evidence workflow itself, promote it with:
+
+```bash
+python3 scripts/runtime/run_planning_acceptance_bundle.py --json --date YYYY-MM-DD
 ```
 
 Acceptance and historical records:

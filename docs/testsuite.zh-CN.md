@@ -85,6 +85,11 @@ python3 scripts/runtime/plugin_smoke.py --json
 - `python3 scripts/runtime/same_session_routing_acceptance.py --json`
 - `python3 scripts/runtime/stable_acceptance.py --json`
 
+如果只是想演练 planning 证据工作流，而不往仓库里真写 record / artifacts：
+
+- `python3 scripts/runtime/run_planning_acceptance_bundle.py --dry-run --json`
+- `python3 scripts/runtime/planning_acceptance_suite.py --dry-run --json`
+
 当前它们验证的 contract 包括：
 
 - future-first `main_user_content_mode`

@@ -50,6 +50,36 @@ class CapturePlanningAcceptanceArtifactsTests(unittest.TestCase):
             self.assertTrue(manifest["ok"])
             self.assertEqual(manifest["results"][0]["label"], "planning-acceptance")
 
+    def test_capture_artifacts_forwards_dry_run_and_workspace_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            artifacts_dir = Path(temp_dir) / "artifacts"
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+            prepared = {
+                "ok": True,
+                "record_date": "2026-04-10",
+                "dry_run": True,
+                "workspace_root": str(Path(temp_dir) / "workspace"),
+                "record_path": str(Path(temp_dir) / "workspace" / "archive" / "planning_acceptance_record_2026-04-10.md"),
+                "artifacts_dir": str(artifacts_dir),
+            }
+            with (
+                patch.object(capture_planning_acceptance_artifacts, "prepare_acceptance", return_value=prepared) as mocked_prepare,
+                patch.object(
+                    capture_planning_acceptance_artifacts.subprocess,
+                    "run",
+                    return_value=CompletedProcess(args=["cmd"], returncode=0, stdout='{"ok":true}\n', stderr=""),
+                ),
+            ):
+                payload = capture_planning_acceptance_artifacts.capture_artifacts(
+                    record_date="2026-04-10",
+                    dry_run=True,
+                    labels=["planning-acceptance"],
+                )
+
+            mocked_prepare.assert_called_once_with(record_date="2026-04-10", force=False, dry_run=True)
+            self.assertTrue(payload["dry_run"])
+            self.assertEqual(payload["workspace_root"], prepared["workspace_root"])
+
     def test_main_can_emit_json(self) -> None:
         with patch.object(
             capture_planning_acceptance_artifacts,
@@ -57,6 +87,8 @@ class CapturePlanningAcceptanceArtifactsTests(unittest.TestCase):
             return_value={
                 "ok": True,
                 "record_date": "2026-04-10",
+                "dry_run": False,
+                "workspace_root": "/tmp/workspace",
                 "record_path": "/tmp/record.md",
                 "artifacts_dir": "/tmp/artifacts",
                 "manifest_path": "/tmp/artifacts/capture_manifest.json",

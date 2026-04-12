@@ -55,6 +55,8 @@ Run these when touching real delivery behavior or planning contracts:
 
 - `python3 scripts/runtime/planning_acceptance.py --json`
 - `python3 scripts/runtime/planning_acceptance_suite.py --json`
+- `python3 scripts/runtime/planning_acceptance_suite.py --dry-run --json`
+- `python3 scripts/runtime/run_planning_acceptance_bundle.py --dry-run --json`
 - `python3 scripts/runtime/main_ops_acceptance.py --json`
 - `python3 scripts/runtime/channel_acceptance.py --json`
 - `python3 scripts/runtime/same_session_routing_acceptance.py --json`

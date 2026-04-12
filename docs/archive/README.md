@@ -20,3 +20,13 @@ This directory holds superseded, exploratory, or legacy Markdown documents that 
 - you need historical acceptance evidence
 - you want to understand an older cleanup or handoff decision
 - you are checking a dated local validation note rather than the current install guide
+
+## Planning Evidence Promotion Policy
+
+Promote a planning dry-run into a dated archive record when:
+
+- the full dry-run bundle is green
+- the run was not label-filtered
+- the current change affects planning/runtime contracts, release-facing acceptance coverage, or the planning evidence workflow
+
+Use `python3 scripts/runtime/run_planning_acceptance_bundle.py --json --date YYYY-MM-DD` for that promotion step. Existing dated archive records are preserved.

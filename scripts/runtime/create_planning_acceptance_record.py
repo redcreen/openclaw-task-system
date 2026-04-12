@@ -11,8 +11,9 @@ DOCS_DIR = Path(__file__).resolve().parents[2] / "docs"
 TEMPLATE_PATH = DOCS_DIR / "planning_acceptance_record_template.md"
 
 
-def build_record_path(record_date: str) -> Path:
-    return DOCS_DIR / "archive" / f"planning_acceptance_record_{record_date}.md"
+def build_record_path(record_date: str, *, docs_dir: Path | None = None) -> Path:
+    root = docs_dir or DOCS_DIR
+    return root / "archive" / f"planning_acceptance_record_{record_date}.md"
 
 
 def build_record_content(record_date: str, template: str) -> str:
@@ -31,9 +32,16 @@ def build_record_content(record_date: str, template: str) -> str:
     )
 
 
-def create_record(*, record_date: str, force: bool = False) -> Path:
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
-    target_path = build_record_path(record_date)
+def create_record(
+    *,
+    record_date: str,
+    force: bool = False,
+    docs_dir: Path | None = None,
+    template_path: Path | None = None,
+) -> Path:
+    source_template_path = template_path or TEMPLATE_PATH
+    template = source_template_path.read_text(encoding="utf-8")
+    target_path = build_record_path(record_date, docs_dir=docs_dir)
     target_path.parent.mkdir(parents=True, exist_ok=True)
     if target_path.exists() and not force:
         raise FileExistsError(f"Record already exists: {target_path}")

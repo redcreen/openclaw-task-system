@@ -110,6 +110,7 @@ Recommended order:
 4. `stable_acceptance.py --json`
 5. `release_gate.py --json` for broader release-facing verification
 6. `planning_acceptance_suite.py --json` when planning behavior changed
+7. `planning_acceptance_suite.py --dry-run --json` when you want to rehearse the planning evidence flow without writing repo docs
 
 Example:
 

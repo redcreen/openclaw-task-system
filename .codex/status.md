@@ -7,30 +7,30 @@
 
 ## Current Phase
 
-Post-hardening feature work is underway; the broader release gate is still green and the latest extension slice converged that gate into one explicit runtime entrypoint.
+Post-hardening feature work is underway; the broader release gate is still green and the latest extension slice made dry-run evidence promotion explicit and safe for existing archive records.
 
 ## Active Slice
 
-`broader release gate convergence`
+`dry-run evidence promotion policy`
 
 ## Current Execution Line
-- Objective: converge the broader release-facing gate into one explicit runtime entrypoint instead of relying on a remembered manual command bundle
-- Plan Link: `broader release gate convergence`
-- Runway: one checkpoint-sized release-gate automation pass across runtime scripts, docs, and sync gates
+- Objective: make the dry-run planning evidence workflow say when it must be promoted into a dated archive record
+- Plan Link: `dry-run evidence promotion policy`
+- Runway: one checkpoint-sized planning evidence policy pass across bundle/suite output, runbook wording, and archive guidance
 - Progress: `4/4` tasks complete
-- Stop Conditions: the scripted gate hides failing substeps, docs drift away from the new entrypoint, or repo / installed runtime sync falls behind the shipped operator surface
+- Stop Conditions: dry-run output leaves promotion ambiguous, partial label runs look archive-worthy, or runbook / archive docs disagree about when dated evidence is mandatory
 
 ## Execution Tasks
-- [x] EL-1 define the broader gate contract from the existing manual release-facing command bundle
-- [x] EL-2 add a structured `release_gate.py` entrypoint that keeps all failing substeps visible
-- [x] EL-3 refresh docs, devlog, and `.codex/*` so maintainers recover through the new release-gate entrypoint
-- [x] EL-4 re-sync runtime mirrors and rerun the broader gate
+- [x] EL-1 define promotion states for green full dry-runs, partial dry-runs, failed dry-runs, and repo-writing runs
+- [x] EL-2 expose that policy from bundle / suite output together with the next archive command
+- [x] EL-3 refresh runbook, archive guidance, and `.codex/*` so maintainers know when dry-run evidence must be promoted
+- [x] EL-4 verify policy output and keep the broader release-facing gate green
 
 ## Architecture Supervision
 - Signal: `green`
-- Signal Basis: `test_release_gate.py`, `release_gate.py --json`, runtime mirror, install drift, and the existing broader gate steps all stayed green after converging on the new scripted entrypoint
-- Root Cause Hypothesis: the repo already had the right release-facing checks, but maintainers still had to remember and retype an informal command bundle
-- Correct Layer: one runtime-owned gate entrypoint plus release-facing docs, tests, and runtime sync
+- Signal Basis: promotion-policy tests, safe repo-writing bundle refresh, and `release_gate.py --json` all stayed green after the archive-promotion safeguard pass
+- Root Cause Hypothesis: dry-run rehearsal now existed, but maintainers still had no executable rule for when a green rehearsal had to become dated repo evidence
+- Correct Layer: policy belongs in the bundle / suite output plus runbook and archive docs
 - Escalation Gate: continue automatically
 
 ## Current Escalation State
@@ -66,23 +66,29 @@ Post-hardening feature work is underway; the broader release gate is still green
 - `release_gate.py` now provides one structured runtime entrypoint for the broader release-facing check line
 - release-facing docs now point to `python3 scripts/runtime/release_gate.py --json` instead of requiring maintainers to reconstruct the broader gate from status notes
 - `test_release_gate.py` now proves the wrapper reports success, failure propagation, and markdown/json output
+- `prepare_planning_acceptance.py`, `capture_planning_acceptance_artifacts.py`, `run_planning_acceptance_bundle.py`, and `planning_acceptance_suite.py` now support `--dry-run`
+- planning dry-run now writes records and artifacts into a temporary workspace instead of mutating `docs/archive/` or `docs/artifacts/`
+- planning docs now point maintainers to explicit dry-run rehearsal commands for the evidence workflow
+- planning bundle / suite output now expose explicit promotion states for `ready-for-archive`, `insufficient-signal`, `blocked`, and `already-archived`
+- runbook and archive docs now say when a green dry-run must be promoted into a dated archive record
+- repo-side planning evidence promotion now refreshes artifacts without clobbering an existing dated archive record back to template content
 
 ## In Progress
 
-- selecting the next post-hardening slice after the release-gate convergence pass
-- keeping the new release-gate entrypoint aligned with stable acceptance, runtime mirror, and real-channel evidence collection as the release surface widens
+- selecting the next post-hardening slice after the dry-run evidence policy pass
+- keeping the new promotion policy aligned with real-channel evidence collection and future archive refreshes
 
 ## Blockers / Open Decisions
 
 - none currently.
 
 ## Next 3 Actions
-1. Choose the next post-hardening slice from real Feishu / Telegram evidence capture or planning bundle dry-run convergence instead of reopening already-covered helpers.
-2. Keep `release_gate.py`, `stable_acceptance.py`, and install-drift visibility aligned if release-facing checks change again.
-3. Rerun `python3 scripts/runtime/release_gate.py --json` before batching more feature-facing changes on top of this release-gate slice.
+1. Choose the next post-hardening slice from real Feishu / Telegram evidence capture instead of reopening already-covered planning evidence policy.
+2. Keep the promotion policy aligned if planning bundle capture targets or archive expectations change again.
+3. Use `python3 scripts/runtime/run_planning_acceptance_bundle.py --json --date YYYY-MM-DD` for future archive promotions and only treat `--force` as backward-compatible no-op wording.
 
 ## Development Log Capture
 
 - Trigger Level: high
 - Pending Capture: no
-- Last Entry: docs/devlog/2026-04-12-converge-broader-release-gate.md
+- Last Entry: docs/devlog/2026-04-12-preserve-archive-record-on-promotion.md

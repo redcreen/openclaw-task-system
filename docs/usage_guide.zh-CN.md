@@ -79,7 +79,17 @@ python3 scripts/runtime/main_ops.py planning
 python3 scripts/runtime/main_ops.py planning --json
 python3 scripts/runtime/planning_acceptance.py --json
 python3 scripts/runtime/planning_acceptance_suite.py --json
+python3 scripts/runtime/planning_acceptance_suite.py --dry-run --json
+python3 scripts/runtime/run_planning_acceptance_bundle.py --dry-run --json
 python3 scripts/runtime/main_ops.py plugin-install-drift --json
+```
+
+如果你想先演练 planning 证据工作流，而不把 record 或 artifacts 真写回仓库 `docs/` 目录，就用这些 `--dry-run` 入口。
+
+如果完整 dry-run bundle 全绿，而且当前改动触达 planning/runtime contract、release-facing acceptance 覆盖或 evidence workflow 本身，就继续执行：
+
+```bash
+python3 scripts/runtime/run_planning_acceptance_bundle.py --json --date YYYY-MM-DD
 ```
 
 验收与历史记录入口：

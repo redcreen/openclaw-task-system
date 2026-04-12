@@ -85,6 +85,11 @@ These are still automated, but they represent contract-level acceptance rather t
 - `python3 scripts/runtime/same_session_routing_acceptance.py --json`
 - `python3 scripts/runtime/stable_acceptance.py --json`
 
+For planning evidence rehearsal without repo-side writes:
+
+- `python3 scripts/runtime/run_planning_acceptance_bundle.py --dry-run --json`
+- `python3 scripts/runtime/planning_acceptance_suite.py --dry-run --json`
+
 They currently verify contracts such as:
 
 - future-first `main_user_content_mode`

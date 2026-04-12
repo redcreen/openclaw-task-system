@@ -29,3 +29,6 @@
 - [Archive planning acceptance evidence](2026-04-12-archive-planning-acceptance-evidence.md)
 - [Deepen main ops snapshot views](2026-04-12-deepen-main-ops-snapshot-views.md)
 - [Converge broader release gate](2026-04-12-converge-broader-release-gate.md)
+- [Add planning bundle dry-run](2026-04-12-add-planning-bundle-dry-run.md)
+- [Add dry-run evidence promotion policy](2026-04-12-add-dry-run-evidence-promotion-policy.md)
+- [Preserve archive record on promotion](2026-04-12-preserve-archive-record-on-promotion.md)

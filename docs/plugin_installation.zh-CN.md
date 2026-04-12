@@ -110,6 +110,7 @@ python3 scripts/runtime/configure_openclaw_plugin.py --write
 4. `stable_acceptance.py --json`
 5. 如果要跑更宽的 release-facing 验证，再跑 `release_gate.py --json`
 6. 如果改了 planning，再跑 `planning_acceptance_suite.py --json`
+7. 如果只是想先演练 planning 证据流程而不写仓库文档，再跑 `planning_acceptance_suite.py --dry-run --json`
 
 示例：
 

@@ -68,8 +68,14 @@ def write_capture_manifest(artifacts_dir: Path, payload: dict[str, object]) -> s
     return str(manifest_path)
 
 
-def capture_artifacts(*, record_date: str, force: bool = False, labels: Iterable[str] | None = None) -> dict[str, object]:
-    prepared = prepare_acceptance(record_date=record_date, force=force)
+def capture_artifacts(
+    *,
+    record_date: str,
+    force: bool = False,
+    dry_run: bool = False,
+    labels: Iterable[str] | None = None,
+) -> dict[str, object]:
+    prepared = prepare_acceptance(record_date=record_date, force=force, dry_run=dry_run)
     artifacts_dir = Path(str(prepared["artifacts_dir"]))
     requested = set(labels or [])
     results = []
@@ -80,6 +86,8 @@ def capture_artifacts(*, record_date: str, force: bool = False, labels: Iterable
     payload = {
         "ok": all(bool(item["ok"]) for item in results),
         "record_date": record_date,
+        "dry_run": bool(prepared.get("dry_run")),
+        "workspace_root": prepared.get("workspace_root"),
         "record_path": prepared["record_path"],
         "artifacts_dir": str(artifacts_dir),
         "results": results,
@@ -91,12 +99,21 @@ def capture_artifacts(*, record_date: str, force: bool = False, labels: Iterable
 def main() -> int:
     parser = argparse.ArgumentParser(description="Capture planning acceptance command outputs into an artifacts directory.")
     parser.add_argument("--date", dest="record_date", default=date.today().isoformat())
-    parser.add_argument("--force", action="store_true", help="Overwrite the record file if it already exists.")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Keep compatibility with older flows; existing repo archive records are preserved.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Use a temporary planning-acceptance workspace instead of docs/.",
+    )
     parser.add_argument("--json", action="store_true", help="Print structured JSON output.")
     parser.add_argument("--label", action="append", dest="labels", help="Capture only the named label. May repeat.")
     args = parser.parse_args()
 
-    payload = capture_artifacts(record_date=args.record_date, force=args.force, labels=args.labels)
+    payload = capture_artifacts(record_date=args.record_date, force=args.force, dry_run=args.dry_run, labels=args.labels)
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:

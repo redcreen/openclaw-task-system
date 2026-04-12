@@ -2,29 +2,29 @@
 
 ## Current Phase
 
-Post-hardening feature work after Phase 6 mainline closure; broader release-gate convergence is now complete and the release-facing line remains green.
+Post-hardening feature work after Phase 6 mainline closure; dry-run evidence promotion policy is now explicit, repo-side promotion preserves dated records, and the release-facing line remains green.
 
 ## Current Execution Line
-- Objective: converge the broader release-facing gate into one explicit runtime entrypoint instead of relying on a remembered manual command bundle
-- Plan Link: `broader release gate convergence`
-- Runway: one checkpoint-sized release-gate automation and doc sync pass
+- Objective: make the dry-run planning evidence workflow say when it must be promoted into a dated archive record
+- Plan Link: `dry-run evidence promotion policy`
+- Runway: one checkpoint-sized planning evidence policy pass across bundle/suite output, runbook wording, and archive guidance
 - Progress: `4/4`
-- Stop Conditions: the scripted gate hides failing substeps, docs drift away from the new entrypoint, or repo / installed runtime sync falls behind the canonical runtime tree
-- Validation: `python3 -m unittest discover -s tests -p 'test_release_gate.py' -v`, `python3 scripts/runtime/release_gate.py --json`, `python3 scripts/runtime/runtime_mirror.py --check --json`, and `python3 scripts/runtime/plugin_install_drift.py --json`
+- Stop Conditions: dry-run output leaves promotion ambiguous, partial label runs look archive-worthy, or runbook / archive docs disagree about when dated evidence is mandatory
+- Validation: `python3 -m unittest discover -s tests -p 'test_prepare_planning_acceptance.py' -v`, `python3 -m unittest discover -s tests -p 'test_run_planning_acceptance_bundle.py' -v`, `python3 -m unittest discover -s tests -p 'test_planning_acceptance_suite.py' -v`, `python3 scripts/runtime/run_planning_acceptance_bundle.py --json --date 2026-04-12`, and `python3 scripts/runtime/release_gate.py --json`
 
 ## Execution Tasks
-- [x] EL-1 define the broader gate contract from the existing manual release-facing command bundle
-- [x] EL-2 add a structured `release_gate.py` entrypoint that keeps all failing substeps visible
-- [x] EL-3 refresh docs, devlog, and `.codex/*` so maintainers recover through the new release-gate entrypoint
-- [x] EL-4 re-sync runtime mirrors and rerun the broader gate
+- [x] EL-1 define promotion states for green full dry-runs, partial dry-runs, failed dry-runs, and repo-writing runs
+- [x] EL-2 expose that policy from bundle / suite output together with the next archive command
+- [x] EL-3 refresh runbook, archive guidance, and `.codex/*` so maintainers know when dry-run evidence must be promoted
+- [x] EL-4 verify policy output and keep the broader release-facing gate green
 
 ## Architecture Supervision
 - Signal: `green`
-- Signal Basis: `test_release_gate.py`, `release_gate.py --json`, runtime mirror, install drift, and the existing broader gate steps all stayed green after converging on the new scripted entrypoint
-- Problem Class: release gate convergence
-- Root Cause Hypothesis: the repo already had the right release-facing checks, but maintainers still had to remember and retype an informal command bundle
-- Correct Layer: one runtime-owned gate entrypoint plus release-facing docs and control-surface updates
-- Rejected Shortcut: keep the manual command list only in status notes and docs without giving it a canonical executable entrypoint
+- Signal Basis: targeted planning-evidence tests, safe repo-writing bundle refresh, and `release_gate.py --json` all stayed green after the promotion safeguard
+- Problem Class: evidence promotion policy
+- Root Cause Hypothesis: dry-run rehearsal now existed, but maintainers still had no executable rule for when a green rehearsal had to become dated repo evidence
+- Correct Layer: policy belongs in the bundle / suite output plus runbook / archive docs, not as tribal knowledge
+- Rejected Shortcut: leave promotion judgment as an unwritten reviewer convention outside the shipped tooling
 - Escalation Gate: continue automatically
 
 ## Escalation Model
@@ -72,7 +72,7 @@ Post-hardening feature work after Phase 6 mainline closure; broader release-gate
   - Objective: keep dated planning evidence under `docs/archive/` and refresh one semi-real record after the expanded release-facing acceptance surface lands
   - Dependencies: `scripts/runtime/create_planning_acceptance_record.py`, `scripts/runtime/prepare_planning_acceptance.py`, planning bundle tooling, archive docs, and `stable_acceptance.py`
   - Risks: dated evidence lands in the active docs stack, or the archived record drifts behind the current acceptance helper inventory
-  - Validation: broader release gate stays green, planning record tooling writes to `docs/archive/`, and `run_planning_acceptance_bundle.py --json --date 2026-04-12 --force` succeeds
+  - Validation: broader release gate stays green, planning record tooling writes to `docs/archive/`, and `run_planning_acceptance_bundle.py --json --date 2026-04-12` succeeds without overwriting an existing dated record
   - Exit Condition: archive-first evidence workflow is enforced and the latest semi-real record reflects the current stable acceptance surface
 
 - Slice: operator UX snapshot depth
@@ -88,6 +88,20 @@ Post-hardening feature work after Phase 6 mainline closure; broader release-gate
   - Risks: maintainers skip part of the release line, docs describe a gate with no canonical command, or failing substeps become hidden behind a wrapper
   - Validation: `release_gate.py --json` passes, `test_release_gate.py` stays green, and docs point to the same canonical release-gate entrypoint
   - Exit Condition: one runtime-owned command executes the broader release-facing line and reports enough structure to show which substep failed
+
+- Slice: planning bundle dry-run convergence
+  - Objective: let maintainers rehearse the planning evidence workflow in a temporary workspace instead of writing directly into repo docs
+  - Dependencies: `create_planning_acceptance_record.py`, `prepare_planning_acceptance.py`, `capture_planning_acceptance_artifacts.py`, `run_planning_acceptance_bundle.py`, `planning_acceptance_suite.py`, and planning docs
+  - Risks: dry-run diverges from the real repo-writing flow, temp workspace paths are not discoverable, or planning docs still imply that rehearsal must modify repo docs
+  - Validation: `test_*planning_acceptance*.py` stays green, `run_planning_acceptance_bundle.py --dry-run --json` succeeds, and `planning_acceptance_suite.py --dry-run --json` succeeds
+  - Exit Condition: the planning evidence workflow can be rehearsed end-to-end in a temporary workspace and the docs point to that explicit entrypoint
+
+- Slice: dry-run evidence promotion policy
+  - Objective: make bundle / suite output and docs explicit about when a green dry-run must be promoted into a dated archive record
+  - Dependencies: `run_planning_acceptance_bundle.py`, `planning_acceptance_suite.py`, planning runbook, archive docs, and current archive-first workflow
+  - Risks: partial dry-runs get mistaken for formal evidence, or maintainers do not know when dated archive evidence is mandatory
+  - Validation: promotion-policy tests stay green, bundle / suite expose policy fields, and docs point to the same promotion rule and command
+  - Exit Condition: green full dry-runs, failed dry-runs, partial dry-runs, and repo-writing runs each surface an explicit promotion state
 
 - Slice: post-hardening feature follow-on
   - Objective: continue broader release-gate depth and real-channel evidence work on top of the tightened planning, channel, and operator acceptance baseline

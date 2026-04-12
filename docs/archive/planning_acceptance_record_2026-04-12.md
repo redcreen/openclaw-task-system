@@ -61,7 +61,7 @@ Artifacts：
 
 ```bash
 bash scripts/run_tests.sh
-python3 scripts/runtime/run_planning_acceptance_bundle.py --json --date 2026-04-12 --force
+python3 scripts/runtime/run_planning_acceptance_bundle.py --json --date 2026-04-12
 ```
 
 结果：
