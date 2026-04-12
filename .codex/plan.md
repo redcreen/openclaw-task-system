@@ -2,29 +2,29 @@
 
 ## Current Phase
 
-Post-hardening maintenance continued with a docs retrofit pass; the public bilingual docs stack is converged again and the release-facing line remains green.
+Post-hardening maintenance has rolled from docs retrofit into one explicit next milestone: a post-hardening closeout run that should execute as one long-task line.
 
 ## Current Execution Line
-- Objective: replace placeholder public docs with standalone English content, repair docs landing roles, and remove session-specific review text from durable reference docs
-- Plan Link: `docs retrofit: bilingual public docs convergence`
-- Runway: one checkpoint-sized docs convergence pass across landing docs, planning docs, and same-session routing reference pages
-- Progress: `4/4`
-- Stop Conditions: public docs still contain fake bilingual placeholders, landing-page governance remains duplicated, template pages are not copyable, or durable docs still carry session-specific review instructions
-- Validation: placeholder scan returns `total=0` and `bash scripts/run_tests.sh`
+- Objective: close the remaining post-hardening boundary work in one uninterrupted run across compound/future-first convergence, evidence depth, operator/release-facing closeout, and final docs/archive convergence
+- Plan Link: `docs/reference/openclaw-task-system/development-plan.md`
+- Runway: one long-task milestone pass instead of reopening unrelated mini-slices
+- Progress: `1/4`
+- Stop Conditions: release-facing validation fails, the work reopens architecture ownership debt, real-channel evidence changes what counts as mandatory release proof, or the milestone must be split into a new roadmap candidate
+- Validation: `bash scripts/run_tests.sh`, `python3 scripts/runtime/release_gate.py --json`, `python3 scripts/runtime/planning_acceptance_suite.py --json`, `python3 scripts/runtime/channel_acceptance.py --json`, and `python3 scripts/runtime/main_ops_acceptance.py --json`
 
 ## Execution Tasks
-- [x] EL-1 repair `docs/README*` so directory roles and markdown governance are explicit instead of duplicated or blank
-- [x] EL-2 replace placeholder English public docs with standalone, repository-relative content
-- [x] EL-3 make planning acceptance templates copyable and remove session-specific review instructions from durable reference docs
-- [x] EL-4 verify placeholder scan cleanliness and keep the broader testsuite green
+- [x] EL-1 define the next milestone in roadmap and durable project-level development plan docs
+- [ ] EL-2 close compound follow-up, future-first, and output-separation boundary drift from active docs and runtime-facing evidence
+- [ ] EL-3 deepen planning/channel/operator evidence while keeping the release-facing gates green
+- [ ] EL-4 do one final closeout pass across roadmap, test-plan, archive guidance, and control surfaces, then either close the milestone or split a new named roadmap candidate
 
 ## Architecture Supervision
 - Signal: `green`
-- Signal Basis: the placeholder scan now returns `total=0`, planning template pages render as copyable templates, and `bash scripts/run_tests.sh` passed after the docs pass
-- Problem Class: documentation convergence
-- Root Cause Hypothesis: the public docs stack had drifted into placeholder bilingual pages and duplicated landing-page governance, which made GitHub-facing docs look unfinished despite shipped runtime behavior
-- Correct Layer: fix durable docs and control-surface state directly in-repo
-- Rejected Shortcut: keep relying on cross-language placeholder jumps or chat-context instructions instead of converging the public docs
+- Signal Basis: architecture hardening is closed, the docs stack is converged again, and the next milestone is now explicitly framed as one long-task closeout line with a durable development plan
+- Problem Class: milestone execution clarity
+- Root Cause Hypothesis: post-hardening work had remained too diffuse across extension bullets and small slices, which made “later closeout” easy to defer without one milestone owner or execution line
+- Correct Layer: promote the remaining work into one named milestone with a durable plan and control-surface ownership
+- Rejected Shortcut: keep describing the remainder as generic extension work without a milestone, queue, or explicit end condition
 - Escalation Gate: continue automatically
 
 ## Escalation Model
@@ -110,12 +110,12 @@ Post-hardening maintenance continued with a docs retrofit pass; the public bilin
   - Validation: placeholder scan returns zero and `bash scripts/run_tests.sh` stays green
   - Exit Condition: public English docs stand alone, templates are copyable, durable references are free of session-specific review text, and control-surface state reflects the slice
 
-- Slice: post-hardening feature follow-on
-  - Objective: continue broader release-gate depth and real-channel evidence work on top of the tightened planning, channel, and operator acceptance baseline
-  - Dependencies: roadmap extension areas and the completed hardening / acceptance slices above
-  - Risks: new feature work lands without updating acceptance, real-channel evidence, or operator snapshot depth
-  - Validation: the next execution line names a concrete feature slice beyond anomaly acceptance
-  - Exit Condition: follow-on feature work starts from an explicit, tested extension boundary instead of generic “continue later” tracking
+- Slice: milestone 1 post-hardening closeout
+  - Objective: execute the remaining post-hardening work as one long-task milestone instead of many disconnected cleanup slices
+  - Dependencies: `docs/reference/openclaw-task-system/development-plan.md`, roadmap extension areas, planning/channel/operator acceptance helpers, and release-facing docs
+  - Risks: the milestone stays too vague, evidence depth remains thin in the highest-risk areas, or the repo keeps carrying generic “close later” language without an end condition
+  - Validation: release-facing gates stay green while EL-2 through EL-4 converge
+  - Exit Condition: the remaining work is either shipped, archived, or explicitly broken into a new named roadmap candidate
 
 ## Development Log Capture
 

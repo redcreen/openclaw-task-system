@@ -24,7 +24,7 @@
 | Phase 3-4 | 已完成 | 引入 delayed reply、watchdog、continuity、host delivery | continuity 与 scheduler 证据链 | 重启和恢复路径可解释 |
 | Phase 5 | 已完成 | 强化 dashboard、queues、lanes、triage 等运维投影 | main ops 工具链 | 用户视角与运维视角使用同一套真相 |
 | Phase 6 最小闭环 | 已完成 | 固定 planning acceptance、future-first、same-session routing 的最小闭环 | planning acceptance 工具链 | 自动化与半真实验收持续全绿 |
-| 后续收口 | 进行中 | 收紧复杂 follow-up、compound planning 和用户内容分离边界 | 现有主线稳定 | 不引入新的黑盒调度语义 |
+| Milestone 1：post-hardening 收口 | 下一里程碑 / 长任务 | 一口气收紧复杂 follow-up、compound planning、用户内容分离与 release-facing 收尾 | 现有主线稳定与 release-facing 验证入口 | 剩余事项要么已交付，要么已归档，要么被明确拆成新的 roadmap candidate |
 
 ## 里程碑流转
 
@@ -53,3 +53,4 @@ flowchart LR
 入口文档：
 
 - [workstreams/architecture-hardening/README.zh-CN.md](workstreams/architecture-hardening/README.zh-CN.md)
+- [reference/openclaw-task-system/development-plan.zh-CN.md](reference/openclaw-task-system/development-plan.zh-CN.md)

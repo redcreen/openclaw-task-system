@@ -30,6 +30,24 @@ The mainline shipped these outcomes:
 - continuity, watchdog, and recovery visibility
 - install drift visibility in doctor, ops, and stable acceptance
 
+## Current / Next / Later
+
+| Horizon | Focus | Exit Signal |
+| --- | --- | --- |
+| Current | keep Phase 0-6 and the hardening closeout stable | the testsuite, release gate, and dated evidence workflow stay green |
+| Next | execute one post-hardening closeout milestone as a single long-task line | compound/future-first boundary work, evidence depth, and operator-facing closeout converge without reopening architecture debt |
+| Later | evaluate stronger planning or steering capability without replacing the original executor path | new capability still preserves `[wd]` independence, runtime truth, and supervisor-first boundaries |
+
+## Milestones
+
+| Milestone | Status | Objective | Dependencies | Exit Condition |
+| --- | --- | --- | --- | --- |
+| Phase 0-2 | complete | establish the base task runtime, registration, state, and minimum control-plane behavior | plugin/runtime baseline wiring | long tasks use one task truth source |
+| Phase 3-4 | complete | add delayed reply, watchdog, continuity, and host delivery | continuity and scheduler evidence chain | restart and recovery flows are explainable |
+| Phase 5 | complete | strengthen dashboard, queues, lanes, triage, and operator projections | main ops toolchain | user and operator views project the same truth |
+| Phase 6 minimum closure | complete | lock planning acceptance, future-first output, and same-session routing into a minimum shipped closure | planning acceptance toolchain | automation and semi-real acceptance stay green |
+| Milestone 1: post-hardening closeout | next long task | close the remaining compound/future-first boundary work, deepen release-facing evidence, and finish operator-facing closeout | current mainline stability and release-facing validation entrypoints | remaining work is either shipped, archived, or moved into a new explicit roadmap candidate |
+
 ## Current Extension Areas
 
 Remaining work is extension work, not unfinished mainline debt:
@@ -46,6 +64,7 @@ The architecture hardening line is now closed with two explicit decisions:
 Reference:
 
 - [workstreams/architecture-hardening/README.md](workstreams/architecture-hardening/README.md)
+- [reference/openclaw-task-system/development-plan.md](reference/openclaw-task-system/development-plan.md)
 - future roadmap candidates under workstreams and todo tracking
 
 ## Delivered Subproject: Same-Session Message Routing

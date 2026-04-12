@@ -7,35 +7,35 @@
 
 ## Current Phase
 
-Documentation retrofit is complete for this slice; the bilingual landing stack is aligned again, placeholder English public docs were replaced with standalone content, and the broader release gate remained green.
+The docs retrofit slice is complete, and the repo is now rolled forward to one explicit next milestone: a post-hardening closeout run that should execute as one long-task line instead of many small cleanup slices.
 
 ## Active Slice
 
-`docs retrofit: bilingual public docs convergence`
+`milestone: post-hardening closeout`
 
 ## Current Execution Line
-- Objective: replace placeholder public docs with standalone English content, repair docs landing roles, and remove session-specific review text from durable reference pages
-- Plan Link: `docs retrofit: bilingual public docs convergence`
-- Runway: one checkpoint-sized documentation convergence pass across landing docs, planning docs, and same-session routing reference pages
-- Progress: `4/4` tasks complete
-- Stop Conditions: placeholder English pages remain in the public docs stack, docs landing still duplicates governance content, durable docs still contain session-specific review instructions, or template pages are not copyable as-is
+- Objective: close the remaining post-hardening boundary work in one uninterrupted run across compound/future-first convergence, evidence depth, operator/release-facing closeout, and final docs/archive convergence
+- Plan Link: `docs/reference/openclaw-task-system/development-plan.md`
+- Runway: one long-task milestone pass instead of reopening unrelated mini-slices
+- Progress: `1/4` tasks complete
+- Stop Conditions: release-facing validation fails, the work reopens architecture ownership debt, real-channel evidence changes what counts as mandatory release proof, or the milestone proves too broad and must be split into a new roadmap candidate
 
 ## Execution Tasks
-- [x] EL-1 repair `docs/README*` so directory roles and markdown governance are explicit instead of duplicated or blank
-- [x] EL-2 replace placeholder English pages in the public docs stack with standalone, repository-relative documentation
-- [x] EL-3 make planning acceptance templates copyable and remove session-specific review instructions from durable reference docs
-- [x] EL-4 verify the placeholder scan is clean and the project testsuite still passes
+- [x] EL-1 define the next milestone in roadmap and durable project-level development plan docs
+- [ ] EL-2 close compound follow-up, future-first, and output-separation boundary drift from active docs and runtime-facing evidence
+- [ ] EL-3 deepen planning/channel/operator evidence while keeping `bash scripts/run_tests.sh` and `release_gate.py --json` green
+- [ ] EL-4 do one final closeout pass across roadmap, test-plan, archive guidance, and control surfaces, then either close the milestone or split a new named roadmap candidate
 
 ## Architecture Supervision
 - Signal: `green`
-- Signal Basis: placeholder scan now returns `total=0`, planning template pages render as copyable templates, and `bash scripts/run_tests.sh` stayed green after the docs retrofit
-- Root Cause Hypothesis: the public docs stack had drifted into fake bilingual placeholders, duplicated landing-page governance, and one durable reference page still carried session-specific review instructions
-- Correct Layer: fix the durable docs themselves and refresh `.codex/*`; do not rely on chat context or ad hoc reviewer memory
+- Signal Basis: architecture hardening is already closed, the docs stack is converged again, and the next milestone is now explicitly framed as one long-task closeout line with a durable development plan
+- Root Cause Hypothesis: post-hardening work had remained too diffuse across extension bullets and small slices, which made “later closeout” easy to defer without one milestone owner or execution line
+- Correct Layer: promote the remaining work into one named milestone with a durable plan and control-surface ownership
 - Escalation Gate: continue automatically
 
 ## Current Escalation State
 - Current Gate: continue automatically
-- Reason: this slice changed documentation and control-surface quality without altering runtime truth-source ownership or delivery behavior
+- Reason: the next milestone is now explicit and still stays within the repo's existing runtime and release-facing boundaries
 - Next Review Trigger: review again when blockers change, the active slice rolls forward, or release-facing work begins
 
 ## Done
@@ -78,20 +78,22 @@ Documentation retrofit is complete for this slice; the bilingual landing stack i
 - durable same-session routing reference docs no longer contain a session-specific Feishu review instruction
 - placeholder-doc scan returned `total=0`
 - `bash scripts/run_tests.sh` passed after the docs retrofit
+- roadmap now exposes `Milestone 1: post-hardening closeout` as the next long-task milestone
+- `docs/reference/openclaw-task-system/development-plan.md` now gives the project a durable milestone-level execution queue below roadmap and above `.codex/plan.md`
 
 ## In Progress
 
-- selecting the next post-hardening slice after the docs retrofit pass
-- keeping the refreshed public docs aligned with future runtime and acceptance changes
+- Milestone 1 is framed and ready to run as one long-task execution line
+- the remaining work is being treated as one closeout queue instead of many unrelated mini-slices
 
 ## Blockers / Open Decisions
 
 - none currently.
 
 ## Next 3 Actions
-1. Choose the next post-hardening feature or evidence slice instead of reopening already-converged docs placeholder work.
-2. Keep public docs aligned whenever runtime routing, planning acceptance, or control-plane contracts change again.
-3. Re-run the placeholder scan plus `bash scripts/run_tests.sh` before future docs-heavy release-facing commits.
+1. Start EL-2 from the project development plan and close the compound/future-first boundary as the first real milestone work item.
+2. Keep `bash scripts/run_tests.sh` and `python3 scripts/runtime/release_gate.py --json` green while deepening evidence and operator-facing closeout.
+3. Decide at milestone end whether the repo can truly close post-hardening work or whether a smaller new roadmap candidate needs to be named explicitly.
 
 ## Development Log Capture
 

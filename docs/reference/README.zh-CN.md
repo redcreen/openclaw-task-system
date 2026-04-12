@@ -14,4 +14,5 @@
 
 ## 当前参考入口
 
+- [openclaw-task-system/development-plan.zh-CN.md](openclaw-task-system/development-plan.zh-CN.md)：项目级下一里程碑与 post-hardening 长任务执行队列
 - [session_message_routing/README.zh-CN.md](session_message_routing/README.zh-CN.md)：same-session routing 的正式 contract、阶段结论与验收范围
