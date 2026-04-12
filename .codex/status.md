@@ -7,11 +7,14 @@
 
 ## Current Phase
 
-Retrofit complete; baseline stable.
+Architecture root-cause review complete; next slice should harden lifecycle coordination and runtime ownership boundaries.
 
 ## Active Slice
 
-Select the next concrete maintenance slice after documentation and governance convergence.
+Define and execute the architecture-hardening slice for:
+
+- lifecycle coordinator ownership
+- runtime source-of-truth convergence
 
 ## Done
 
@@ -21,17 +24,28 @@ Select the next concrete maintenance slice after documentation and governance co
 - markdown governance and doc-quality issues resolved
 - `validate_gate_set.py --profile deep` passed
 - `./scripts/run_tests.sh` passed
+- architecture root-cause review completed against current runtime, plugin, ops, and acceptance surfaces
 
 ## In Progress
 
-- keep status, plan, and docs consistent with the now-converged repo
-- choose the next implementation or maintenance slice from the current roadmap boundary
+- keep public docs and `.codex/*` aligned with the now-shipped Phase 6 baseline
+- convert the project from feature-accumulation shape into a hardened platform shape
 
 ## Blockers / Open Decisions
 
-- no structural blocker; next work should focus on runtime/product priorities, not retrofit debt
+- no product blocker; the open decision is architectural:
+  - where the task lifecycle state machine should live
+  - which runtime tree is the single canonical source
+
+## Architecture Supervision
+
+- signal: `yellow`
+- root-cause hypothesis: lifecycle transitions are currently split across plugin hook orchestration, hook commands, and task-state mutation helpers, which creates repair-style logic and race windows instead of one owned state machine
+- correct layer: runtime lifecycle coordination should become a first-class boundary between plugin hook ingestion and task-state mutation
+- rejected shortcut: keep adding plugin-side repair paths and drift checks without reducing duplicated ownership
+- escalation gate: `raise but continue`
 
 ## Next 3 Actions
-1. Pick the next runtime boundary to tighten, most likely compound follow-up or future-first planning behavior.
-2. Preserve the new docs stack by updating `README / roadmap / architecture / test-plan` together when reality changes.
-3. Keep `deep` gate and `./scripts/run_tests.sh` as the default closeout checks before the next release-worthy change.
+1. Define a `lifecycle coordinator` boundary that owns `register -> progress -> finalize -> terminal control-plane` transitions.
+2. Decide the single canonical runtime source and reduce `scripts/runtime` vs `plugin/scripts/runtime` dual ownership.
+3. Preserve docs and gate quality, but treat new feature work as secondary until the lifecycle and source-of-truth boundaries are explicit.
