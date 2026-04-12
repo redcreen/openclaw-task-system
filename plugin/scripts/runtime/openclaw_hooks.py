@@ -18,7 +18,11 @@ from openclaw_bridge import (
     record_completed,
     record_failed,
     record_progress,
-    register_inbound_task,
+)
+from lifecycle_coordinator import (
+    finalize_active_lifecycle,
+    progress_active_lifecycle,
+    register_inbound_lifecycle,
 )
 from main_ops import auto_resume_watchdog_blocked_main_tasks_if_safe, cancel_main_queue_task, get_main_continuity_summary
 from silence_monitor import process_overdue_tasks
@@ -357,14 +361,13 @@ def register_from_payload(
         payload["agent_id"],
         config_path,
     )
-    decision = register_inbound_task(
+    serialized = register_inbound_lifecycle(
         _build_context(payload),
         config_path=config_path,
         observe_only=bool(payload.get("observe_only", False)),
         same_session_classifier=same_session_classifier,
         same_session_classifier_min_confidence=same_session_classifier_min_confidence,
     )
-    serialized = decision.to_payload()
     control_plane_message = None
     if isinstance(serialized.get("routing_decision"), dict):
         routing = dict(serialized["routing_decision"])
@@ -1168,13 +1171,12 @@ def progress_active_from_payload(
     task_id = active.get("task_id")
     if not task_id:
         return {"updated": False, "reason": "no-active-task"}
-    task = record_progress(
-        str(task_id),
+    return progress_active_lifecycle(
+        task_id=str(task_id),
         progress_note=payload.get("progress_note"),
         status=payload.get("status"),
         config_path=config_path,
     )
-    return {"updated": True, "task": task.to_dict()}
 
 
 def blocked_from_payload(
@@ -1308,71 +1310,21 @@ def finalize_active_from_payload(
     active = _resolve_target_task(store, payload)
     if not active:
         return {"updated": False, "reason": "no-active-task"}
-
+    result = finalize_active_lifecycle(active_task=active, payload=payload, config_path=config_path)
+    if not result.get("updated"):
+        return result
+    task_payload = result.get("task") if isinstance(result.get("task"), dict) else None
+    task_id = str((task_payload or {}).get("task_id") or active.task_id).strip()
+    task = store.load_task(task_id, allow_archive=True)
     success = bool(payload.get("success", False))
-    result_summary = str(payload.get("result_summary") or payload.get("summary") or "").strip()
-    if success:
-        last_progress_note = str(active.meta.get("last_progress_note") or "").strip()
-        has_visible_progress = bool(last_progress_note)
-        has_visible_output = bool(payload.get("has_visible_output", False))
-        normalized_summary = result_summary.lower()
-        word_count = len([part for part in normalized_summary.split() if part])
-        generic_summary = (
-            normalized_summary in GENERIC_SUCCESS_SUMMARIES
-            or result_summary.startswith("{")
-            or word_count <= 2
-        )
-        if not has_visible_progress and not has_visible_output and generic_summary:
-            touched = store.touch_task(
-                active.task_id,
-                user_visible=False,
-                meta={
-                    "finalize_skipped": True,
-                    "finalize_skipped_reason": "success-without-visible-progress",
-                    "last_result_summary": result_summary,
-                },
-            )
-            return {"updated": False, "reason": "awaiting-visible-output", "task": touched.to_dict()}
-        promise_guard = active.meta.get("planning_promise_guard")
-        tool_plan = active.meta.get("tool_followup_plan")
-        if isinstance(promise_guard, dict) and bool(promise_guard.get("expected_by_finalize", False)):
-            followup_task_id = ""
-            if isinstance(tool_plan, dict):
-                followup_task_id = str(tool_plan.get("followup_task_id") or "").strip()
-            if not followup_task_id:
-                promise_guard["status"] = "anomaly"
-                promise_guard["checked_at"] = now_iso()
-                active.meta["planning_promise_guard"] = promise_guard
-                active.meta["planning_anomaly"] = "promise-without-task"
-                active.meta["planning_anomaly_at"] = now_iso()
-                store.save_task(active)
-        if isinstance(active.meta.get("post_run_continuation_plan"), dict):
-            active.meta.pop("post_run_continuation_plan", None)
-            active.meta["legacy_post_run_continuation_ignored_at"] = now_iso()
-            active.meta["legacy_post_run_continuation_reason"] = (
-                "structured-tool-plan-required"
-            )
-            store.save_task(active)
-        completed = completed_active_from_payload(
-            {
-                "agent_id": payload["agent_id"],
-                "session_key": payload["session_key"],
-                "task_id": active.task_id,
-                "result_summary": result_summary or "agent run completed",
-            },
-            config_path=config_path,
-        )
-        return completed
-    reason = str(payload.get("reason") or payload.get("error") or "agent run failed")
-    return failed_active_from_payload(
-        {
-            "agent_id": payload["agent_id"],
-            "session_key": payload["session_key"],
-            "task_id": active.task_id,
-            "reason": reason,
-        },
-        config_path=config_path,
+    result["control_plane_message"] = _build_control_plane_message(
+        kind="task-completed" if success else "task-failed",
+        event_name="task-completed" if success else "task-failed",
+        priority="p1-task-management",
+        text=_build_terminal_message_text(task, success=success),
+        task=task,
     )
+    return result
 
 
 def should_send_short_followup_from_payload(

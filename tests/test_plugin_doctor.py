@@ -16,6 +16,7 @@ class PluginDoctorTests(unittest.TestCase):
         self.assertIn("plugin_root", names)
         self.assertIn("hooks_script", names)
         self.assertIn("config_path", names)
+        self.assertIn("repo_runtime_mirror_sync", names)
         self.assertIn("installed_runtime_sync", names)
 
     def test_build_openclaw_config_snippet_contains_plugin_entry(self) -> None:

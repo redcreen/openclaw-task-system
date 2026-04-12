@@ -284,7 +284,7 @@ test("agent_end delivers finalize failure control-plane message when runtime ret
   }
 });
 
-test("llm_output finalizes task after finalize-active skipped for delayed visible output", async () => {
+test("llm_output clears lifecycle state when runtime finalizes after delayed visible output", async () => {
   resetGlobalState();
   const { runtimeRoot, callsPath } = await createFakeRuntimeRoot({
     registerResponse: buildRegisterDecision({
@@ -296,32 +296,25 @@ test("llm_output finalizes task after finalize-active skipped for delayed visibl
       updated: true,
       task: {
         task_id: "task-health-race",
+        status: "done",
+        meta: {
+          finalize_skipped_repaired_source: "visible-progress",
+        },
+      },
+      lifecycle_transition: "finalized-after-visible-progress",
+      finalize_repaired: true,
+    },
+    finalizeActiveResponse: {
+      updated: false,
+      reason: "awaiting-visible-output",
+      task: {
+        task_id: "task-health-race",
         status: "running",
         meta: {
           finalize_skipped_reason: "success-without-visible-progress",
         },
       },
     },
-    finalizeActiveResponses: [
-      {
-        updated: false,
-        reason: "awaiting-visible-output",
-        task: {
-          task_id: "task-health-race",
-          status: "running",
-          meta: {
-            finalize_skipped_reason: "success-without-visible-progress",
-          },
-        },
-      },
-      {
-        updated: true,
-        task: {
-          task_id: "task-health-race",
-          status: "done",
-        },
-      },
-    ],
   });
   const sentMessages = [];
   const plugin = createApi(runtimeRoot, sentMessages);
@@ -378,20 +371,15 @@ test("llm_output finalizes task after finalize-active skipped for delayed visibl
 
     const hookCalls = await readHookCalls(callsPath);
     const finalizeCalls = hookCalls.filter((entry) => entry.command === "finalize-active");
-    assert.equal(finalizeCalls.length, 2);
+    assert.equal(finalizeCalls.length, 1);
     assert.equal(finalizeCalls[0]?.payload?.has_visible_output, false);
     assert.equal(finalizeCalls[0]?.payload?.result_summary, "");
-    assert.equal(finalizeCalls[1]?.payload?.has_visible_output, true);
-    assert.equal(
-      finalizeCalls[1]?.payload?.result_summary,
-      "好，这组我按标准晨测记：体重 82.95kg，血压 110/70，脉搏 77。",
-    );
 
     const debugEvents = await readDebugEvents(runtimeRoot);
-    const repairStart = debugEvents.find((entry) => entry.event === "llm_output:finalize-skipped-repair:start");
-    const repairOk = debugEvents.find((entry) => entry.event === "llm_output:finalize-skipped-repair:ok");
-    assert.equal(repairStart?.payload?.taskId, "task-health-race");
-    assert.equal(repairOk?.payload?.updated, true);
+    const lifecycleTerminal = debugEvents.find((entry) => entry.event === "llm_output:lifecycle-terminal");
+    assert.equal(lifecycleTerminal?.payload?.taskId, "task-health-race");
+    assert.equal(lifecycleTerminal?.payload?.taskStatus, "done");
+    assert.equal(lifecycleTerminal?.payload?.reason, "finalized-after-visible-progress");
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }

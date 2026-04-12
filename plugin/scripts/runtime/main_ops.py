@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 from argparse import ArgumentParser
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional

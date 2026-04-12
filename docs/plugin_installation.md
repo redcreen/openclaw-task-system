@@ -22,6 +22,7 @@ You should already have:
 - OpenClaw installed
 - `python3` available locally
 - consistent source payload under `plugin/`, `scripts/runtime/`, and `config/`
+- `scripts/runtime/` treated as the canonical runtime source, with `plugin/scripts/runtime/` as the install mirror
 
 ## Install Options
 
@@ -68,6 +69,7 @@ When local install is blocked, the current recommended approach is:
 ## Pre-Install Checks
 
 ```bash
+python3 scripts/runtime/runtime_mirror.py --check
 python3 scripts/runtime/plugin_doctor.py
 python3 scripts/runtime/plugin_smoke.py
 ```
@@ -128,3 +130,17 @@ python3 scripts/runtime/main_ops.py plugin-install-drift --json
 ```
 
 `dashboard` and `triage` now project install drift directly rather than leaving it as a hidden standalone script concern.
+
+## Source and Install Ownership
+
+Current ownership is:
+
+- `scripts/runtime/`: canonical runtime source
+- `plugin/scripts/runtime/`: install mirror bundled into the plugin payload
+- local installed runtime: deployed copy under the OpenClaw extensions directory
+
+When runtime code changes, validate the repo mirror before packaging or running the full testsuite:
+
+```bash
+python3 scripts/runtime/runtime_mirror.py --check
+```

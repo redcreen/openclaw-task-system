@@ -1814,6 +1814,59 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertFalse(finalized["updated"])
         self.assertEqual(finalized["reason"], "awaiting-visible-output")
 
+    def test_progress_active_finalizes_task_after_finalize_skip_when_visible_output_arrives(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "health",
+                "session_key": "session:delayed-visible-output",
+                "channel": "feishu",
+                "account_id": "feishu1-main",
+                "chat_id": "chat:delayed-visible-output",
+                "user_request": "对，标准晨测数据可以记录了",
+                "observe_only": True,
+            }
+        )
+        assert registration["task_id"] is not None
+        openclaw_hooks.activate_latest_from_payload(
+            {
+                "agent_id": "health",
+                "session_key": "session:delayed-visible-output",
+                "task_id": registration["task_id"],
+            }
+        )
+        finalized = openclaw_hooks.finalize_active_from_payload(
+            {
+                "agent_id": "health",
+                "session_key": "session:delayed-visible-output",
+                "task_id": registration["task_id"],
+                "success": True,
+                "result_summary": "assistant",
+            }
+        )
+        self.assertFalse(finalized["updated"])
+        self.assertEqual(finalized["reason"], "awaiting-visible-output")
+
+        updated = openclaw_hooks.progress_active_from_payload(
+            {
+                "agent_id": "health",
+                "session_key": "session:delayed-visible-output",
+                "task_id": registration["task_id"],
+                "progress_note": "[[reply_to_current]] 好，这组我按标准晨测记：体重 82.95kg，血压 110/70，脉搏 77。",
+            }
+        )
+        self.assertTrue(updated["updated"])
+        self.assertTrue(updated["finalize_repaired"])
+        self.assertEqual(updated["lifecycle_transition"], "finalized-after-visible-progress")
+        self.assertEqual(updated["task"]["status"], task_state_module.STATUS_DONE)
+        self.assertEqual(
+            updated["task"]["meta"]["result_summary"],
+            "好，这组我按标准晨测记：体重 82.95kg，血压 110/70，脉搏 77。",
+        )
+        self.assertEqual(
+            updated["task"]["meta"]["finalize_skipped_repaired_source"],
+            "visible-progress",
+        )
+
     def test_finalize_active_marks_done_for_short_success_when_visible_output_exists(self) -> None:
         registration = openclaw_hooks.register_from_payload(
             {

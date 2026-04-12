@@ -2663,80 +2663,6 @@ const taskSystemPlugin = {
     const controlPlaneLatestSupersedableMetaByTask = new Map<string, ControlPlaneBlockerMeta>();
     let controlPlaneEnqueueToken = 0;
 
-    const shouldRepairFinalizeSkippedTask = (
-      progressResult: unknown,
-    ): progressResult is {
-      task: { task_id?: string; status?: string; meta?: Record<string, unknown> };
-    } => {
-      if (!progressResult || typeof progressResult !== "object") {
-        return false;
-      }
-      const task = (progressResult as Record<string, unknown>).task;
-      if (!task || typeof task !== "object") {
-        return false;
-      }
-      const record = task as Record<string, unknown>;
-      const meta = record.meta;
-      if (!meta || typeof meta !== "object") {
-        return false;
-      }
-      return (
-        normalizeText(String(record.status || "")) === "running" &&
-        normalizeText(String((meta as Record<string, unknown>).finalize_skipped_reason || "")) ===
-          "success-without-visible-progress"
-      );
-    };
-
-    const maybeFinalizeAfterDelayedVisibleOutput = async (params: {
-      agentId: string;
-      sessionKey: string;
-      taskId?: string;
-      progressResult: unknown;
-      visibleText: string;
-      source: "llm_output" | "message_sending";
-    }): Promise<void> => {
-      if (!shouldRepairFinalizeSkippedTask(params.progressResult)) {
-        return;
-      }
-      const taskId = normalizeText(params.progressResult.task.task_id || params.taskId || "");
-      if (!taskId) {
-        return;
-      }
-      const resultSummary = sanitizeUserFacingMessage(params.visibleText).slice(0, 240);
-      if (!resultSummary) {
-        return;
-      }
-      await appendDebugLog(config, `${params.source}:finalize-skipped-repair:start`, {
-        agentId: params.agentId,
-        sessionKey: params.sessionKey,
-        taskId,
-        schedulerDecision: "entered",
-        reason: "delayed-visible-output-after-finalize-skip",
-      });
-      const finalizeResult = await callHook(api, config, "finalize-active", {
-        agent_id: params.agentId,
-        session_key: params.sessionKey,
-        task_id: taskId,
-        success: true,
-        has_visible_output: true,
-        result_summary: resultSummary,
-      });
-      await appendDebugLog(config, `${params.source}:finalize-skipped-repair:ok`, {
-        agentId: params.agentId,
-        sessionKey: params.sessionKey,
-        taskId,
-        schedulerDecision: finalizeResult?.updated ? "completed" : "noop",
-        reason: finalizeResult?.updated ? "delayed-visible-output-finalized" : "delayed-visible-output-finalize-noop",
-        updated: Boolean(finalizeResult?.updated),
-      });
-      if (finalizeResult?.updated) {
-        pendingReceipts.delete(taskId);
-        activeTaskBindings.delete(params.sessionKey);
-        recentActivationBySession.delete(params.sessionKey);
-        controlPlaneTerminalByTask.delete(taskId);
-      }
-    };
-
     api.registerTool({
       name: "ts_attach_promise_guard",
       description:
@@ -3364,6 +3290,40 @@ const taskSystemPlugin = {
         }
         pendingReceipts.delete(taskId);
       }
+    }
+
+    function isTerminalTaskStatus(status: unknown): boolean {
+      const normalized = normalizeText(status).toLowerCase();
+      return normalized === "done" || normalized === "failed" || normalized === "blocked" || normalized === "cancelled";
+    }
+
+    async function reconcileTerminalLifecycleResult(
+      source: "llm_output" | "message_sending",
+      sessionKey: string,
+      hookResult: unknown,
+    ): Promise<void> {
+      if (!hookResult || typeof hookResult !== "object") {
+        return;
+      }
+      const task = (hookResult as Record<string, unknown>).task;
+      if (!task || typeof task !== "object") {
+        return;
+      }
+      const taskRecord = task as Record<string, unknown>;
+      const taskId = normalizeText(taskRecord.task_id);
+      const taskStatus = normalizeText(taskRecord.status).toLowerCase();
+      if (!taskId || !isTerminalTaskStatus(taskStatus)) {
+        return;
+      }
+      await appendDebugLog(config, `${source}:lifecycle-terminal`, {
+        sessionKey,
+        taskId,
+        taskStatus,
+        schedulerDecision: "cleared",
+        reason:
+          normalizeText((hookResult as Record<string, unknown>).lifecycle_transition) || "runtime-lifecycle-terminal",
+      });
+      clearSessionTaskArtifacts(sessionKey);
     }
 
     async function ensureActiveTaskBinding(
@@ -4063,14 +4023,7 @@ const taskSystemPlugin = {
         task_id: activeTaskBinding?.taskId,
         progress_note: normalizeText(event.content).slice(0, 240),
       });
-      await maybeFinalizeAfterDelayedVisibleOutput({
-        agentId,
-        sessionKey,
-        taskId: activeTaskBinding?.taskId,
-        progressResult,
-        visibleText: normalizeText(event.content),
-        source: "message_sending",
-      });
+      await reconcileTerminalLifecycleResult("message_sending", sessionKey, progressResult);
       return sendingResult;
     });
 
@@ -4183,14 +4136,7 @@ const taskSystemPlugin = {
         task_id: activeTaskBinding?.taskId,
         progress_note: text.slice(0, 240),
       });
-      await maybeFinalizeAfterDelayedVisibleOutput({
-        agentId,
-        sessionKey,
-        taskId: activeTaskBinding?.taskId,
-        progressResult,
-        visibleText: text,
-        source: "llm_output",
-      });
+      await reconcileTerminalLifecycleResult("llm_output", sessionKey, progressResult);
     });
 
     api.on("agent_end", async (event, ctx) => {

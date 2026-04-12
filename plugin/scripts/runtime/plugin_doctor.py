@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from plugin_install_drift import build_install_drift_report
+from runtime_mirror import build_runtime_mirror_report
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PLUGIN_ROOT = PROJECT_ROOT / "plugin"
@@ -49,6 +50,7 @@ def resolve_plugin_entry_target() -> Path | None:
 def run_checks() -> list[CheckResult]:
     config_path = choose_config_path()
     plugin_entry_target = resolve_plugin_entry_target()
+    runtime_mirror = build_runtime_mirror_report()
     install_drift = build_install_drift_report()
     checks = [
         CheckResult("project_root", PROJECT_ROOT.exists(), str(PROJECT_ROOT)),
@@ -63,6 +65,20 @@ def run_checks() -> list[CheckResult]:
         CheckResult("plugin_runtime_entry", (PLUGIN_ROOT / "src" / "plugin" / "index.ts").exists(), str(PLUGIN_ROOT / "src" / "plugin" / "index.ts")),
         CheckResult("hooks_script", HOOKS_SCRIPT.exists(), str(HOOKS_SCRIPT)),
         CheckResult("config_path", config_path.exists(), str(config_path)),
+        CheckResult(
+            "repo_runtime_mirror_sync",
+            bool(runtime_mirror["ok"]),
+            json.dumps(
+                {
+                    "canonical_runtime_dir": runtime_mirror["canonical_runtime_dir"],
+                    "mirror_runtime_dir": runtime_mirror["mirror_runtime_dir"],
+                    "missing_in_mirror": runtime_mirror["missing_in_mirror"],
+                    "extra_in_mirror": runtime_mirror["extra_in_mirror"],
+                    "changed_files": runtime_mirror["changed_files"],
+                },
+                ensure_ascii=False,
+            ),
+        ),
         CheckResult(
             "installed_runtime_sync",
             bool(install_drift["ok"]),

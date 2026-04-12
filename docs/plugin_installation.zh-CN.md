@@ -22,6 +22,7 @@
 - 已安装 OpenClaw
 - 本地可用 `python3`
 - `plugin/`、`scripts/runtime/`、`config/` 三处 payload 保持一致
+- `scripts/runtime/` 作为 canonical runtime source，`plugin/scripts/runtime/` 作为 install mirror
 
 ## 安装方式
 
@@ -68,6 +69,7 @@ openclaw plugins install ./plugin
 ## 安装前检查
 
 ```bash
+python3 scripts/runtime/runtime_mirror.py --check
 python3 scripts/runtime/plugin_doctor.py
 python3 scripts/runtime/plugin_smoke.py
 ```
@@ -128,3 +130,17 @@ python3 scripts/runtime/main_ops.py plugin-install-drift --json
 ```
 
 现在 `dashboard / triage` 已经会直接投影 install drift，不需要只记一个独立脚本名。
+
+## Source 与 Install 的所有权
+
+当前所有权约定是：
+
+- `scripts/runtime/`：canonical runtime source
+- `plugin/scripts/runtime/`：随插件一起打包的 install mirror
+- 本地 installed runtime：OpenClaw extensions 目录下的实际部署副本
+
+当 runtime 代码变更时，打包或跑全量测试前先校验 repo mirror：
+
+```bash
+python3 scripts/runtime/runtime_mirror.py --check
+```

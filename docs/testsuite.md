@@ -114,6 +114,7 @@ bash scripts/run_tests.sh
 
 That command runs:
 
+0. runtime mirror validation
 1. Python runtime / CLI regression
 2. Node plugin / control-plane regression
 3. Plugin Doctor

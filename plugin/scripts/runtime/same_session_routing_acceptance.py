@@ -133,7 +133,10 @@ def run_same_session_routing_acceptance() -> dict[str, Any]:
             SameSessionAcceptanceStep(
                 step="same-session-steering-prestart",
                 ok=steering_second.get("routing_decision", {}).get("execution_decision") == "merge-before-start",
-                detail=json.dumps({"first": steering_first, "second": steering_second}, ensure_ascii=False),
+                detail=json.dumps(
+                    {"first": steering_first, "second": steering_second},
+                    ensure_ascii=False,
+                ),
             )
         )
 
@@ -167,7 +170,10 @@ def run_same_session_routing_acceptance() -> dict[str, Any]:
             SameSessionAcceptanceStep(
                 step="same-session-steering-safe-restart",
                 ok=running_second.get("routing_decision", {}).get("execution_decision") == "interrupt-and-restart",
-                detail=json.dumps({"first": running_first, "second": running_second}, ensure_ascii=False),
+                detail=json.dumps(
+                    {"first": running_first, "second": running_second},
+                    ensure_ascii=False,
+                ),
             )
         )
 
@@ -221,6 +227,45 @@ def run_same_session_routing_acceptance() -> dict[str, Any]:
             )
         )
 
+        stale_observed_first = register_from_payload(
+            {
+                "agent_id": "stale-observed-agent",
+                "session_key": "session:acceptance:stale-observed",
+                "channel": "feishu",
+                "account_id": "feishu-main",
+                "chat_id": "chat:acceptance:stale-observed",
+                "user_id": "ou_acceptance",
+                "user_request": "在么",
+                "observe_only": True,
+            },
+            config_path=config_path,
+        )
+        stale_observed_second = register_from_payload(
+            {
+                "agent_id": "stale-observed-agent",
+                "session_key": "session:acceptance:stale-observed",
+                "channel": "feishu",
+                "account_id": "feishu-main",
+                "chat_id": "chat:acceptance:stale-observed",
+                "user_id": "ou_acceptance",
+                "user_request": "帮我写一份简历，自己看情况写",
+                "observe_only": True,
+            },
+            config_path=config_path,
+        )
+        steps.append(
+            SameSessionAcceptanceStep(
+                step="same-session-stale-observed-takeover",
+                ok=stale_observed_second.get("task_id") == stale_observed_first.get("task_id")
+                and stale_observed_second.get("routing_decision", {}).get("execution_decision") == "merge-before-start"
+                and stale_observed_second.get("routing_decision", {}).get("reason_code") == "stale-observed-task-takeover",
+                detail=json.dumps(
+                    {"first": stale_observed_first, "second": stale_observed_second},
+                    ensure_ascii=False,
+                ),
+            )
+        )
+
         classifier_first = register_from_payload(
             {
                 "agent_id": "main",
@@ -252,7 +297,10 @@ def run_same_session_routing_acceptance() -> dict[str, Any]:
                 step="same-session-classifier-trigger",
                 ok=bool(classifier_second.get("routing_decision", {}).get("classifier_invoked"))
                 and classifier_second.get("routing_decision", {}).get("decision_source") == "classifier",
-                detail=json.dumps({"first": classifier_first, "second": classifier_second}, ensure_ascii=False),
+                detail=json.dumps(
+                    {"first": classifier_first, "second": classifier_second},
+                    ensure_ascii=False,
+                ),
             )
         )
 

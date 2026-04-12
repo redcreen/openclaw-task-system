@@ -114,6 +114,7 @@ bash scripts/run_tests.sh
 
 它会顺序执行：
 
+0. runtime mirror 校验
 1. Python runtime / CLI 回归
 2. Node plugin / control-plane 回归
 3. Plugin Doctor

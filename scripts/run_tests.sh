@@ -8,6 +8,10 @@ echo "[testsuite] OpenClaw Task System 自动化测试开始"
 echo "[testsuite] 项目根目录: $ROOT_DIR"
 
 echo
+echo "[testsuite] 0/4 Runtime mirror 校验"
+python3 "$ROOT_DIR/scripts/runtime/runtime_mirror.py" --check
+
+echo
 echo "[testsuite] 1/4 Python runtime / CLI 回归"
 python3 -m unittest discover -s "$ROOT_DIR/tests" -v
 

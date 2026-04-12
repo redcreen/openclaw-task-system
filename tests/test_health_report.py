@@ -14,6 +14,12 @@ health_report = load_runtime_module("health_report")
 
 
 class HealthReportTests(unittest.TestCase):
+    def _issue_entry_by_code(self, report: dict[str, object], code_prefix: str) -> dict[str, object]:
+        for entry in report.get("issue_entries", []):
+            if isinstance(entry, dict) and str(entry.get("code", "")).startswith(code_prefix):
+                return entry
+        raise AssertionError(f"issue entry with code prefix {code_prefix!r} not found")
+
     def setUp(self) -> None:
         self.temp_dir = Path(tempfile.mkdtemp(prefix="task-system-health-tests."))
         self.paths = task_state_module.TaskPaths.from_root(self.temp_dir)
@@ -241,7 +247,8 @@ class HealthReportTests(unittest.TestCase):
         self.assertIn("planning-overdue-followups:1", report["issues"])
         self.assertEqual(report["overview"]["planning"]["health"]["status"], "error")
         self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-promise-without-task")
-        self.assertIn("materialize a replacement follow-up", report["issue_entries"][0]["remediation"])
+        issue_entry = self._issue_entry_by_code(report, "planning-promise-without-task:")
+        self.assertIn("materialize a replacement follow-up", issue_entry["remediation"])
         self.assertIn("- planning_health_status: error", markdown)
         self.assertIn("- planning_primary_recovery_action_kind: inspect-promise-without-task", markdown)
 
@@ -273,7 +280,8 @@ class HealthReportTests(unittest.TestCase):
         self.assertEqual(report["overview"]["planning"]["health"]["status"], "warn")
         self.assertEqual(report["overview"]["planning"]["health"]["primary_reason"], "planner-timeout-observed")
         self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-planner-timeout")
-        self.assertIn("planner-owned follow-up", report["issue_entries"][0]["remediation"])
+        issue_entry = self._issue_entry_by_code(report, "planning-timeouts:")
+        self.assertIn("planner-owned follow-up", issue_entry["remediation"])
         self.assertIn("- planning_health_timeout_rate: 1.0", markdown)
         self.assertIn("- planning_primary_recovery_action_kind: inspect-planner-timeout", markdown)
 
@@ -306,7 +314,8 @@ class HealthReportTests(unittest.TestCase):
         self.assertIn("planning-missing-followup-tasks:1", report["issues"])
         self.assertEqual(report["overview"]["planning"]["health"]["primary_reason"], "followup-task-missing-present")
         self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-missing-followup-task")
-        self.assertIn("recreate or relink", report["issue_entries"][0]["remediation"])
+        issue_entry = self._issue_entry_by_code(report, "planning-missing-followup-tasks:")
+        self.assertIn("recreate or relink", issue_entry["remediation"])
         self.assertIn("- planning_followup_task_missing_count: 1", markdown)
         self.assertIn("- planning_health_followup_task_missing_rate: 1.0", markdown)
         self.assertIn("- planning_primary_recovery_action_kind: inspect-missing-followup-task", markdown)
@@ -349,7 +358,8 @@ class HealthReportTests(unittest.TestCase):
         self.assertIn("planning-overdue-materializations:1", report["issues"])
         self.assertEqual(report["overview"]["planning"]["health"]["primary_reason"], "overdue-materialization-observed")
         self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-overdue-materialization")
-        self.assertIn("late-materialized follow-up", report["issue_entries"][0]["remediation"])
+        issue_entry = self._issue_entry_by_code(report, "planning-overdue-materializations:")
+        self.assertIn("late-materialized follow-up", issue_entry["remediation"])
         self.assertIn("- planning_overdue_on_materialize_count: 1", markdown)
         self.assertIn("- planning_health_overdue_on_materialize_rate: 1.0", markdown)
         self.assertIn("- planning_primary_recovery_action_kind: inspect-overdue-materialization", markdown)
@@ -393,7 +403,8 @@ class HealthReportTests(unittest.TestCase):
 
         self.assertIn("planning-overdue-followups:1", report["issues"])
         self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-overdue-followup")
-        self.assertIn("continuation runner", report["issue_entries"][0]["remediation"])
+        issue_entry = self._issue_entry_by_code(report, "planning-overdue-followups:")
+        self.assertIn("continuation runner", issue_entry["remediation"])
 
     def test_build_health_report_uses_structured_recovery_for_pending_plan(self) -> None:
         source = self.store.register_task(
@@ -418,7 +429,8 @@ class HealthReportTests(unittest.TestCase):
 
         self.assertIn("planning-pending:1", report["issues"])
         self.assertEqual(report["planning_primary_recovery_action"]["kind"], "inspect-pending-plan")
-        self.assertIn("materializes before finalize", report["issue_entries"][0]["remediation"])
+        issue_entry = self._issue_entry_by_code(report, "planning-pending:")
+        self.assertIn("materializes before finalize", issue_entry["remediation"])
 
     def test_build_health_report_surfaces_plugin_install_drift(self) -> None:
         with patch.object(

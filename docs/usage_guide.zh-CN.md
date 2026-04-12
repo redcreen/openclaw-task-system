@@ -65,6 +65,7 @@ python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-r
 ### Planning 与 Phase 6 运维
 
 ```bash
+python3 scripts/runtime/runtime_mirror.py --check
 python3 scripts/runtime/main_ops.py planning
 python3 scripts/runtime/main_ops.py planning --json
 python3 scripts/runtime/planning_acceptance.py --json
