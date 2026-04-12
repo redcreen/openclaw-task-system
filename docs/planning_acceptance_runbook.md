@@ -13,7 +13,7 @@ For full Chinese detail, see [planning_acceptance_runbook.zh-CN.md](planning_acc
 1. validate the base runtime and plugin health
 2. run the planning acceptance helpers or bundle
 3. capture artifacts
-4. fill an acceptance record
+4. fill an acceptance record under `docs/archive/`
 5. write back conclusions and next steps
 
 ## Main Entry Points

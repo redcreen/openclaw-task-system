@@ -80,6 +80,8 @@ python3 scripts/runtime/plugin_smoke.py --json
 
 - `python3 scripts/runtime/planning_acceptance.py --json`
 - `python3 scripts/runtime/planning_acceptance_suite.py --json`
+- `python3 scripts/runtime/main_ops_acceptance.py --json`
+- `python3 scripts/runtime/channel_acceptance.py --json`
 - `python3 scripts/runtime/same_session_routing_acceptance.py --json`
 - `python3 scripts/runtime/stable_acceptance.py --json`
 
@@ -87,16 +89,38 @@ python3 scripts/runtime/plugin_smoke.py --json
 
 - future-first `main_user_content_mode`
 - planning materialization 与 anomaly projection
+- `dashboard / triage / continuity` 之间的 operator-facing recovery guidance 与短快照视图
+- channel rollout matrix、session focus 与 fallback-channel boundary
 - same-session routing decision 与 receipt
 - installed runtime sync 与稳定发布预期
+
+## 更宽的发布门禁
+
+当改动已经进入 release-facing 范围，而不只是基础回归时，使用：
+
+```bash
+python3 scripts/runtime/release_gate.py --json
+```
+
+它会串起：
+
+- `bash scripts/run_tests.sh`
+- `python3 scripts/runtime/main_ops_acceptance.py --json`
+- `python3 scripts/runtime/stable_acceptance.py --json`
+- `python3 scripts/runtime/runtime_mirror.py --check --json`
+- `python3 scripts/runtime/plugin_install_drift.py --json`
 
 ## 半真实 / 人工检查
 
 这些很重要，但不属于默认必须全绿的自动化层：
 
 - 真实 Feishu / Telegram 交互
+- `dashboard --compact`
 - `dashboard --json`
+- `triage --compact`
 - `triage --json`
+- `continuity --compact`
+- `continuity --only-issues`
 - `planning --json`
 - `continuity --json`
 - `queues --json`
@@ -119,3 +143,5 @@ bash scripts/run_tests.sh
 2. Node plugin / control-plane 回归
 3. Plugin Doctor
 4. Plugin Smoke
+
+如果改动触达 release-facing runtime 行为，再额外跑 `python3 scripts/runtime/release_gate.py --json`。

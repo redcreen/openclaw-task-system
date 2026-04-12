@@ -7,37 +7,35 @@
 
 ## Current Phase
 
-Architecture hardening is now closed; canonical runtime source and lifecycle ownership are explicit.
+Post-hardening feature work is underway; the broader release gate is still green and the latest extension slice converged that gate into one explicit runtime entrypoint.
 
 ## Active Slice
 
-`runtime source-of-truth convergence`
+`broader release gate convergence`
 
 ## Current Execution Line
-- Objective: formalize `scripts/runtime/` as the canonical editable runtime tree, make `plugin/scripts/runtime/` a strict synchronized mirror, and close architecture hardening with explicit tooling and docs
-- Plan Link: `runtime source-of-truth convergence`
-- Runway: one checkpoint-sized convergence pass across runtime tooling, install path, maintainer docs, workstream docs, and `.codex/*`
-- Progress: `6/6` tasks complete
-- Stop Conditions: runtime mirror enforcement regresses, install path no longer protects against mirror drift, or source ownership remains ambiguous in maintainer docs
+- Objective: converge the broader release-facing gate into one explicit runtime entrypoint instead of relying on a remembered manual command bundle
+- Plan Link: `broader release gate convergence`
+- Runway: one checkpoint-sized release-gate automation pass across runtime scripts, docs, and sync gates
+- Progress: `4/4` tasks complete
+- Stop Conditions: the scripted gate hides failing substeps, docs drift away from the new entrypoint, or repo / installed runtime sync falls behind the shipped operator surface
 
 ## Execution Tasks
-- [x] EL-1 refresh the architecture-retrofit note and control surface around the canonical-source decision
-- [x] EL-2 formalize `scripts/runtime/` as the canonical editable runtime tree in repo docs and maintainer guidance
-- [x] EL-3 make install/doctor/test entrypoints enforce the synchronized mirror rule
-- [x] EL-4 align `README`, architecture docs, roadmap, and architecture-hardening workstream with the new ownership rule
-- [x] EL-5 record the decision in `docs/devlog/` and close architecture-hardening ambiguity in `.codex/*`
-- [x] EL-6 rerun `deep` and `./scripts/run_tests.sh`
+- [x] EL-1 define the broader gate contract from the existing manual release-facing command bundle
+- [x] EL-2 add a structured `release_gate.py` entrypoint that keeps all failing substeps visible
+- [x] EL-3 refresh docs, devlog, and `.codex/*` so maintainers recover through the new release-gate entrypoint
+- [x] EL-4 re-sync runtime mirrors and rerun the broader gate
 
 ## Architecture Supervision
 - Signal: `green`
-- Signal Basis: lifecycle ownership and canonical runtime source ownership are now explicit in code-entry tooling, docs, and control surfaces
-- Root Cause Hypothesis: the remaining architecture debt was not missing code paths but missing ownership clarity between canonical runtime source and install payload mirror
-- Correct Layer: runtime mirror tooling, install/doctor/test entrypoints, architecture docs, and control surfaces
+- Signal Basis: `test_release_gate.py`, `release_gate.py --json`, runtime mirror, install drift, and the existing broader gate steps all stayed green after converging on the new scripted entrypoint
+- Root Cause Hypothesis: the repo already had the right release-facing checks, but maintainers still had to remember and retype an informal command bundle
+- Correct Layer: one runtime-owned gate entrypoint plus release-facing docs, tests, and runtime sync
 - Escalation Gate: continue automatically
 
 ## Current Escalation State
 - Current Gate: continue automatically
-- Reason: the architecture hardening slice has converged; remaining work is feature-facing rather than boundary-repair work
+- Reason: this slice deepened operator visibility without changing the underlying runtime truth source or recovery ownership
 - Next Review Trigger: review again when blockers change, the active slice rolls forward, or release-facing work begins
 
 ## Done
@@ -52,23 +50,39 @@ Architecture hardening is now closed; canonical runtime source and lifecycle own
 - tests, doctor, and install paths all validate the runtime mirror rule before shipping or local install succeeds
 - docs, roadmap, workstream notes, and retrofit notes now describe the same runtime-source ownership rule
 - `./scripts/run_tests.sh` passed after the lifecycle ownership refactor
+- `planning_acceptance.py` now validates `promise-without-task`, `planner-timeout`, and `followup-task-missing` as contract-level anomaly cases
+- planning acceptance markdown and tests now track the expanded anomaly-recovery step inventory
+- `channel_acceptance.py` now exposes standalone contract-level samples for channel matrix, session focus, and observed-channel fallback behavior
+- `stable_acceptance.py` now treats channel acceptance samples as a first-class release-facing step
+- `main_ops_acceptance.py` now exposes standalone operator-facing samples for dashboard focus, planning recovery projection, and watchdog auto-resume guidance
+- `stable_acceptance.py` now treats main-ops acceptance as a first-class release-facing step
+- `bash scripts/run_tests.sh` is green again after the planning, channel, and operator acceptance expansions
+- planning acceptance record tooling now writes dated records to `docs/archive/`
+- a fresh semi-real planning acceptance record was archived at `docs/archive/planning_acceptance_record_2026-04-12.md`
+- `main_ops.py continuity` now exposes `--compact` and `--only-issues` operator snapshots from the same runbook truth as the full report
+- `main_ops.py triage` now exposes `--compact` for shorter operator duty views
+- `main_ops_acceptance.py` now proves the operator snapshot contract as a release-facing sample
+- `bash scripts/run_tests.sh` is green after the operator snapshot UX expansion
+- `release_gate.py` now provides one structured runtime entrypoint for the broader release-facing check line
+- release-facing docs now point to `python3 scripts/runtime/release_gate.py --json` instead of requiring maintainers to reconstruct the broader gate from status notes
+- `test_release_gate.py` now proves the wrapper reports success, failure propagation, and markdown/json output
 
 ## In Progress
 
-- preparing the first post-hardening feature slice from cleaner runtime boundaries
-- watching for any feature work that tries to reintroduce plugin-side lifecycle or runtime-source drift
+- selecting the next post-hardening slice after the release-gate convergence pass
+- keeping the new release-gate entrypoint aligned with stable acceptance, runtime mirror, and real-channel evidence collection as the release surface widens
 
 ## Blockers / Open Decisions
 
 - none currently.
 
 ## Next 3 Actions
-1. Start the first post-hardening feature slice from the existing roadmap extension areas instead of continuing architecture cleanup.
-2. Keep `runtime_mirror.py --check`, `plugin_doctor.py`, and install flow aligned if packaging changes in future work.
-3. Watch for any new plugin-side lifecycle repair logic; treat that as an architecture regression instead of a local fix.
+1. Choose the next post-hardening slice from real Feishu / Telegram evidence capture or planning bundle dry-run convergence instead of reopening already-covered helpers.
+2. Keep `release_gate.py`, `stable_acceptance.py`, and install-drift visibility aligned if release-facing checks change again.
+3. Rerun `python3 scripts/runtime/release_gate.py --json` before batching more feature-facing changes on top of this release-gate slice.
 
 ## Development Log Capture
 
 - Trigger Level: high
 - Pending Capture: no
-- Last Entry: docs/devlog/2026-04-12-close-runtime-source-of-truth-convergence.md
+- Last Entry: docs/devlog/2026-04-12-converge-broader-release-gate.md

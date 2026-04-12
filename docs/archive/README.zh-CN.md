@@ -9,6 +9,7 @@
 ## 当前内容
 
 - `planning_acceptance_record_2026-04-09.*`：带日期的验收样例
+- `planning_acceptance_record_2026-04-12.*`：acceptance helper 扩展后的半真实验收刷新记录
 - `planning_acceptance_handoff.*`：历史交接快照
 - `planning_acceptance_commit_plan.*`：旧的提交拆分建议
 - `cleanup_commit_plan.*`：一次性整改拆分方案

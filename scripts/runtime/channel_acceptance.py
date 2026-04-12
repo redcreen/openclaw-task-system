@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+from dataclasses import asdict, dataclass
 from typing import Optional
+from typing import Any
 
 from producer_contract import (
     build_channel_producer_contract,
@@ -17,6 +20,13 @@ ROLLOUT_STATUS_ACCEPTED_WITH_BOUNDARY = "accepted-with-boundary"
 
 ACCEPTANCE_SCOPE_RECEIVE_SIDE = "receive-side-contract"
 ACCEPTANCE_SCOPE_DISPATCH_SIDE = "dispatch-side-contract"
+
+
+@dataclass(frozen=True)
+class ChannelAcceptanceStep:
+    step: str
+    ok: bool
+    detail: str
 
 
 def build_channel_acceptance_entry(
@@ -118,6 +128,74 @@ def build_channel_acceptance_summary(
     }
 
 
+def run_channel_acceptance() -> dict[str, Any]:
+    steps: list[ChannelAcceptanceStep] = []
+
+    matrix_summary = build_channel_acceptance_summary()
+    steps.append(
+        ChannelAcceptanceStep(
+            step="channel-matrix-contract",
+            ok=bool(matrix_summary.get("phase_complete"))
+            and bool(matrix_summary.get("channels_meet_current_contract"))
+            and int(matrix_summary.get("channel_count") or 0) == len(known_channels())
+            and set(matrix_summary.get("validated_channels") or []) == {"feishu"}
+            and set(matrix_summary.get("bounded_channels") or []) == {"telegram", "webchat"}
+            and set(matrix_summary.get("receive_time_gap_channels") or []) == {"telegram", "webchat"},
+            detail=json.dumps(matrix_summary, ensure_ascii=False),
+        )
+    )
+
+    feishu_session_key = "agent:main:feishu:direct:ou_acceptance"
+    feishu_focus = build_channel_acceptance_summary(session_key=feishu_session_key)
+    steps.append(
+        ChannelAcceptanceStep(
+            step="feishu-session-focus-contract",
+            ok=str(feishu_focus.get("focus_channel") or "") == "feishu"
+            and str(feishu_focus.get("focus_rollout_status") or "") == ROLLOUT_STATUS_VALIDATED
+            and str(feishu_focus.get("focus_producer_mode") or "") == "receive-side-producer"
+            and int(feishu_focus.get("channel_count") or 0) == 1
+            and str(((feishu_focus.get("entries") or [{}])[0]).get("acceptance_scope") or "") == ACCEPTANCE_SCOPE_RECEIVE_SIDE,
+            detail=json.dumps(feishu_focus, ensure_ascii=False),
+        )
+    )
+
+    telegram_session_key = "agent:main:telegram:direct:chat_123"
+    telegram_focus = build_channel_acceptance_summary(session_key=telegram_session_key)
+    steps.append(
+        ChannelAcceptanceStep(
+            step="telegram-session-focus-contract",
+            ok=str(telegram_focus.get("focus_channel") or "") == "telegram"
+            and str(telegram_focus.get("focus_rollout_status") or "") == ROLLOUT_STATUS_ACCEPTED_WITH_BOUNDARY
+            and str(telegram_focus.get("focus_producer_mode") or "") == "dispatch-side-priority-only"
+            and int(telegram_focus.get("channel_count") or 0) == 1
+            and str(((telegram_focus.get("entries") or [{}])[0]).get("acceptance_scope") or "")
+            == ACCEPTANCE_SCOPE_DISPATCH_SIDE,
+            detail=json.dumps(telegram_focus, ensure_ascii=False),
+        )
+    )
+
+    observed_fallback = build_channel_acceptance_summary(
+        session_key="session:acceptance:channel:fallback",
+        observed_channels=["sms-gateway"],
+    )
+    steps.append(
+        ChannelAcceptanceStep(
+            step="observed-channel-fallback-contract",
+            ok=str(observed_fallback.get("focus_channel") or "") == "sms-gateway"
+            and str(observed_fallback.get("focus_rollout_status") or "") == ROLLOUT_STATUS_ACCEPTED_WITH_BOUNDARY
+            and str(observed_fallback.get("focus_producer_mode") or "") == "dispatch-side-priority-only"
+            and int(observed_fallback.get("channel_count") or 0) == 1
+            and str(((observed_fallback.get("entries") or [{}])[0]).get("channel") or "") == "sms-gateway",
+            detail=json.dumps(observed_fallback, ensure_ascii=False),
+        )
+    )
+
+    return {
+        "ok": all(step.ok for step in steps),
+        "steps": [asdict(step) for step in steps],
+    }
+
+
 def render_channel_acceptance_summary(summary: dict[str, object]) -> str:
     lines = [
         "# Channel Acceptance",
@@ -151,3 +229,24 @@ def render_channel_acceptance_summary(summary: dict[str, object]) -> str:
             lines.append(f"  summary: {entry.get('summary')}")
             lines.append(f"  limitation: {entry.get('limitation_summary')}")
     return "\n".join(lines) + "\n"
+
+
+def render_markdown(payload: dict[str, Any]) -> str:
+    lines = ["# Channel Acceptance Samples", ""]
+    lines.append(f"- ok: {payload['ok']}")
+    for step in payload["steps"]:
+        status = "ok" if step["ok"] else "failed"
+        lines.append(f"- {step['step']}: {status}")
+        lines.append(f"  detail: {step['detail']}")
+    return "\n".join(lines) + "\n"
+
+
+if __name__ == "__main__":
+    import sys
+
+    args = sys.argv[1:]
+    payload = run_channel_acceptance()
+    if args and args[0] == "--json":
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(render_markdown(payload), end="")

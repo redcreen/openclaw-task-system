@@ -18,7 +18,7 @@ class PreparePlanningAcceptanceTests(unittest.TestCase):
     def test_prepare_acceptance_creates_record_and_artifacts_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             docs_dir = Path(temp_dir)
-            record_path = docs_dir / "planning_acceptance_record_2026-04-10.md"
+            record_path = docs_dir / "archive" / "planning_acceptance_record_2026-04-10.md"
             with (
                 patch.object(prepare_planning_acceptance, "DOCS_DIR", docs_dir),
                 patch.object(prepare_planning_acceptance, "create_record", return_value=record_path),
@@ -35,7 +35,8 @@ class PreparePlanningAcceptanceTests(unittest.TestCase):
     def test_prepare_acceptance_reuses_existing_record(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             docs_dir = Path(temp_dir)
-            record_path = docs_dir / "planning_acceptance_record_2026-04-10.md"
+            record_path = docs_dir / "archive" / "planning_acceptance_record_2026-04-10.md"
+            record_path.parent.mkdir(parents=True, exist_ok=True)
             record_path.write_text("existing\n", encoding="utf-8")
             with (
                 patch.object(prepare_planning_acceptance, "DOCS_DIR", docs_dir),
@@ -50,7 +51,7 @@ class PreparePlanningAcceptanceTests(unittest.TestCase):
     def test_main_can_emit_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             docs_dir = Path(temp_dir)
-            record_path = docs_dir / "planning_acceptance_record_2026-04-10.md"
+            record_path = docs_dir / "archive" / "planning_acceptance_record_2026-04-10.md"
             artifacts_dir = docs_dir / "artifacts" / "planning_acceptance_2026-04-10"
             artifacts_dir.mkdir(parents=True, exist_ok=True)
             with (

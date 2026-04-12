@@ -108,13 +108,15 @@ python3 scripts/runtime/configure_openclaw_plugin.py --write
 2. `plugin_smoke.py`
 3. `main_ops.py dashboard --json`
 4. `stable_acceptance.py --json`
-5. 如果改了 planning，再跑 `planning_acceptance_suite.py --json`
+5. 如果要跑更宽的 release-facing 验证，再跑 `release_gate.py --json`
+6. 如果改了 planning，再跑 `planning_acceptance_suite.py --json`
 
 示例：
 
 ```bash
 python3 scripts/runtime/main_ops.py dashboard --json
 python3 scripts/runtime/stable_acceptance.py --json
+python3 scripts/runtime/release_gate.py --json
 python3 scripts/runtime/planning_acceptance_suite.py --json
 python3 scripts/runtime/main_ops.py plugin-install-drift --json
 ```

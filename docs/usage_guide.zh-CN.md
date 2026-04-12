@@ -38,9 +38,11 @@
 ```bash
 python3 scripts/runtime/main_ops.py health
 python3 scripts/runtime/main_ops.py dashboard
+python3 scripts/runtime/main_ops.py dashboard --compact
 python3 scripts/runtime/main_ops.py dashboard --json
 python3 scripts/runtime/main_ops.py dashboard --only-issues
 python3 scripts/runtime/main_ops.py triage
+python3 scripts/runtime/main_ops.py triage --compact
 python3 scripts/runtime/main_ops.py triage --json
 ```
 
@@ -57,10 +59,17 @@ python3 scripts/runtime/main_ops.py lanes --json
 
 ```bash
 python3 scripts/runtime/main_ops.py continuity
+python3 scripts/runtime/main_ops.py continuity --compact
+python3 scripts/runtime/main_ops.py continuity --only-issues
 python3 scripts/runtime/main_ops.py continuity --json
 python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe --dry-run --json
 python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run
 ```
+
+日常值守时优先用这两个快照参数：
+
+- `--compact` 用于快速扫一眼当前值守状态
+- `--only-issues` 只保留 continuity 里真正需要动作的项
 
 ### Planning 与 Phase 6 运维
 
@@ -113,3 +122,11 @@ bash scripts/run_tests.sh
 ```bash
 python3 scripts/runtime/stable_acceptance.py --json
 ```
+
+更宽的发布门禁：
+
+```bash
+python3 scripts/runtime/release_gate.py --json
+```
+
+`release_gate.py` 会把基础 testsuite、operator acceptance、stable acceptance、runtime mirror 和 install drift 检查收口成一份结构化结果，避免继续靠手工串命令。

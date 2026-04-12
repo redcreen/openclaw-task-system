@@ -18,6 +18,7 @@ class CreatePlanningAcceptanceRecordTests(unittest.TestCase):
     def test_create_record_writes_dated_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             docs_dir = Path(temp_dir)
+            archive_dir = docs_dir / "archive"
             template_path = docs_dir / "planning_acceptance_record_template.md"
             template_path.write_text("# Planning Acceptance Record Template\n\n- 日期：\n", encoding="utf-8")
             with (
@@ -26,10 +27,12 @@ class CreatePlanningAcceptanceRecordTests(unittest.TestCase):
             ):
                 target_path = create_planning_acceptance_record.create_record(record_date="2026-04-10")
 
-            self.assertEqual(target_path, docs_dir / "planning_acceptance_record_2026-04-10.md")
+            self.assertEqual(target_path, archive_dir / "planning_acceptance_record_2026-04-10.md")
             content = target_path.read_text(encoding="utf-8")
             self.assertIn("# Planning Acceptance Record 2026-04-10", content)
             self.assertIn("本记录由 `create_planning_acceptance_record.py` 基于模板生成", content)
+            self.assertIn("../planning_acceptance_record_template.md", content)
+            self.assertIn("../planning_acceptance_runbook.md", content)
             self.assertEqual(content.count("# Planning Acceptance Record 2026-04-10"), 1)
 
     def test_create_record_rejects_existing_file_without_force(self) -> None:
@@ -37,7 +40,8 @@ class CreatePlanningAcceptanceRecordTests(unittest.TestCase):
             docs_dir = Path(temp_dir)
             template_path = docs_dir / "planning_acceptance_record_template.md"
             template_path.write_text("# Planning Acceptance Record Template\n", encoding="utf-8")
-            existing_path = docs_dir / "planning_acceptance_record_2026-04-10.md"
+            existing_path = docs_dir / "archive" / "planning_acceptance_record_2026-04-10.md"
+            existing_path.parent.mkdir(parents=True, exist_ok=True)
             existing_path.write_text("existing\n", encoding="utf-8")
             with (
                 patch.object(create_planning_acceptance_record, "DOCS_DIR", docs_dir),
@@ -62,7 +66,7 @@ class CreatePlanningAcceptanceRecordTests(unittest.TestCase):
 
             output = buffer.getvalue()
             self.assertEqual(exit_code, 0)
-            self.assertIn("planning_acceptance_record_2026-04-10.md", output)
+            self.assertIn("archive/planning_acceptance_record_2026-04-10.md", output)
             self.assertIn("Run: python3 scripts/runtime/planning_acceptance.py --json", output)
 
     def test_main_can_emit_json_payload(self) -> None:
@@ -83,7 +87,7 @@ class CreatePlanningAcceptanceRecordTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertTrue(payload["ok"])
             self.assertEqual(payload["record_date"], "2026-04-10")
-            self.assertIn("planning_acceptance_record_2026-04-10.md", payload["record_path"])
+            self.assertIn("archive/planning_acceptance_record_2026-04-10.md", payload["record_path"])
             self.assertIn("Run: python3 scripts/runtime/planning_acceptance.py --json", payload["next_steps"])
             self.assertEqual(payload["created"], True)
 
@@ -92,7 +96,8 @@ class CreatePlanningAcceptanceRecordTests(unittest.TestCase):
             docs_dir = Path(temp_dir)
             template_path = docs_dir / "planning_acceptance_record_template.md"
             template_path.write_text("# Planning Acceptance Record Template\n", encoding="utf-8")
-            existing_path = docs_dir / "planning_acceptance_record_2026-04-10.md"
+            existing_path = docs_dir / "archive" / "planning_acceptance_record_2026-04-10.md"
+            existing_path.parent.mkdir(parents=True, exist_ok=True)
             existing_path.write_text("existing\n", encoding="utf-8")
             with (
                 patch.object(create_planning_acceptance_record, "DOCS_DIR", docs_dir),

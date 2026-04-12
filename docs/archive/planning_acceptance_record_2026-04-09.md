@@ -6,11 +6,11 @@
 
 使用模板：
 
-- [planning_acceptance_record_template.md](./planning_acceptance_record_template.md)
+- [planning_acceptance_record_template.md](../planning_acceptance_record_template.md)
 
 参考 runbook：
 
-- [planning_acceptance_runbook.md](./planning_acceptance_runbook.md)
+- [planning_acceptance_runbook.md](../planning_acceptance_runbook.md)
 
 ## 1. 基本信息
 

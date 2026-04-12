@@ -16,12 +16,16 @@ def build_artifacts_dir(record_date: str) -> Path:
     return DOCS_DIR / "artifacts" / f"planning_acceptance_{record_date}"
 
 
+def build_record_path(record_date: str) -> Path:
+    return DOCS_DIR / "archive" / f"planning_acceptance_record_{record_date}.md"
+
+
 def prepare_acceptance(*, record_date: str, force: bool = False) -> dict[str, object]:
     reused_existing_record = False
     try:
         record_path = create_record(record_date=record_date, force=force)
     except FileExistsError:
-        record_path = DOCS_DIR / f"planning_acceptance_record_{record_date}.md"
+        record_path = build_record_path(record_date)
         reused_existing_record = True
     artifacts_dir = build_artifacts_dir(record_date)
     artifacts_dir.mkdir(parents=True, exist_ok=True)

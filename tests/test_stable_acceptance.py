@@ -25,11 +25,8 @@ class StableAcceptanceTests(unittest.TestCase):
             patch.object(stable_acceptance, "run_main_acceptance", return_value={"ok": True}),
             patch.object(stable_acceptance, "run_planning_acceptance", return_value={"ok": True}),
             patch.object(stable_acceptance, "run_same_session_routing_acceptance", return_value={"ok": True}),
-            patch.object(
-                stable_acceptance,
-                "build_channel_acceptance_summary",
-                return_value={"phase_complete": True, "channels_meet_current_contract": True},
-            ),
+            patch.object(stable_acceptance, "run_channel_acceptance", return_value={"ok": True}),
+            patch.object(stable_acceptance, "run_main_ops_acceptance", return_value={"ok": True}),
             patch.object(stable_acceptance, "build_health_report", return_value={"status": "ok"}),
         ):
             return stable_acceptance.run_stable_acceptance()
@@ -47,6 +44,7 @@ class StableAcceptanceTests(unittest.TestCase):
                 "planning-acceptance",
                 "same-session-routing-acceptance",
                 "channel-acceptance",
+                "main-ops-acceptance",
                 "retry-failed-instructions",
                 "health-report-clean",
             ],

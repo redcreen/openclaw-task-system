@@ -34,6 +34,22 @@ class ChannelAcceptanceTests(unittest.TestCase):
         self.assertIn("- phase_status: complete", rendered)
         self.assertIn("feishu", rendered)
 
+    def test_run_channel_acceptance_covers_sample_contracts(self) -> None:
+        payload = channel_acceptance.run_channel_acceptance()
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(len(payload["steps"]), 4)
+        self.assertTrue(all(step["ok"] for step in payload["steps"]))
+
+    def test_render_markdown_includes_sample_steps(self) -> None:
+        rendered = channel_acceptance.render_markdown(channel_acceptance.run_channel_acceptance())
+
+        self.assertIn("# Channel Acceptance Samples", rendered)
+        self.assertIn("- channel-matrix-contract: ok", rendered)
+        self.assertIn("- feishu-session-focus-contract: ok", rendered)
+        self.assertIn("- telegram-session-focus-contract: ok", rendered)
+        self.assertIn("- observed-channel-fallback-contract: ok", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

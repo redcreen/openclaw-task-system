@@ -9,10 +9,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from channel_acceptance import build_channel_acceptance_summary
+from channel_acceptance import run_channel_acceptance
 from health_report import build_health_report
 from instruction_executor import retry_failed_instructions
 from main_acceptance import run_main_acceptance
+from main_ops_acceptance import run_main_ops_acceptance
 from planning_acceptance import run_planning_acceptance
 from same_session_routing_acceptance import run_same_session_routing_acceptance
 from plugin_doctor import run_checks
@@ -101,13 +102,21 @@ def run_stable_acceptance() -> dict[str, Any]:
             )
         )
 
-        channel_acceptance = build_channel_acceptance_summary()
+        channel_acceptance = run_channel_acceptance()
         steps.append(
             StableAcceptanceStep(
                 step="channel-acceptance",
-                ok=bool(channel_acceptance.get("phase_complete"))
-                and bool(channel_acceptance.get("channels_meet_current_contract")),
+                ok=bool(channel_acceptance.get("ok")),
                 detail=json.dumps(channel_acceptance, ensure_ascii=False),
+            )
+        )
+
+        main_ops_payload = run_main_ops_acceptance()
+        steps.append(
+            StableAcceptanceStep(
+                step="main-ops-acceptance",
+                ok=bool(main_ops_payload.get("ok")),
+                detail=json.dumps(main_ops_payload, ensure_ascii=False),
             )
         )
 

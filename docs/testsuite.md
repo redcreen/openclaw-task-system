@@ -80,6 +80,8 @@ These are still automated, but they represent contract-level acceptance rather t
 
 - `python3 scripts/runtime/planning_acceptance.py --json`
 - `python3 scripts/runtime/planning_acceptance_suite.py --json`
+- `python3 scripts/runtime/main_ops_acceptance.py --json`
+- `python3 scripts/runtime/channel_acceptance.py --json`
 - `python3 scripts/runtime/same_session_routing_acceptance.py --json`
 - `python3 scripts/runtime/stable_acceptance.py --json`
 
@@ -87,16 +89,38 @@ They currently verify contracts such as:
 
 - future-first `main_user_content_mode`
 - planning materialization and anomaly projection
+- operator-facing recovery guidance and short snapshot views across `dashboard`, `triage`, and `continuity`
+- channel rollout matrix, session focus, and fallback-channel boundaries
 - same-session routing decisions and receipts
 - installed-runtime sync and stable release expectations
+
+## Broader Release Gate
+
+Use this when a change needs the full release-facing line rather than just the base regression:
+
+```bash
+python3 scripts/runtime/release_gate.py --json
+```
+
+It runs:
+
+- `bash scripts/run_tests.sh`
+- `python3 scripts/runtime/main_ops_acceptance.py --json`
+- `python3 scripts/runtime/stable_acceptance.py --json`
+- `python3 scripts/runtime/runtime_mirror.py --check --json`
+- `python3 scripts/runtime/plugin_install_drift.py --json`
 
 ## Real or Semi-Real Checks
 
 These are important, but they are not part of the mandatory always-green automation layer:
 
 - real Feishu or Telegram channel interaction
+- `dashboard --compact`
 - `dashboard --json`
+- `triage --compact`
 - `triage --json`
+- `continuity --compact`
+- `continuity --only-issues`
 - `planning --json`
 - `continuity --json`
 - `queues --json`
@@ -119,3 +143,5 @@ That command runs:
 2. Node plugin / control-plane regression
 3. Plugin Doctor
 4. Plugin Smoke
+
+For release-facing runtime work, run `python3 scripts/runtime/release_gate.py --json` on top of the base testsuite.

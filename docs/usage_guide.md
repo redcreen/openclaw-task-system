@@ -38,9 +38,11 @@ This now covers:
 ```bash
 python3 scripts/runtime/main_ops.py health
 python3 scripts/runtime/main_ops.py dashboard
+python3 scripts/runtime/main_ops.py dashboard --compact
 python3 scripts/runtime/main_ops.py dashboard --json
 python3 scripts/runtime/main_ops.py dashboard --only-issues
 python3 scripts/runtime/main_ops.py triage
+python3 scripts/runtime/main_ops.py triage --compact
 python3 scripts/runtime/main_ops.py triage --json
 ```
 
@@ -57,10 +59,17 @@ python3 scripts/runtime/main_ops.py lanes --json
 
 ```bash
 python3 scripts/runtime/main_ops.py continuity
+python3 scripts/runtime/main_ops.py continuity --compact
+python3 scripts/runtime/main_ops.py continuity --only-issues
 python3 scripts/runtime/main_ops.py continuity --json
 python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe --dry-run --json
 python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked --dry-run
 ```
+
+Use the snapshot flags for day-to-day operator duty:
+
+- `--compact` keeps the view short enough for routine queue checks
+- `--only-issues` hides clean-state continuity detail and shows only actionable findings
 
 ### Planning and Phase 6 Operations
 
@@ -113,3 +122,11 @@ Stable acceptance:
 ```bash
 python3 scripts/runtime/stable_acceptance.py --json
 ```
+
+Broader release gate:
+
+```bash
+python3 scripts/runtime/release_gate.py --json
+```
+
+`release_gate.py` keeps the release-facing verification line explicit by running the base testsuite, operator acceptance, stable acceptance, runtime mirror, and install-drift checks in one report.

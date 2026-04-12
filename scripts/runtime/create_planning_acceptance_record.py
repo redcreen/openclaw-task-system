@@ -12,7 +12,7 @@ TEMPLATE_PATH = DOCS_DIR / "planning_acceptance_record_template.md"
 
 
 def build_record_path(record_date: str) -> Path:
-    return DOCS_DIR / f"planning_acceptance_record_{record_date}.md"
+    return DOCS_DIR / "archive" / f"planning_acceptance_record_{record_date}.md"
 
 
 def build_record_content(record_date: str, template: str) -> str:
@@ -24,9 +24,9 @@ def build_record_content(record_date: str, template: str) -> str:
         f"# Planning Acceptance Record {record_date}\n\n"
         f"本记录由 `create_planning_acceptance_record.py` 基于模板生成，请按实际验收结果填写。\n\n"
         f"使用模板：\n\n"
-        f"- [planning_acceptance_record_template.md](./planning_acceptance_record_template.md)\n\n"
+        f"- [planning_acceptance_record_template.md](../planning_acceptance_record_template.md)\n\n"
         f"参考 runbook：\n\n"
-        f"- [planning_acceptance_runbook.md](./planning_acceptance_runbook.md)\n\n"
+        f"- [planning_acceptance_runbook.md](../planning_acceptance_runbook.md)\n\n"
         f"{body}"
     )
 
@@ -34,6 +34,7 @@ def build_record_content(record_date: str, template: str) -> str:
 def create_record(*, record_date: str, force: bool = False) -> Path:
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     target_path = build_record_path(record_date)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
     if target_path.exists() and not force:
         raise FileExistsError(f"Record already exists: {target_path}")
     target_path.write_text(build_record_content(record_date, template), encoding="utf-8")
@@ -42,7 +43,7 @@ def create_record(*, record_date: str, force: bool = False) -> Path:
 
 def build_next_steps(record_date: str) -> list[str]:
     return [
-        f"Record: docs/planning_acceptance_record_{record_date}.md",
+        f"Record: docs/archive/planning_acceptance_record_{record_date}.md",
         "Run: python3 scripts/runtime/plugin_doctor.py",
         "Run: python3 scripts/runtime/plugin_smoke.py --json",
         "Run: python3 scripts/runtime/planning_acceptance.py --json",

@@ -13,7 +13,7 @@ class PlanningAcceptanceTests(unittest.TestCase):
         payload = planning_acceptance.run_planning_acceptance()
 
         self.assertTrue(payload["ok"])
-        self.assertEqual(len(payload["steps"]), 7)
+        self.assertEqual(len(payload["steps"]), 10)
         self.assertTrue(all(step["ok"] for step in payload["steps"]))
 
     def test_render_markdown_includes_planning_steps(self) -> None:
@@ -26,6 +26,9 @@ class PlanningAcceptanceTests(unittest.TestCase):
         self.assertIn("- project-future-first-immediate-output-contract: ok", rendered)
         self.assertIn("- project-immediate-summary-and-reply-target-contract: ok", rendered)
         self.assertIn("- compound-request-requires-structured-plan: ok", rendered)
+        self.assertIn("- promise-without-task-projects-recovery-contract: ok", rendered)
+        self.assertIn("- planner-timeout-projects-recovery-contract: ok", rendered)
+        self.assertIn("- missing-followup-task-projects-recovery-contract: ok", rendered)
         self.assertIn("- materialize-and-finalize-followup: ok", rendered)
         self.assertIn("- claim-overdue-followup-and-project-ops: ok", rendered)
 

@@ -11,7 +11,7 @@
 1. 准备运行环境
 2. 跑 acceptance helper / bundle
 3. 收集 artifacts
-4. 填写 acceptance 记录
+4. 在 `docs/archive/` 下填写 acceptance 记录
 5. 回写结论与下一步
 
 ## 常用入口

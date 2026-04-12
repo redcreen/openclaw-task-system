@@ -23,3 +23,9 @@
 
 - 建议按日期命名，例如 `2026-04-12-control-surface-convergence.md`
 - [Close runtime source of truth convergence](2026-04-12-close-runtime-source-of-truth-convergence.md)
+- [Expand planning anomaly acceptance](2026-04-12-expand-planning-anomaly-acceptance.md)
+- [Add channel acceptance samples](2026-04-12-add-channel-acceptance-samples.md)
+- [Add main ops acceptance samples](2026-04-12-add-main-ops-acceptance-samples.md)
+- [Archive planning acceptance evidence](2026-04-12-archive-planning-acceptance-evidence.md)
+- [Deepen main ops snapshot views](2026-04-12-deepen-main-ops-snapshot-views.md)
+- [Converge broader release gate](2026-04-12-converge-broader-release-gate.md)

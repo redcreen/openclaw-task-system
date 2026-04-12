@@ -23,7 +23,7 @@ class CapturePlanningAcceptanceArtifactsTests(unittest.TestCase):
             prepared = {
                 "ok": True,
                 "record_date": "2026-04-10",
-                "record_path": str(Path(temp_dir) / "planning_acceptance_record_2026-04-10.md"),
+                "record_path": str(Path(temp_dir) / "archive" / "planning_acceptance_record_2026-04-10.md"),
                 "artifacts_dir": str(artifacts_dir),
             }
             with (

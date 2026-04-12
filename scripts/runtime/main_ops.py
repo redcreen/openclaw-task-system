@@ -541,306 +541,151 @@ def render_main_continuity(
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
     session_key: Optional[str] = None,
+    compact: bool = False,
+    only_issues: bool = False,
 ) -> str:
-    resolved_paths = _resolve_paths(config_path, paths=paths)
-    runtime_config = load_task_system_config(config_path=config_path)
-    store = TaskStore(paths=resolved_paths)
-    normalized_session_key = str(session_key or "").strip() or None
-    main_tasks = store.find_inflight_tasks(agent_id="main")
-    if normalized_session_key:
-        main_tasks = [task for task in main_tasks if task.session_key == normalized_session_key]
-    inflight_statuses = {
-        str(status["task_id"]): status
-        for status in list_inflight_statuses(config_path=config_path, paths=resolved_paths)
-        if str(status.get("agent_id")) == "main"
-        and (normalized_session_key is None or str(status.get("session_key")) == normalized_session_key)
-    }
-    queue_like_tasks = [task for task in main_tasks if task.status in {"received", "queued", "running", "paused"}]
-    execution_strategy = _summarize_agent_execution_strategy("main", queue_like_tasks)
-    blocked_without_watchdog = [
-        task
-        for task in main_tasks
-        if task.status == "blocked" and not str(task.meta.get("watchdog_escalation") or "").strip()
-    ]
-    watchdog_blocked = [
-        task
-        for task in main_tasks
-        if task.status == "blocked" and str(task.meta.get("watchdog_escalation") or "").strip()
-    ]
-    monitored_tasks = [
-        task
-        for task in main_tasks
-        if task.status in {"received", "queued", "running"}
-    ]
-    main_tasks_by_id = {task.task_id: task for task in main_tasks}
-    monitor = runtime_config.agent_config("main").silence_monitor
-    continuity_findings = (
-        scan_tasks(
-            monitored_tasks,
-            timeout_seconds=monitor.silent_timeout_seconds,
-            resend_interval_seconds=monitor.resend_interval_seconds,
-        )
-        if monitor.enabled
-        else []
+    summary = get_main_continuity_summary(
+        config_path=config_path,
+        paths=paths,
+        session_key=session_key,
+        compact=compact,
+        only_issues=only_issues,
     )
-    overdue_findings = [finding for finding in continuity_findings if finding.silence_seconds > monitor.silent_timeout_seconds]
-    auto_resumable = sorted(watchdog_blocked, key=lambda item: item.updated_at, reverse=True)
-    overdue_by_task_id = {finding.task_id: finding for finding in overdue_findings}
-    auto_resumable_ids = {task.task_id for task in auto_resumable}
-    manual_review = sorted(
-        [finding for finding in overdue_findings if finding.task_id not in auto_resumable_ids],
-        key=lambda item: (-item.silence_seconds, item.task_id),
-    )
-    not_recommended = sorted(
-        blocked_without_watchdog,
-        key=lambda item: item.updated_at,
-        reverse=True,
-    )
-    session_summary: dict[str, dict[str, object]] = {}
-
-    def ensure_session(session_key: str) -> dict[str, object]:
-        bucket = session_summary.get(session_key)
-        if bucket is None:
-            bucket = {
-                "session_key": session_key,
-                "auto_resumable_count": 0,
-                "manual_review_count": 0,
-                "not_recommended_count": 0,
-                "planning_anomaly_count": 0,
-                "overdue_followup_count": 0,
-                "task_labels": [],
-                "user_facing_status_counts": {},
-                "user_facing_status_code_counts": {},
-            }
-            session_summary[session_key] = bucket
-        return bucket
-
-    for task in auto_resumable:
-        bucket = ensure_session(task.session_key)
-        bucket["auto_resumable_count"] = int(bucket["auto_resumable_count"]) + 1
-        bucket["task_labels"].append(task.task_label)
-    for finding in manual_review:
-        task = main_tasks_by_id.get(finding.task_id)
-        bucket = ensure_session(finding.session_key)
-        bucket["manual_review_count"] = int(bucket["manual_review_count"]) + 1
-        if task:
-            bucket["task_labels"].append(task.task_label)
-    for task in not_recommended:
-        bucket = ensure_session(task.session_key)
-        bucket["not_recommended_count"] = int(bucket["not_recommended_count"]) + 1
-        bucket["task_labels"].append(task.task_label)
-    for task in main_tasks:
-        status_entry = inflight_statuses.get(task.task_id)
-        planning = status_entry.get("planning") if isinstance(status_entry, dict) and isinstance(status_entry.get("planning"), dict) else {}
-        if planning.get("anomaly") or planning.get("overdue_followup"):
-            bucket = ensure_session(task.session_key)
-            bucket["task_labels"].append(task.task_label)
-
-    for task in main_tasks:
-        bucket = session_summary.get(task.session_key)
-        if bucket is None:
-            continue
-        status_entry = inflight_statuses.get(task.task_id)
-        if status_entry:
-            projection = _task_user_facing_projection(status_entry)
-            label_counts = bucket["user_facing_status_counts"]
-            if isinstance(label_counts, dict):
-                label = projection["label"]
-                label_counts[label] = int(label_counts.get(label, 0)) + 1
-            code_counts = bucket["user_facing_status_code_counts"]
-            if isinstance(code_counts, dict):
-                code = projection["code"]
-                code_counts[code] = int(code_counts.get(code, 0)) + 1
-            planning = status_entry.get("planning") if isinstance(status_entry.get("planning"), dict) else {}
-            if planning.get("anomaly"):
-                bucket["planning_anomaly_count"] = int(bucket["planning_anomaly_count"]) + 1
-            if planning.get("overdue_followup"):
-                bucket["overdue_followup_count"] = int(bucket["overdue_followup_count"]) + 1
-
-    suggested_next_commands = [
-        "python3 scripts/runtime/main_ops.py lanes --json",
-        *(
+    if only_issues:
+        issue_summary = summary["issue_summary"]
+        lines = [
+            "# Main Continuity",
+            "",
+            f"- scope: {summary['session_filter']}",
+            f"- status: {summary['status']}",
+        ]
+        if not issue_summary["has_issues"]:
+            lines.append("- No issues detected.")
+            return "\n".join(lines) + "\n"
+        lines.extend(
             [
-                f"python3 scripts/runtime/main_ops.py continuity --session-key '{normalized_session_key}'"
+                f"- execution_recommendation: {summary['execution_recommendation']}",
+                f"- watchdog_blocked_task_count: {summary['watchdog_blocked_task_count']}",
+                f"- auto_resume_ready: {summary['auto_resume_ready']}",
+                f"- auto_resume_safe_to_apply: {summary['auto_resume_safe_to_apply']}",
+                f"- auto_resume_blockers: {', '.join(summary['auto_resume_blockers']) or 'none'}",
+                f"- manual_review_task_count: {summary['manual_review_task_count']}",
+                f"- not_recommended_auto_resume_count: {summary['not_recommended_auto_resume_count']}",
+                f"- planning_anomaly_task_count: {summary['planning_anomaly_task_count']}",
+                f"- overdue_planned_followup_count: {summary['overdue_planned_followup_count']}",
+                f"- top_risk_session: {issue_summary['top_risk_session'] or 'none'}",
+                f"- primary_action: {issue_summary['primary_action_kind']}",
+                f"- primary_action_command: {issue_summary['primary_action_command'] or 'none'}",
             ]
-            if normalized_session_key
-            else []
-        ),
-    ]
-    execution_plan = _build_continuity_execution_plan(
-        session_filter=normalized_session_key or "all",
-        execution_recommendation=str(execution_strategy["execution_recommendation"]),
-        auto_resumable_task_count=len(auto_resumable),
-        suggested_next_commands=suggested_next_commands,
-    )
-    top_risk_session_key = None
-    if session_summary:
-        top_risk_session_key = sorted(
-            session_summary,
-            key=lambda key: (
-                -(
-                    int(session_summary[key]["auto_resumable_count"])
-                    + int(session_summary[key]["manual_review_count"])
-                    + int(session_summary[key]["not_recommended_count"])
-                ),
-                key,
-            ),
-        )[0]
-    primary_action = {
-        "kind": "none",
-        "summary": "No immediate continuity action is needed.",
-        "command": None,
-        "session_key": None,
-    }
-    auto_resume_command_parts = [
-        "python3 scripts/runtime/main_ops.py continuity --resume-watchdog-blocked",
-        *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
-        *(["--respect-execution-advice"] if str(execution_strategy["execution_recommendation"]) == "serial" else []),
-    ]
-    auto_resume_if_safe_command = " ".join(
-        [
-            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
-            *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
+        )
+        runbook = issue_summary.get("runbook")
+        if isinstance(runbook, dict):
+            lines.extend(["", "## Runbook", ""])
+            for step in runbook.get("steps", []):
+                lines.append(f"- {step}")
+            commands = runbook.get("commands", [])
+            if isinstance(commands, list) and commands:
+                lines.append("- commands:")
+                for command in commands:
+                    lines.append(f"  {command}")
+        return "\n".join(lines) + "\n"
+    if compact:
+        compact_summary = summary["compact_summary"]
+        lines = [
+            "# Main Continuity",
+            "",
+            f"- scope: {compact_summary['scope']}",
+            f"- status: {compact_summary['status']}",
+            f"- execution: {compact_summary['execution_recommendation']}",
+            f"- continuity_risk: {compact_summary['continuity_risk_summary']}",
+            f"- planning_risk: {compact_summary['planning_risk_summary']}",
+            f"- auto_resume: {compact_summary['auto_resume_summary']}",
+            f"- top_risk_session: {compact_summary['top_risk_session_summary']}",
+            f"- primary_action: {compact_summary['primary_action_kind']}",
+            f"- primary_action_command: {compact_summary['primary_action_command_summary']}",
         ]
-    )
-    auto_resume_if_safe_command = " ".join(
-        [
-            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
-            *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
-        ]
-    )
-    auto_resume_if_safe_command = " ".join(
-        [
-            "python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe",
-            *([f"--session-key '{normalized_session_key}'"] if normalized_session_key else []),
-        ]
-    )
-    auto_resume_preview_command = (
-        " ".join([*auto_resume_command_parts, "--dry-run"])
-        if auto_resumable
-        else None
-    )
-    auto_resume_has_blockers = bool(manual_review or not_recommended)
-    auto_resume_apply_command = " ".join(auto_resume_command_parts) if auto_resumable else None
-    if auto_resumable and not auto_resume_has_blockers and auto_resume_apply_command:
-        primary_action = {
-            "kind": "apply-auto-resume",
-            "summary": "Apply the watchdog auto-resume plan now.",
-            "command": auto_resume_if_safe_command,
-            "session_key": normalized_session_key or top_risk_session_key,
-        }
-    elif auto_resumable and auto_resume_preview_command:
-        primary_action = {
-            "kind": "preview-auto-resume",
-            "summary": "Preview watchdog auto-resume candidates first.",
-            "command": auto_resume_preview_command,
-            "session_key": normalized_session_key or top_risk_session_key,
-        }
-    elif top_risk_session_key:
-        primary_action = {
-            "kind": "followup-session",
-            "summary": f"Inspect continuity for session {top_risk_session_key} first.",
-            "command": f"python3 scripts/runtime/main_ops.py continuity --session-key '{top_risk_session_key}'",
-            "session_key": top_risk_session_key,
-        }
+        return "\n".join(lines) + "\n"
 
     lines = [
         "# Main Continuity",
         "",
-        f"- session_filter: {normalized_session_key or 'all'}",
-        f"- silence_monitor_enabled: {monitor.enabled}",
-        f"- silent_timeout_seconds: {monitor.silent_timeout_seconds}",
-        f"- resend_interval_seconds: {monitor.resend_interval_seconds}",
-        f"- execution_recommendation: {execution_strategy['execution_recommendation']}",
-        f"- execution_reason: {execution_strategy['execution_reason']}",
-        f"- active_monitored_task_count: {len(monitored_tasks)}",
-        f"- overdue_monitored_task_count: {len(overdue_findings)}",
-        f"- watchdog_blocked_task_count: {len(watchdog_blocked)}",
-        f"- auto_resumable_task_count: {len(auto_resumable)}",
-        f"- manual_review_task_count: {len(manual_review)}",
-        f"- not_recommended_auto_resume_count: {len(not_recommended)}",
-        f"- planning_anomaly_task_count: {sum(int(bucket['planning_anomaly_count']) for bucket in session_summary.values())}",
-        f"- overdue_planned_followup_count: {sum(int(bucket['overdue_followup_count']) for bucket in session_summary.values())}",
-        f"- top_risk_session: {top_risk_session_key or 'none'}",
-        f"- primary_action: {primary_action['kind']}",
-        f"- primary_action_command: {primary_action['command'] or 'none'}",
+        f"- session_filter: {summary['session_filter']}",
+        f"- status: {summary['status']}",
+        f"- silence_monitor_enabled: {summary['silence_monitor_enabled']}",
+        f"- silent_timeout_seconds: {summary['silent_timeout_seconds']}",
+        f"- resend_interval_seconds: {summary['resend_interval_seconds']}",
+        f"- execution_recommendation: {summary['execution_recommendation']}",
+        f"- execution_reason: {summary['execution_reason']}",
+        f"- active_monitored_task_count: {summary['active_monitored_task_count']}",
+        f"- overdue_monitored_task_count: {summary['overdue_monitored_task_count']}",
+        f"- watchdog_blocked_task_count: {summary['watchdog_blocked_task_count']}",
+        f"- auto_resumable_task_count: {summary['auto_resumable_task_count']}",
+        f"- manual_review_task_count: {summary['manual_review_task_count']}",
+        f"- not_recommended_auto_resume_count: {summary['not_recommended_auto_resume_count']}",
+        f"- planning_anomaly_task_count: {summary['planning_anomaly_task_count']}",
+        f"- overdue_planned_followup_count: {summary['overdue_planned_followup_count']}",
+        f"- top_risk_session: {(summary['top_risk_session'] or {}).get('session_key') or 'none'}",
+        f"- primary_action: {summary['primary_action_kind']}",
+        f"- primary_action_command: {summary['primary_action_command'] or 'none'}",
     ]
 
-    if auto_resumable:
+    if summary["auto_resumable"]:
         lines.extend(["", "## Auto-Resumable", ""])
-        for task in auto_resumable:
+        for task in summary["auto_resumable"]:
             lines.append(
-                f"- {task.task_id} | escalation={task.meta.get('watchdog_escalation')} | updated_at={task.updated_at}"
+                f"- {task['task_id']} | escalation={task['watchdog_escalation']} | updated_at={task['updated_at']}"
             )
-            if task.task_id in overdue_by_task_id:
-                finding = overdue_by_task_id[task.task_id]
+            if task.get("silence_seconds") is not None:
                 lines.append(
-                    f"  detail: silence={finding.silence_seconds}s | notify={finding.should_notify} | reason={finding.reason}"
+                    f"  detail: silence={task['silence_seconds']}s | notify={task['should_notify']} | reason={task['reason']}"
                 )
             lines.append(
-                f"  resume: python3 scripts/runtime/main_ops.py resume {task.task_id} --note \"继续推进并同步真实进展\""
+                f"  resume: python3 scripts/runtime/main_ops.py resume {task['task_id']} --note \"继续推进并同步真实进展\""
             )
             lines.append(
-                f"  next: python3 scripts/runtime/main_ops.py continuity --session-key '{task.session_key}'"
+                f"  next: python3 scripts/runtime/main_ops.py continuity --session-key '{task['session_key']}'"
             )
-            lines.append(
-                f"  lanes: python3 scripts/runtime/main_ops.py lanes --json"
-            )
+            lines.append("  lanes: python3 scripts/runtime/main_ops.py lanes --json")
 
-    if manual_review:
+    if summary["manual_review"]:
         lines.extend(["", "## Needs Manual Review", ""])
-        for finding in manual_review:
-            task = main_tasks_by_id.get(finding.task_id)
+        for finding in summary["manual_review"]:
             lines.append(
-                f"- {finding.task_id} | {finding.status} | label={task.task_label if task else ''} | silence={finding.silence_seconds}s | notify={finding.should_notify} | reason={finding.reason}"
+                f"- {finding['task_id']} | {finding['status']} | label={finding['task_label']} | silence={finding['silence_seconds']}s | notify={finding['should_notify']} | reason={finding['reason']}"
             )
 
-    if not_recommended:
+    if summary["not_recommended"]:
         lines.extend(["", "## Not Recommended For Auto Resume", ""])
-        for task in not_recommended:
+        for task in summary["not_recommended"]:
             lines.append(
-                f"- {task.task_id} | block_reason={task.block_reason} | updated_at={task.updated_at}"
+                f"- {task['task_id']} | block_reason={task['block_reason']} | updated_at={task['updated_at']}"
             )
-            lines.append(
-                f"  inspect: python3 scripts/runtime/main_ops.py show {task.task_id}"
-            )
+            lines.append(f"  inspect: python3 scripts/runtime/main_ops.py show {task['task_id']}")
 
-    if session_summary:
+    if summary["by_session"]:
         lines.extend(["", "## By Session", ""])
-        for session_key, bucket in sorted(
-            session_summary.items(),
-            key=lambda item: (
-                -(
-                    int(item[1]["auto_resumable_count"])
-                    + int(item[1]["manual_review_count"])
-                    + int(item[1]["not_recommended_count"])
-                ),
-                item[0],
-            ),
-        ):
-            unique_labels = sorted({str(label) for label in bucket["task_labels"] if str(label).strip()})
+        for bucket in summary["by_session"]:
             lines.append(
-                f"- {session_key} | auto_resumable={bucket['auto_resumable_count']} | manual_review={bucket['manual_review_count']} | not_recommended={bucket['not_recommended_count']} | planning_anomaly={bucket['planning_anomaly_count']} | overdue_followup={bucket['overdue_followup_count']}"
+                f"- {bucket['session_key']} | auto_resumable={bucket['auto_resumable_count']} | manual_review={bucket['manual_review_count']} | not_recommended={bucket['not_recommended_count']} | planning_anomaly={bucket['planning_anomaly_count']} | overdue_followup={bucket['overdue_followup_count']}"
             )
             status_counts = bucket.get("user_facing_status_counts")
             if isinstance(status_counts, dict) and status_counts:
                 ordered = sorted(status_counts.items(), key=lambda item: (-int(item[1]), str(item[0])))
-                lines.append(
-                    "  user_statuses: "
-                    + ", ".join(f"{label}:{count}" for label, count in ordered)
-                )
-            if unique_labels:
-                lines.append(f"  labels: {', '.join(unique_labels[:3])}")
+                lines.append("  user_statuses: " + ", ".join(f"{label}:{count}" for label, count in ordered))
+            labels = bucket.get("task_labels") or []
+            if labels:
+                lines.append(f"  labels: {', '.join(labels[:3])}")
 
     lines.extend(["", "## Execution Plan", ""])
-    for step in execution_plan["steps"]:
+    for step in summary["execution_plan"]["steps"]:
         lines.append(f"- {step}")
-    if execution_plan["commands"]:
+    commands = summary["execution_plan"]["commands"]
+    if commands:
         lines.append("- suggested_commands:")
-        for command in execution_plan["commands"]:
+        for command in commands:
             lines.append(f"  {command}")
 
-    if not auto_resumable and not manual_review and not not_recommended:
+    if not summary["auto_resumable"] and not summary["manual_review"] and not summary["not_recommended"]:
         lines.extend(["", "## Status", "", "- No continuity risk is currently detected for main."])
 
     return "\n".join(lines) + "\n"
@@ -851,6 +696,8 @@ def get_main_continuity_summary(
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
     session_key: Optional[str] = None,
+    compact: bool = False,
+    only_issues: bool = False,
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(config_path, paths=paths)
     runtime_config = load_task_system_config(config_path=config_path)
@@ -894,6 +741,7 @@ def get_main_continuity_summary(
         else []
     )
     overdue_findings = [finding for finding in continuity_findings if finding.silence_seconds > monitor.silent_timeout_seconds]
+    overdue_by_task_id = {finding.task_id: finding for finding in overdue_findings}
     auto_resumable = sorted(watchdog_blocked, key=lambda item: item.updated_at, reverse=True)
     auto_resumable_ids = {task.task_id for task in auto_resumable}
     manual_review = sorted(
@@ -1134,9 +982,84 @@ def get_main_continuity_summary(
 
     planning_anomaly_task_count = sum(int(entry["planning_anomaly_count"]) for entry in by_session)
     overdue_planned_followup_count = sum(int(entry["overdue_followup_count"]) for entry in by_session)
+    status = str(runbook["status"] or "unknown")
+    top_risk_session_summary = (
+        (
+            f"{top_risk_session['session_key']} | user_statuses="
+            f"{', '.join(f'{label}:{count}' for label, count in (top_risk_session.get('user_facing_status_counts') or {}).items()) or 'none'}"
+        )
+        if top_risk_session
+        else "none"
+    )
+    compact_summary = {
+        "scope": normalized_session_key or "all",
+        "status": status,
+        "execution_recommendation": execution_strategy["execution_recommendation"],
+        "continuity_risk_summary": (
+            f"auto={len(auto_resumable)} manual={len(manual_review)} blocked={len(not_recommended)}"
+        ),
+        "planning_risk_summary": (
+            f"anomaly={planning_anomaly_task_count} overdue={overdue_planned_followup_count}"
+        ),
+        "auto_resume_summary": (
+            "safe"
+            if auto_resume_safe_to_apply
+            else "blocked"
+            if auto_resume_ready
+            else "none"
+        ),
+        "top_risk_session_summary": top_risk_session_summary,
+        "primary_action_kind": primary_action["kind"],
+        "primary_action_summary": primary_action["summary"],
+        "primary_action_command_summary": primary_action["command"] or "none",
+    }
+    issue_primary_action = (
+        primary_action
+        if status != "ok"
+        else {
+            "kind": "none",
+            "summary": "No immediate continuity action is needed.",
+            "command": None,
+            "session_key": None,
+        }
+    )
+    issue_runbook = (
+        runbook
+        if status != "ok"
+        else {
+            "status": "ok",
+            "primary_action": issue_primary_action,
+            "steps": ["No immediate continuity action is needed."],
+            "commands": [],
+        }
+    )
+    issue_summary = {
+        "has_issues": status != "ok",
+        "watchdog_blocked_task_count": len(watchdog_blocked),
+        "auto_resume_ready": auto_resume_ready,
+        "auto_resume_safe_to_apply": auto_resume_safe_to_apply,
+        "auto_resume_blockers": list(auto_resume_blockers),
+        "manual_review_task_count": len(manual_review),
+        "not_recommended_auto_resume_count": len(not_recommended),
+        "planning_anomaly_task_count": planning_anomaly_task_count,
+        "overdue_planned_followup_count": overdue_planned_followup_count,
+        "top_risk_session": top_risk_session["session_key"] if top_risk_session else None,
+        "primary_action": issue_primary_action,
+        "runbook": issue_runbook,
+    }
+    issue_summary["primary_action_kind"] = issue_primary_action["kind"]
+    issue_summary["primary_action_command"] = issue_primary_action["command"]
+    issue_summary["runbook_status"] = issue_runbook["status"]
+    issue_summary["requires_action"] = bool(issue_summary["has_issues"])
 
     return {
+        "generated_at": datetime.now(timezone.utc).astimezone().isoformat(),
         "session_filter": normalized_session_key or "all",
+        "status": status,
+        "compact": compact,
+        "only_issues": only_issues,
+        "compact_summary": compact_summary,
+        "issue_summary": issue_summary,
         "silence_monitor_enabled": monitor.enabled,
         "silent_timeout_seconds": monitor.silent_timeout_seconds,
         "resend_interval_seconds": monitor.resend_interval_seconds,
@@ -1157,6 +1080,21 @@ def get_main_continuity_summary(
                 "task_label": task.task_label,
                 "watchdog_escalation": str(task.meta.get("watchdog_escalation") or ""),
                 "updated_at": task.updated_at,
+                "silence_seconds": (
+                    overdue_by_task_id[task.task_id].silence_seconds
+                    if task.task_id in overdue_by_task_id
+                    else None
+                ),
+                "should_notify": (
+                    overdue_by_task_id[task.task_id].should_notify
+                    if task.task_id in overdue_by_task_id
+                    else None
+                ),
+                "reason": (
+                    overdue_by_task_id[task.task_id].reason
+                    if task.task_id in overdue_by_task_id
+                    else None
+                ),
             }
             for task in auto_resumable
         ],
@@ -1192,6 +1130,7 @@ def get_main_continuity_summary(
         "auto_resume_preview_command": auto_resume_preview_command,
         "auto_resume_apply_command": auto_resume_apply_command,
         "primary_action_kind": primary_action["kind"],
+        "primary_action_summary": primary_action["summary"],
         "primary_action_command": primary_action["command"],
         "runbook_status": runbook["status"],
         "requires_action": bool(top_risk_session),
@@ -3058,6 +2997,7 @@ def get_main_triage_summary(
     *,
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
+    compact: bool = False,
 ) -> dict[str, object]:
     report = build_health_report(config_path=config_path, paths=paths)
     install_drift = get_main_plugin_install_drift_summary()
@@ -3312,8 +3252,54 @@ def get_main_triage_summary(
         ],
         "commands": deduped_commands,
     }
+    compact_summary = {
+        "status": report["status"],
+        "triage_status": triage_status,
+        "blocked_main_task_count": len(blocked_main),
+        "focus_session_summary": focus_session_key or "none",
+        "planning_risk_summary": (
+            "promise="
+            f"{int(report['overview'].get('planning', {}).get('promise_without_task_count', 0) or 0)} "
+            f"missing={int(report['overview'].get('planning', {}).get('followup_task_missing_count', 0) or 0)} "
+            f"overdue={int(report['overview'].get('planning', {}).get('overdue_followup_count', 0) or 0)} "
+            f"materialize={int(report['overview'].get('planning', {}).get('overdue_on_materialize_count', 0) or 0)}"
+        ),
+        "planning_health_summary": (
+            f"{str(planning_health.get('status') or 'unknown')} timeouts={int(planning_health.get('timeout_count', 0) or 0)}"
+        ),
+        "failed_instruction_summary": (
+            f"retryable={failed_summary['retryable']} persistent={failed_summary['persistent_retryable']} "
+            f"non_retryable={failed_summary['non_retryable']} unknown={failed_summary['unknown']}"
+        ),
+        "plugin_install_drift_summary": (
+            f"{install_drift.get('status')} missing={int(install_drift.get('missing_in_installed_count', 0) or 0)} "
+            f"extra={int(install_drift.get('extra_in_installed_count', 0) or 0)}"
+        ),
+        "producer_summary": (
+            f"{producer_contract['focus_channel']}:{producer_contract['producer_mode']}"
+            if producer_contract.get("focus_channel")
+            else "mixed"
+        ),
+        "channel_acceptance_summary": (
+            f"{channel_acceptance['focus_channel']}:{channel_acceptance['focus_rollout_status']}"
+            if channel_acceptance.get("focus_channel")
+            else channel_acceptance.get("phase_status", "unknown")
+        ),
+        "auto_resume_summary": (
+            "safe"
+            if bool(continuity.get("auto_resume_safe_to_apply"))
+            else "blocked"
+            if bool(continuity.get("auto_resume_ready"))
+            else "none"
+        ),
+        "primary_action_kind": primary_action["kind"],
+        "primary_action_summary": primary_action["summary"],
+        "primary_action_command_summary": primary_action["command"] or "none",
+    }
     return {
         "status": report["status"],
+        "compact": compact,
+        "compact_summary": compact_summary,
         "triage_status": triage_status,
         "blocked_main_task_count": len(blocked_main),
         "planning_promise_without_task_count": int(report["overview"].get("planning", {}).get("promise_without_task_count", 0) or 0),
@@ -3361,8 +3347,29 @@ def render_main_triage(
     *,
     config_path: Optional[Path] = None,
     paths: Optional[TaskPaths] = None,
+    compact: bool = False,
 ) -> str:
-    summary = get_main_triage_summary(config_path=config_path, paths=paths)
+    summary = get_main_triage_summary(config_path=config_path, paths=paths, compact=compact)
+    if compact:
+        compact_summary = summary["compact_summary"]
+        lines = [
+            "# Main Ops Triage",
+            "",
+            f"- status: {compact_summary['status']}",
+            f"- triage_status: {compact_summary['triage_status']}",
+            f"- blocked_main: {compact_summary['blocked_main_task_count']}",
+            f"- focus_session: {compact_summary['focus_session_summary']}",
+            f"- planning_risk: {compact_summary['planning_risk_summary']}",
+            f"- planning_health: {compact_summary['planning_health_summary']}",
+            f"- failed: {compact_summary['failed_instruction_summary']}",
+            f"- plugin_install_drift: {compact_summary['plugin_install_drift_summary']}",
+            f"- producer: {compact_summary['producer_summary']}",
+            f"- channel_acceptance: {compact_summary['channel_acceptance_summary']}",
+            f"- auto_resume: {compact_summary['auto_resume_summary']}",
+            f"- primary_action: {compact_summary['primary_action_kind']}",
+            f"- primary_action_command: {compact_summary['primary_action_command_summary']}",
+        ]
+        return "\n".join(lines) + "\n"
     lines = [
         "# Main Ops Triage",
         "",
@@ -3835,6 +3842,12 @@ def main() -> None:
         default=None,
         help="Only inspect continuity risk for one main session.",
     )
+    continuity_parser.add_argument("--compact", action="store_true", help="Emit a shorter continuity snapshot.")
+    continuity_parser.add_argument(
+        "--only-issues",
+        action="store_true",
+        help="Only show continuity findings that currently need action.",
+    )
     continuity_parser.add_argument(
         "--json",
         action="store_true",
@@ -3873,6 +3886,7 @@ def main() -> None:
     )
     subparsers.add_parser("health", help="Show main-oriented health summary.")
     triage_parser = subparsers.add_parser("triage", help="Show prioritized next actions for main-agent operations.")
+    triage_parser.add_argument("--compact", action="store_true", help="Emit a shorter triage snapshot.")
     triage_parser.add_argument("--json", action="store_true", help="Emit structured JSON instead of markdown.")
     subparsers.add_parser("diagnose-delivery", help="Show host-side delivery diagnosis steps for retryable failures.")
     ack_parser = subparsers.add_parser("ack-delivery-outage", help="Acknowledge a known external delivery outage.")
@@ -4168,6 +4182,8 @@ def main() -> None:
                         config_path=config_path,
                         paths=paths,
                         session_key=args.session_key,
+                        compact=args.compact,
+                        only_issues=args.only_issues,
                     ),
                     ensure_ascii=False,
                     indent=2,
@@ -4179,6 +4195,8 @@ def main() -> None:
                 config_path=config_path,
                 paths=paths,
                 session_key=args.session_key,
+                compact=args.compact,
+                only_issues=args.only_issues,
             ),
             end="",
         )
@@ -4188,9 +4206,19 @@ def main() -> None:
         return
     if args.command == "triage":
         if getattr(args, "json", False):
-            print(json.dumps(get_main_triage_summary(config_path=config_path, paths=paths), ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    get_main_triage_summary(
+                        config_path=config_path,
+                        paths=paths,
+                        compact=args.compact,
+                    ),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
             return
-        print(render_main_triage(config_path=config_path, paths=paths), end="")
+        print(render_main_triage(config_path=config_path, paths=paths, compact=args.compact), end="")
         return
     if args.command == "diagnose-delivery":
         print(render_delivery_diagnose(config_path=config_path, paths=paths), end="")

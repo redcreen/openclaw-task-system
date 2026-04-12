@@ -17,12 +17,12 @@ from openclaw_hooks import (
     finalize_planned_followup_from_payload,
     register_from_payload,
     resolve_active_task_from_payload,
+    should_send_short_followup_from_payload,
     sync_source_reply_target_from_payload,
     schedule_followup_from_plan_from_payload,
 )
 from task_status import build_status_summary
-from task_state import TaskStore
-from task_state import TaskPaths
+from task_state import TaskPaths, TaskStore, now_iso
 
 
 @dataclass(frozen=True)
@@ -59,6 +59,8 @@ def run_planning_acceptance() -> dict[str, Any]:
     _write_config(config_path, data_dir)
     previous_env = _set_env(config_path)
     steps: list[AcceptanceStep] = []
+    paths = TaskPaths.from_root(temp_dir, data_dir)
+    store = TaskStore(paths=paths)
     try:
         registration = register_from_payload(
             {
@@ -310,6 +312,279 @@ def run_planning_acceptance() -> dict[str, Any]:
             )
         )
 
+        promise_session_key = "feishu:main:planning-acceptance:promise-without-task"
+        promise_registration = register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": promise_session_key,
+                "channel": "feishu",
+                "account_id": "feishu-main",
+                "chat_id": "chat:planning-acceptance:promise-without-task",
+                "user_id": "ou_acceptance",
+                "user_request": "先整理当前结论，10分钟后回来补最终同步",
+                "estimated_steps": 3,
+            },
+            config_path=config_path,
+        )
+        promise_task_id = str(promise_registration.get("task_id") or "")
+        promise_guarded = attach_promise_guard_from_payload(
+            {
+                "source_task_id": promise_task_id,
+                "promise_summary": "10分钟后补最终同步",
+                "followup_due_at": "2099-01-01T00:10:00+00:00",
+            },
+            config_path=config_path,
+        )
+        promise_plan = create_followup_plan_from_payload(
+            {
+                "source_task_id": promise_task_id,
+                "followup_kind": "delayed-reply",
+                "followup_due_at": "2099-01-01T00:10:00+00:00",
+                "followup_message": "10分钟后回来补最终同步",
+                "followup_summary": "10分钟后补最终同步",
+                "main_user_content_mode": "none",
+            },
+            config_path=config_path,
+        )
+        promise_finalized = finalize_planned_followup_from_payload(
+            {
+                "source_task_id": promise_task_id,
+                "plan_id": str(promise_plan.get("plan_id") or ""),
+            },
+            config_path=config_path,
+        )
+        promise_status = build_status_summary(promise_task_id, config_path=config_path)
+        promise_planning = get_main_planning_summary(config_path=config_path, session_key=promise_session_key)
+        promise_followup = should_send_short_followup_from_payload(
+            {"task_id": promise_task_id},
+            config_path=config_path,
+        )
+        promise_planning_state = (promise_status.get("planning") or {}) if isinstance(promise_status, dict) else {}
+        steps.append(
+            AcceptanceStep(
+                step="promise-without-task-projects-recovery-contract",
+                ok=(
+                    bool(promise_registration.get("should_register_task"))
+                    and bool(promise_guarded.get("armed"))
+                    and bool(promise_plan.get("accepted"))
+                    and not bool(promise_finalized.get("ok"))
+                    and str(promise_finalized.get("reason") or "") == "promise-without-task"
+                    and bool(promise_planning_state.get("promise_without_task"))
+                    and str(promise_planning_state.get("anomaly") or "") == "promise-without-task"
+                    and str((promise_planning.get("primary_recovery_action") or {}).get("kind") or "")
+                    == "inspect-promise-without-task"
+                    and bool(promise_followup.get("should_send"))
+                    and str(
+                        (((promise_followup.get("control_plane_message") or {}).get("metadata") or {}).get("planning_anomaly"))
+                        or ""
+                    )
+                    == "promise-without-task"
+                    and str(
+                        (((promise_followup.get("control_plane_message") or {}).get("metadata") or {}).get("planning_recovery_hint"))
+                        or ""
+                    )
+                    == "inspect-source-task-and-recreate-or-clear-promise"
+                ),
+                detail=json.dumps(
+                    {
+                        "registration": promise_registration,
+                        "guarded": promise_guarded,
+                        "plan": promise_plan,
+                        "finalized": promise_finalized,
+                        "planning": promise_planning_state,
+                        "planning_summary": promise_planning,
+                        "short_followup": promise_followup,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        )
+
+        timeout_session_key = "feishu:main:planning-acceptance:planner-timeout"
+        timeout_registration = register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": timeout_session_key,
+                "channel": "feishu",
+                "account_id": "feishu-main",
+                "chat_id": "chat:planning-acceptance:planner-timeout",
+                "user_id": "ou_acceptance",
+                "user_request": "先整理一版要点，15分钟后回来补最终同步",
+                "estimated_steps": 3,
+            },
+            config_path=config_path,
+        )
+        timeout_task_id = str(timeout_registration.get("task_id") or "")
+        timeout_guarded = attach_promise_guard_from_payload(
+            {
+                "source_task_id": timeout_task_id,
+                "promise_summary": "15分钟后补最终同步",
+                "followup_due_at": "2099-01-01T00:15:00+00:00",
+            },
+            config_path=config_path,
+        )
+        timeout_plan = create_followup_plan_from_payload(
+            {
+                "source_task_id": timeout_task_id,
+                "followup_kind": "delayed-reply",
+                "followup_due_at": "2099-01-01T00:15:00+00:00",
+                "followup_message": "15分钟后回来补最终同步",
+                "followup_summary": "15分钟后补最终同步",
+                "main_user_content_mode": "none",
+            },
+            config_path=config_path,
+        )
+        timeout_task = store.load_task(timeout_task_id, allow_archive=False)
+        timeout_task.meta["planning_anomaly"] = "planner-timeout"
+        timeout_task.meta["planning_anomaly_at"] = now_iso()
+        timeout_guard_state = timeout_task.meta.get("planning_promise_guard")
+        if isinstance(timeout_guard_state, dict):
+            timeout_guard_state["status"] = "timeout"
+            timeout_guard_state["checked_at"] = now_iso()
+            timeout_task.meta["planning_promise_guard"] = timeout_guard_state
+        timeout_plan_state = timeout_task.meta.get("tool_followup_plan")
+        if isinstance(timeout_plan_state, dict):
+            timeout_plan_state["status"] = "timeout"
+            timeout_task.meta["tool_followup_plan"] = timeout_plan_state
+        store.save_task(timeout_task)
+        timeout_status = build_status_summary(timeout_task_id, config_path=config_path)
+        timeout_planning = get_main_planning_summary(config_path=config_path, session_key=timeout_session_key)
+        timeout_followup = should_send_short_followup_from_payload(
+            {"task_id": timeout_task_id},
+            config_path=config_path,
+        )
+        timeout_planning_state = (timeout_status.get("planning") or {}) if isinstance(timeout_status, dict) else {}
+        steps.append(
+            AcceptanceStep(
+                step="planner-timeout-projects-recovery-contract",
+                ok=(
+                    bool(timeout_registration.get("should_register_task"))
+                    and bool(timeout_guarded.get("armed"))
+                    and bool(timeout_plan.get("accepted"))
+                    and str(timeout_planning_state.get("anomaly") or "") == "planner-timeout"
+                    and str(timeout_planning_state.get("promise_guard_status") or "") == "timeout"
+                    and str(timeout_planning_state.get("plan_status") or "") == "timeout"
+                    and str((timeout_planning.get("primary_recovery_action") or {}).get("kind") or "")
+                    == "inspect-planner-timeout"
+                    and bool(timeout_followup.get("should_send"))
+                    and str(
+                        (((timeout_followup.get("control_plane_message") or {}).get("metadata") or {}).get("planning_anomaly"))
+                        or ""
+                    )
+                    == "planner-timeout"
+                    and str(
+                        (((timeout_followup.get("control_plane_message") or {}).get("metadata") or {}).get("planning_recovery_hint"))
+                        or ""
+                    )
+                    == "inspect-source-task-after-planner-timeout"
+                ),
+                detail=json.dumps(
+                    {
+                        "registration": timeout_registration,
+                        "guarded": timeout_guarded,
+                        "plan": timeout_plan,
+                        "planning": timeout_planning_state,
+                        "planning_summary": timeout_planning,
+                        "short_followup": timeout_followup,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        )
+
+        missing_session_key = "feishu:main:planning-acceptance:missing-followup-task"
+        missing_registration = register_from_payload(
+            {
+                "agent_id": "main",
+                "session_key": missing_session_key,
+                "channel": "feishu",
+                "account_id": "feishu-main",
+                "chat_id": "chat:planning-acceptance:missing-followup-task",
+                "user_id": "ou_acceptance",
+                "user_request": "先整理当前状态，20分钟后回来补最终同步",
+                "estimated_steps": 2,
+            },
+            config_path=config_path,
+        )
+        missing_task_id = str(missing_registration.get("task_id") or "")
+        missing_guarded = attach_promise_guard_from_payload(
+            {
+                "source_task_id": missing_task_id,
+                "promise_summary": "20分钟后补最终同步",
+                "followup_due_at": "2099-01-01T00:20:00+00:00",
+            },
+            config_path=config_path,
+        )
+        missing_plan = create_followup_plan_from_payload(
+            {
+                "source_task_id": missing_task_id,
+                "followup_kind": "delayed-reply",
+                "followup_due_at": "2099-01-01T00:20:00+00:00",
+                "followup_message": "20分钟后回来补最终同步",
+                "followup_summary": "20分钟后补最终同步",
+                "main_user_content_mode": "none",
+            },
+            config_path=config_path,
+        )
+        missing_scheduled = schedule_followup_from_plan_from_payload(
+            {
+                "source_task_id": missing_task_id,
+                "plan_id": str(missing_plan.get("plan_id") or ""),
+            },
+            config_path=config_path,
+        )
+        missing_followup_task_id = str(missing_scheduled.get("task_id") or "")
+        missing_followup_path = paths.inflight_dir / f"{missing_followup_task_id}.json"
+        if missing_followup_task_id and missing_followup_path.exists():
+            missing_followup_path.unlink()
+        missing_status = build_status_summary(missing_task_id, config_path=config_path)
+        missing_planning = get_main_planning_summary(config_path=config_path, session_key=missing_session_key)
+        missing_followup = should_send_short_followup_from_payload(
+            {"task_id": missing_task_id},
+            config_path=config_path,
+        )
+        missing_planning_state = (missing_status.get("planning") or {}) if isinstance(missing_status, dict) else {}
+        steps.append(
+            AcceptanceStep(
+                step="missing-followup-task-projects-recovery-contract",
+                ok=(
+                    bool(missing_registration.get("should_register_task"))
+                    and bool(missing_guarded.get("armed"))
+                    and bool(missing_plan.get("accepted"))
+                    and bool(missing_scheduled.get("scheduled"))
+                    and bool(missing_followup_task_id)
+                    and not missing_followup_path.exists()
+                    and bool(missing_planning_state.get("followup_task_missing"))
+                    and str(missing_planning_state.get("anomaly") or "") == "followup-task-missing"
+                    and str((missing_planning.get("primary_recovery_action") or {}).get("kind") or "")
+                    == "inspect-missing-followup-task"
+                    and bool(missing_followup.get("should_send"))
+                    and str(
+                        (((missing_followup.get("control_plane_message") or {}).get("metadata") or {}).get("planning_anomaly"))
+                        or ""
+                    )
+                    == "followup-task-missing"
+                    and str(
+                        (((missing_followup.get("control_plane_message") or {}).get("metadata") or {}).get("planning_recovery_hint"))
+                        or ""
+                    )
+                    == "inspect-source-task-and-relink-followup-task"
+                ),
+                detail=json.dumps(
+                    {
+                        "registration": missing_registration,
+                        "guarded": missing_guarded,
+                        "plan": missing_plan,
+                        "scheduled": missing_scheduled,
+                        "planning": missing_planning_state,
+                        "planning_summary": missing_planning,
+                        "short_followup": missing_followup,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        )
+
         scheduled = schedule_followup_from_plan_from_payload(
             {
                 "source_task_id": source_task_id,
@@ -342,7 +617,6 @@ def run_planning_acceptance() -> dict[str, Any]:
         claimed = claim_due_continuations_from_payload({}, config_path=config_path)
         planning = get_main_planning_summary(config_path=config_path)
         continuity = get_main_continuity_summary(config_path=config_path)
-        store = TaskStore(paths=TaskPaths.from_root(temp_dir, data_dir))
         followup_task = None
         scheduled_task_id = str(scheduled.get("task_id") or "")
         if scheduled_task_id:

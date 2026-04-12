@@ -966,6 +966,34 @@ class MainOpsTests(unittest.TestCase):
         self.assertFalse(summary["control_plane_message"]["metadata"]["auto_resume_ready"])
         self.assertEqual(summary["control_plane_message"]["metadata"]["top_risk_session_user_status_counts"], {})
 
+    def test_get_main_continuity_summary_includes_compact_and_issue_snapshots(self) -> None:
+        compact_summary = main_ops.get_main_continuity_summary(
+            config_path=self._config_path(),
+            paths=self.paths,
+            compact=True,
+        )
+        issue_summary = main_ops.get_main_continuity_summary(
+            config_path=self._config_path(),
+            paths=self.paths,
+            only_issues=True,
+        )
+
+        self.assertTrue(compact_summary["compact"])
+        self.assertEqual(compact_summary["status"], "ok")
+        self.assertEqual(compact_summary["compact_summary"]["scope"], "all")
+        self.assertEqual(compact_summary["compact_summary"]["continuity_risk_summary"], "auto=0 manual=0 blocked=0")
+        self.assertEqual(compact_summary["compact_summary"]["planning_risk_summary"], "anomaly=0 overdue=0")
+        self.assertEqual(compact_summary["compact_summary"]["auto_resume_summary"], "none")
+        self.assertEqual(compact_summary["compact_summary"]["top_risk_session_summary"], "none")
+        self.assertTrue(issue_summary["only_issues"])
+        self.assertFalse(issue_summary["issue_summary"]["has_issues"])
+        self.assertEqual(issue_summary["issue_summary"]["watchdog_blocked_task_count"], 0)
+        self.assertEqual(issue_summary["issue_summary"]["auto_resume_blockers"], [])
+        self.assertEqual(issue_summary["issue_summary"]["primary_action_kind"], "none")
+        self.assertIsNone(issue_summary["issue_summary"]["primary_action_command"])
+        self.assertEqual(issue_summary["issue_summary"]["runbook_status"], "ok")
+        self.assertFalse(issue_summary["issue_summary"]["requires_action"])
+
     def test_get_main_triage_summary_can_prioritize_planning_health(self) -> None:
         task = self.store.register_task(
             agent_id="main",
@@ -1065,6 +1093,58 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("## Execution Plan", rendered)
         self.assertIn("Run a dry-run first to preview which watchdog-blocked tasks are eligible.", rendered)
         self.assertIn("user_statuses: 已阻塞:1", rendered)
+
+    def test_render_main_continuity_compact_uses_short_summary(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:compact",
+            channel="telegram",
+            chat_id="chat:main:compact",
+            task_label="compact continuity task",
+        )
+        blocked = self.store.block_task(task.task_id, "watchdog blocked")
+        blocked.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked)
+
+        rendered = main_ops.render_main_continuity(
+            config_path=self._config_path(),
+            paths=self.paths,
+            compact=True,
+        )
+
+        self.assertIn("# Main Continuity", rendered)
+        self.assertIn("- scope: all", rendered)
+        self.assertIn("- status: warn", rendered)
+        self.assertIn("- continuity_risk: auto=1 manual=0 blocked=0", rendered)
+        self.assertIn("- auto_resume: safe", rendered)
+        self.assertIn("- primary_action: apply-auto-resume", rendered)
+        self.assertIn("- primary_action_command: python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe", rendered)
+        self.assertNotIn("## Auto-Resumable", rendered)
+
+    def test_render_main_continuity_only_issues_focuses_problem_fields(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:issues",
+            channel="telegram",
+            chat_id="chat:main:issues",
+            task_label="issues continuity task",
+        )
+        blocked = self.store.block_task(task.task_id, "watchdog blocked")
+        blocked.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked)
+
+        rendered = main_ops.render_main_continuity(
+            config_path=self._config_path(),
+            paths=self.paths,
+            only_issues=True,
+        )
+
+        self.assertIn("- status: warn", rendered)
+        self.assertIn("- watchdog_blocked_task_count: 1", rendered)
+        self.assertIn("- auto_resume_safe_to_apply: True", rendered)
+        self.assertIn("- primary_action: apply-auto-resume", rendered)
+        self.assertIn("## Runbook", rendered)
+        self.assertNotIn("## Auto-Resumable", rendered)
 
     def test_get_main_continuity_summary_exposes_auto_resume_plan(self) -> None:
         task = self.store.register_task(
@@ -2246,6 +2326,20 @@ class MainOpsTests(unittest.TestCase):
             summary["suggested_next_commands"],
         )
 
+    def test_get_main_triage_summary_includes_compact_summary(self) -> None:
+        summary = main_ops.get_main_triage_summary(paths=self.paths, compact=True)
+
+        self.assertTrue(summary["compact"])
+        self.assertEqual(summary["compact_summary"]["status"], "ok")
+        self.assertEqual(summary["compact_summary"]["triage_status"], "ok")
+        self.assertEqual(summary["compact_summary"]["blocked_main_task_count"], 0)
+        self.assertEqual(summary["compact_summary"]["focus_session_summary"], "none")
+        self.assertEqual(summary["compact_summary"]["planning_risk_summary"], "promise=0 missing=0 overdue=0 materialize=0")
+        self.assertEqual(summary["compact_summary"]["plugin_install_drift_summary"], "ok missing=0 extra=0")
+        self.assertEqual(summary["compact_summary"]["auto_resume_summary"], "none")
+        self.assertEqual(summary["compact_summary"]["primary_action_kind"], "none")
+        self.assertEqual(summary["compact_summary"]["primary_action_command_summary"], "none")
+
     def test_get_main_triage_summary_prioritizes_install_drift_when_idle(self) -> None:
         with patch.object(
             main_ops,
@@ -2339,6 +2433,28 @@ class MainOpsTests(unittest.TestCase):
         self.assertIn("- plugin_install_drift_extra_count: 1", rendered)
         self.assertIn("Inspect installed runtime drift first", rendered)
         self.assertIn("plugin_install_drift.py --json", rendered)
+
+    def test_render_main_triage_compact_uses_short_summary(self) -> None:
+        task = self.store.register_task(
+            agent_id="main",
+            session_key="session:main:triage-compact",
+            channel="telegram",
+            chat_id="chat:main:triage-compact",
+            task_label="triage compact task",
+        )
+        blocked = self.store.block_task(task.task_id, "watchdog blocked")
+        blocked.meta["watchdog_escalation"] = "blocked-no-visible-progress"
+        self.store.save_task(blocked)
+
+        rendered = main_ops.render_main_triage(paths=self.paths, compact=True)
+
+        self.assertIn("# Main Ops Triage", rendered)
+        self.assertIn("- triage_status: warn", rendered)
+        self.assertIn("- blocked_main: 1", rendered)
+        self.assertIn("- auto_resume: safe", rendered)
+        self.assertIn("- primary_action: apply-auto-resume", rendered)
+        self.assertIn("- primary_action_command: python3 scripts/runtime/main_ops.py continuity --auto-resume-if-safe", rendered)
+        self.assertNotIn("## Next Actions", rendered)
 
     def test_render_main_triage_includes_blocked_age_and_sweep_hint(self) -> None:
         task = self.store.register_task(

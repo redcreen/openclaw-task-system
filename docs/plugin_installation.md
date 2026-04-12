@@ -108,13 +108,15 @@ Recommended order:
 2. `plugin_smoke.py`
 3. `main_ops.py dashboard --json`
 4. `stable_acceptance.py --json`
-5. `planning_acceptance_suite.py --json` when planning behavior changed
+5. `release_gate.py --json` for broader release-facing verification
+6. `planning_acceptance_suite.py --json` when planning behavior changed
 
 Example:
 
 ```bash
 python3 scripts/runtime/main_ops.py dashboard --json
 python3 scripts/runtime/stable_acceptance.py --json
+python3 scripts/runtime/release_gate.py --json
 python3 scripts/runtime/planning_acceptance_suite.py --json
 python3 scripts/runtime/main_ops.py plugin-install-drift --json
 ```
