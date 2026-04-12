@@ -42,3 +42,14 @@ flowchart LR
 - receive-time ack 受宿主与 channel 能力限制
 - compound 请求长期仍需要更强 planning，而不是继续扩 regex
 - 发布前必须持续跑 testsuite、plugin doctor、plugin smoke 与 acceptance 工具链
+
+## 当前整改专项
+
+当前除了继续保持主线稳定外，还要优先推进这条架构整改专项：
+
+- 收 `lifecycle coordinator` 所有权
+- 收 `runtime source-of-truth` 边界
+
+入口文档：
+
+- [workstreams/architecture-hardening/README.zh-CN.md](workstreams/architecture-hardening/README.zh-CN.md)

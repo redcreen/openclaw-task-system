@@ -53,8 +53,15 @@ The current shipped architecture explicitly includes:
 - planning anomaly projection and recovery hints
 - install drift visibility between source payload and local installed runtime
 
+The current architecture-hardening workstream focuses on:
+
+- lifecycle coordinator ownership
+- runtime source-of-truth convergence
+- reducing plugin-side repair logic created by split lifecycle ownership
+
 ## Related Docs
 
 - [roadmap.md](roadmap.md)
 - [llm_tool_task_planning.md](llm_tool_task_planning.md)
 - [compound_followup_boundary.md](compound_followup_boundary.md)
+- [workstreams/architecture-hardening/README.md](workstreams/architecture-hardening/README.md)

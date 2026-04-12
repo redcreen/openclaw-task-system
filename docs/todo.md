@@ -14,6 +14,7 @@ For full Chinese detail, see [todo.zh-CN.md](todo.zh-CN.md).
 
 ## Current Extension Areas
 
+- architecture hardening for lifecycle coordinator and runtime source-of-truth boundaries
 - broader planning anomaly recovery coverage
 - more real planning and channel acceptance samples
 - further operator UX and recovery depth

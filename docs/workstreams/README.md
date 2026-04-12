@@ -8,6 +8,7 @@ This directory contains durable workstream documentation that used to be mixed i
 
 ## Workstreams
 
+- [architecture-hardening/README.md](architecture-hardening/README.md)
 - [memory-search/README.md](memory-search/README.md)
 - [self-learning/README.md](self-learning/README.md)
 

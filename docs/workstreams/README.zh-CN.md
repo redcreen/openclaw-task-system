@@ -8,6 +8,7 @@
 
 ## 工作流
 
+- [architecture-hardening/README.md](architecture-hardening/README.md)
 - [memory-search/README.md](memory-search/README.md)
 - [self-learning/README.md](self-learning/README.md)
 

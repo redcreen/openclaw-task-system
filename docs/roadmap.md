@@ -34,9 +34,14 @@ The mainline shipped these outcomes:
 
 Remaining work is extension work, not unfinished mainline debt:
 
+- architecture hardening for lifecycle coordination and runtime source-of-truth boundaries
 - broader planning anomaly coverage
 - richer planning and channel acceptance samples
 - additional operator UX and recovery depth
+
+The architecture hardening line is tracked here:
+
+- [workstreams/architecture-hardening/README.md](workstreams/architecture-hardening/README.md)
 - future roadmap candidates under workstreams and todo tracking
 
 ## Delivered Subproject: Same-Session Message Routing

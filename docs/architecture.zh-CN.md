@@ -74,6 +74,14 @@ flowchart LR
 - restart / continuity / watchdog 是否能如实恢复
 - dashboard 与用户可见状态是否仍然一致
 
+## 当前整改重点
+
+当前架构整改的重点是：
+
+- 收 `lifecycle coordinator` 的所有权
+- 收 `runtime source-of-truth` 的边界
+- 减少因为生命周期所有权分裂而产生的 plugin 侧 repair 逻辑
+
 ## 取舍与非目标
 
 - 它是监督运行时，不是新的通用 orchestrator
@@ -85,3 +93,4 @@ flowchart LR
 - [task_user_content_decision.zh-CN.md](task_user_content_decision.zh-CN.md)
 - [continuation_lane_decision_log.zh-CN.md](continuation_lane_decision_log.zh-CN.md)
 - [external_comparison.zh-CN.md](external_comparison.zh-CN.md)
+- [workstreams/architecture-hardening/README.zh-CN.md](workstreams/architecture-hardening/README.zh-CN.md)
