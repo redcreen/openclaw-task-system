@@ -2,6 +2,10 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
+## Start Here
+
+Use the canonical stack below first. Everything else in `docs/` should either deepen, operationalize, or archive those primary answers.
+
 ## Canonical Stack
 
 Start with these documents:
@@ -36,5 +40,13 @@ Start with these documents:
 - reference docs: [reference/README.md](reference/README.md)
 - workstreams: [workstreams/README.md](workstreams/README.md)
 - archive: [archive/README.md](archive/README.md)
+- development log: [devlog/README.md](devlog/README.md)
 
 Archive is for historical acceptance records, handoff notes, and superseded cleanup plans that should remain available without crowding the active docs stack.
+
+## Markdown Governance
+
+- reference docs: [reference/README.md](reference/README.md)
+- workstreams: [workstreams/README.md](workstreams/README.md)
+- archive: [archive/README.md](archive/README.md)
+- development log: [devlog/README.md](devlog/README.md)

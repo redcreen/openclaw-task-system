@@ -14,12 +14,12 @@ from openclaw_bridge import (
     _estimate_wait_seconds,
     _queue_metrics,
     materialize_due_collecting_windows,
-    record_blocked,
-    record_completed,
-    record_failed,
     record_progress,
 )
 from lifecycle_coordinator import (
+    block_task_lifecycle,
+    complete_task_lifecycle,
+    fail_task_lifecycle,
     finalize_active_lifecycle,
     progress_active_lifecycle,
     register_inbound_lifecycle,
@@ -32,13 +32,6 @@ from task_status import list_inflight_statuses
 from taskmonitor_state import get_taskmonitor_enabled, set_taskmonitor_enabled
 from main_task_adapter import resume_main_task
 from user_status import USER_STATUS_PENDING_START, USER_STATUS_QUEUED, USER_STATUS_RECEIVED, project_user_facing_status
-
-
-GENERIC_SUCCESS_SUMMARIES = {
-    "openai-codex-responses",
-    "agent run completed",
-    "assistant",
-}
 
 
 def _build_control_plane_message(
@@ -67,117 +60,6 @@ def _build_control_plane_message(
     if metadata:
         message["metadata"] = metadata
     return message
-
-
-def _build_terminal_message_text(task: Any, *, success: bool) -> str:
-    summary = str(task.meta.get("result_summary") or "").strip()
-    if success:
-        normalized_summary = summary.lower()
-        generic_summary = (
-            normalized_summary in GENERIC_SUCCESS_SUMMARIES
-            or summary.startswith("{")
-        )
-        if summary and not generic_summary:
-            return f"当前任务已完成：{summary}"
-        target = _compact_running_target(task)
-        if target:
-            return f"当前任务已完成：{target}"
-        return "当前任务已完成。"
-    failure_reason = str(getattr(task, "failure_reason", "") or task.meta.get("failure_reason") or "").strip()
-    if failure_reason:
-        return f"当前任务已失败：{failure_reason}"
-    return "当前任务已失败。"
-
-
-def _render_same_session_routing_receipt(routing: dict[str, Any]) -> Optional[dict[str, Any]]:
-    decision = str(routing.get("execution_decision") or "").strip()
-    reason_code = str(routing.get("reason_code") or "").strip() or None
-    reason_text = str(routing.get("reason_text") or "").strip() or None
-    target_task_id = str(routing.get("target_task_id") or "").strip() or None
-    session_key = str(routing.get("session_key") or "").strip() or None
-    target_session_key = str(routing.get("target_session_key") or "").strip() or session_key
-    if not decision:
-        return None
-
-    templates = {
-        "merge-before-start": "这次更新已并入当前任务，因为任务还没正式开始执行。",
-        "interrupt-and-restart": "当前任务已按这次更新重新开始，因为现在仍处于可安全重启阶段。",
-        "append-as-next-step": "这次更新已追加为当前任务的下一步，因为执行已产生外部动作。",
-        "queue-as-new-task": "这次内容已作为独立任务排队，因为它是新的独立目标。",
-        "enter-collecting-window": "我会先等待你继续补充，再开始执行。",
-        "handle-as-control-plane": "这条控制指令已收到，我会按当前任务状态处理。",
-    }
-    text = templates.get(decision)
-    if not text:
-        return None
-    return {
-        "decision": decision,
-        "reason_code": reason_code,
-        "reason_text": reason_text,
-        "target_task_id": target_task_id,
-        "target_session_key": target_session_key,
-        "user_visible_wd": f"[wd] {text}",
-    }
-
-
-def _build_same_session_routing_control_plane_message(
-    routing: dict[str, Any],
-) -> Optional[dict[str, Any]]:
-    receipt = _render_same_session_routing_receipt(routing)
-    if not receipt:
-        return None
-    task_id = str(receipt.get("target_task_id") or "").strip() or None
-    metadata = {
-        "routing_decision": routing,
-        "wd_receipt": receipt,
-    }
-    message = _build_control_plane_message(
-        kind="same-session-routing-receipt",
-        event_name="same-session-routing-receipt",
-        priority="p0-receive-ack",
-        text=str(receipt["user_visible_wd"]).replace("[wd]", "", 1).strip(),
-        task=None,
-        session_key=str(receipt.get("target_session_key") or routing.get("session_key") or "").strip() or None,
-        metadata=metadata,
-    )
-    if task_id:
-        message["task_id"] = task_id
-    return message
-
-
-def _build_queue_receipt_text(
-    *,
-    queue_position: Optional[int],
-    ahead_count: int,
-    running_count: int,
-    estimated_wait_seconds: Optional[int],
-) -> str:
-    position = queue_position or max(ahead_count + 1, 1)
-    suppress_short_eta = ahead_count > 0 and estimated_wait_seconds is not None and estimated_wait_seconds < 60
-    if estimated_wait_seconds and not suppress_short_eta:
-        if ahead_count > 0 and running_count <= 0:
-            return (
-                f"已收到，你的请求已进入队列；前面还有 {ahead_count} 个号，"
-                f"你现在排第 {position} 位，预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到处理。"
-            )
-        if running_count <= 0:
-            return (
-                f"已收到，你的请求已进入队列；你现在排第 {position} 位，"
-                f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到处理。"
-            )
-        return (
-            f"已收到，当前有 {running_count} 条任务正在处理；你的请求已进入队列，"
-            f"前面还有 {ahead_count} 个号，你现在排第 {position} 位，"
-            f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到处理。"
-        )
-    if ahead_count > 0 and running_count <= 0:
-        return f"已收到，你的请求已进入队列；前面还有 {ahead_count} 个号，你现在排第 {position} 位。"
-    if running_count <= 0:
-        return f"已收到，你的请求已进入队列；你现在排第 {position} 位。"
-    return (
-        f"已收到，当前有 {running_count} 条任务正在处理；你的请求已进入队列，"
-        f"前面还有 {ahead_count} 个号，你现在排第 {position} 位。"
-    )
 
 
 def _render_followup_summary_text(plan: dict[str, Any]) -> Optional[str]:
@@ -368,45 +250,6 @@ def register_from_payload(
         same_session_classifier=same_session_classifier,
         same_session_classifier_min_confidence=same_session_classifier_min_confidence,
     )
-    control_plane_message = None
-    if isinstance(serialized.get("routing_decision"), dict):
-        routing = dict(serialized["routing_decision"])
-        wd_receipt = _render_same_session_routing_receipt(routing)
-        if wd_receipt:
-            routing["wd_receipt"] = wd_receipt
-            serialized["routing_decision"] = routing
-            serialized["wd_receipt"] = wd_receipt
-            control_plane_message = _build_same_session_routing_control_plane_message(routing)
-            if (
-                control_plane_message
-                and str(routing.get("execution_decision") or "").strip() == "queue-as-new-task"
-            ):
-                queue_text = _build_queue_receipt_text(
-                    queue_position=serialized.get("queue_position"),
-                    ahead_count=int(serialized.get("ahead_count") or 0),
-                    running_count=int(serialized.get("running_count") or 0),
-                    estimated_wait_seconds=(
-                        int(serialized["estimated_wait_seconds"])
-                        if serialized.get("estimated_wait_seconds") is not None
-                        else None
-                    ),
-                )
-                wd_receipt["user_visible_wd"] = f"[wd] {queue_text}"
-                serialized["wd_receipt"] = wd_receipt
-                routing["wd_receipt"] = wd_receipt
-                serialized["routing_decision"] = routing
-                control_plane_message["text"] = queue_text
-            task_id = str(serialized.get("task_id") or "").strip()
-            if task_id:
-                runtime_config = load_task_system_config(config_path=config_path)
-                store = TaskStore(paths=runtime_config.build_paths())
-                try:
-                    task = store.load_task(task_id, allow_archive=False)
-                except FileNotFoundError:
-                    task = None
-                if task is not None:
-                    task.meta["same_session_routing"] = routing
-                    store.save_task(task)
     return {
         "should_register_task": serialized["should_register_task"],
         "task_id": serialized["task_id"],
@@ -422,7 +265,7 @@ def register_from_payload(
         "continuation_due_at": serialized["continuation_due_at"],
         "routing_decision": serialized["routing_decision"],
         "wd_receipt": serialized.get("wd_receipt"),
-        "control_plane_message": control_plane_message,
+        "control_plane_message": serialized.get("control_plane_message"),
         "register_decision": serialized,
         "session_state": serialized.get("session_state"),
     }
@@ -478,6 +321,15 @@ def activate_latest_from_payload(
 
 def _resolve_existing_task(store: TaskStore, task_id: str) -> Any:
     return store.load_task(task_id, allow_archive=False)
+
+
+def _flatten_lifecycle_task_result(result: dict[str, Any]) -> dict[str, Any]:
+    task = result.get("task") if isinstance(result.get("task"), dict) else {}
+    flattened = dict(task)
+    control_plane_message = result.get("control_plane_message")
+    if control_plane_message is not None:
+        flattened["control_plane_message"] = control_plane_message
+    return flattened
 
 
 def _find_source_task_id_for_plan(store: TaskStore, plan_id: str) -> Optional[str]:
@@ -1184,17 +1036,9 @@ def blocked_from_payload(
     *,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
-    task = record_blocked(payload["task_id"], payload["reason"], config_path=config_path)
-    result = task.to_dict()
-    reason = str(task.meta.get("blocked_reason") or payload.get("reason") or "").strip()
-    result["control_plane_message"] = _build_control_plane_message(
-        kind="task-blocked",
-        event_name="task-blocked",
-        priority="p1-task-management",
-        text=f"当前任务已阻塞：{reason}" if reason else "当前任务已阻塞。",
-        task=task,
+    return _flatten_lifecycle_task_result(
+        block_task_lifecycle(payload["task_id"], reason=payload["reason"], config_path=config_path)
     )
-    return result
 
 
 def blocked_active_from_payload(
@@ -1206,18 +1050,7 @@ def blocked_active_from_payload(
     task_id = active.get("task_id")
     if not task_id:
         return {"updated": False, "reason": "no-active-task"}
-    task = record_blocked(str(task_id), payload["reason"], config_path=config_path)
-    return {
-        "updated": True,
-        "task": task.to_dict(),
-        "control_plane_message": _build_control_plane_message(
-            kind="task-blocked",
-            event_name="task-blocked",
-            priority="p1-task-management",
-            text=f"当前任务已阻塞：{payload['reason']}".strip(),
-            task=task,
-        ),
-    }
+    return block_task_lifecycle(str(task_id), reason=payload["reason"], config_path=config_path)
 
 
 def completed_from_payload(
@@ -1225,16 +1058,13 @@ def completed_from_payload(
     *,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
-    task = record_completed(payload["task_id"], result_summary=payload.get("result_summary"), config_path=config_path)
-    result = task.to_dict()
-    result["control_plane_message"] = _build_control_plane_message(
-        kind="task-completed",
-        event_name="task-completed",
-        priority="p1-task-management",
-        text=_build_terminal_message_text(task, success=True),
-        task=task,
+    return _flatten_lifecycle_task_result(
+        complete_task_lifecycle(
+            payload["task_id"],
+            result_summary=payload.get("result_summary"),
+            config_path=config_path,
+        )
     )
-    return result
 
 
 def completed_active_from_payload(
@@ -1246,18 +1076,11 @@ def completed_active_from_payload(
     task_id = active.get("task_id")
     if not task_id:
         return {"updated": False, "reason": "no-active-task"}
-    task = record_completed(str(task_id), result_summary=payload.get("result_summary"), config_path=config_path)
-    return {
-        "updated": True,
-        "task": task.to_dict(),
-        "control_plane_message": _build_control_plane_message(
-            kind="task-completed",
-            event_name="task-completed",
-            priority="p1-task-management",
-            text=_build_terminal_message_text(task, success=True),
-            task=task,
-        ),
-    }
+    return complete_task_lifecycle(
+        str(task_id),
+        result_summary=payload.get("result_summary"),
+        config_path=config_path,
+    )
 
 
 def failed_from_payload(
@@ -1265,16 +1088,9 @@ def failed_from_payload(
     *,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
-    task = record_failed(payload["task_id"], payload["reason"], config_path=config_path)
-    result = task.to_dict()
-    result["control_plane_message"] = _build_control_plane_message(
-        kind="task-failed",
-        event_name="task-failed",
-        priority="p1-task-management",
-        text=_build_terminal_message_text(task, success=False),
-        task=task,
+    return _flatten_lifecycle_task_result(
+        fail_task_lifecycle(payload["task_id"], reason=payload["reason"], config_path=config_path)
     )
-    return result
 
 
 def failed_active_from_payload(
@@ -1286,18 +1102,7 @@ def failed_active_from_payload(
     task_id = active.get("task_id")
     if not task_id:
         return {"updated": False, "reason": "no-active-task"}
-    task = record_failed(str(task_id), payload["reason"], config_path=config_path)
-    return {
-        "updated": True,
-        "task": task.to_dict(),
-        "control_plane_message": _build_control_plane_message(
-            kind="task-failed",
-            event_name="task-failed",
-            priority="p1-task-management",
-            text=_build_terminal_message_text(task, success=False),
-            task=task,
-        ),
-    }
+    return fail_task_lifecycle(str(task_id), reason=payload["reason"], config_path=config_path)
 
 
 def finalize_active_from_payload(
@@ -1310,21 +1115,7 @@ def finalize_active_from_payload(
     active = _resolve_target_task(store, payload)
     if not active:
         return {"updated": False, "reason": "no-active-task"}
-    result = finalize_active_lifecycle(active_task=active, payload=payload, config_path=config_path)
-    if not result.get("updated"):
-        return result
-    task_payload = result.get("task") if isinstance(result.get("task"), dict) else None
-    task_id = str((task_payload or {}).get("task_id") or active.task_id).strip()
-    task = store.load_task(task_id, allow_archive=True)
-    success = bool(payload.get("success", False))
-    result["control_plane_message"] = _build_control_plane_message(
-        kind="task-completed" if success else "task-failed",
-        event_name="task-completed" if success else "task-failed",
-        priority="p1-task-management",
-        text=_build_terminal_message_text(task, success=success),
-        task=task,
-    )
-    return result
+    return finalize_active_lifecycle(active_task=active, payload=payload, config_path=config_path)
 
 
 def should_send_short_followup_from_payload(

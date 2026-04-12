@@ -2,6 +2,22 @@
 
 # Architecture Hardening
 
+## Current Status
+
+This workstream is now in closeout rather than open-ended diagnosis.
+
+The repo has adopted two explicit hardening decisions:
+
+- `lifecycle_coordinator.py` owns runtime lifecycle projection
+- `scripts/runtime/` is the only canonical editable runtime tree, while `plugin/scripts/runtime/` is a strict synchronized mirror
+
+Enforcement now comes from:
+
+- `python3 scripts/runtime/runtime_mirror.py --check`
+- `python3 scripts/runtime/plugin_doctor.py`
+- `bash scripts/run_tests.sh`
+- `bash scripts/install_remote.sh`
+
 ## Why This Workstream Exists
 
 The Phase 0-6 mainline is already shipped, but the implementation still carries two structural debts:

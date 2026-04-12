@@ -43,7 +43,7 @@ The testsuite must cover:
 
 Detailed grouping lives in [testsuite.md](testsuite.md).
 
-## Manual and Semi-Real Checks
+## Manual Checks
 
 Run these when touching real delivery behavior or planning contracts:
 

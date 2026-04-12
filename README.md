@@ -115,8 +115,15 @@ Useful secondary docs:
 ## Runtime and Source Layout
 
 - [`plugin/`](./plugin): installable OpenClaw plugin payload
-- [`scripts/runtime/`](./scripts/runtime): runtime tools, diagnostics, acceptance helpers, and CLIs
+- [`scripts/runtime/`](./scripts/runtime): the canonical editable runtime source tree
+- [`plugin/scripts/runtime/`](./plugin/scripts/runtime): strict synchronized mirror used by the installable plugin payload
 - [`config/`](./config): example runtime and plugin configuration
+
+Canonical source rule:
+
+- edit runtime code under [`scripts/runtime/`](./scripts/runtime)
+- keep [`plugin/scripts/runtime/`](./plugin/scripts/runtime) synchronized through `python3 scripts/runtime/runtime_mirror.py --write`
+- treat `runtime_mirror.py --check`, `plugin_doctor.py`, `scripts/install_remote.sh`, and `scripts/run_tests.sh` as the enforcement path for that rule
 
 ## Validation Entry Points
 
@@ -143,4 +150,11 @@ Planning acceptance:
 ```bash
 python3 scripts/runtime/planning_acceptance.py --json
 python3 scripts/runtime/planning_acceptance_suite.py --json
+```
+
+Runtime mirror sync:
+
+```bash
+python3 scripts/runtime/runtime_mirror.py --check
+python3 scripts/runtime/runtime_mirror.py --write
 ```

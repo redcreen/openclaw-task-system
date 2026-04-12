@@ -59,6 +59,12 @@ The current architecture-hardening workstream focuses on:
 - runtime source-of-truth convergence
 - reducing plugin-side repair logic created by split lifecycle ownership
 
+The current hardening decision is now explicit:
+
+- `scripts/runtime/` is the canonical editable runtime source
+- `plugin/scripts/runtime/` is a strict synchronized mirror for the installable plugin payload
+- `runtime_mirror.py --check`, `plugin_doctor.py`, `scripts/install_remote.sh`, and `scripts/run_tests.sh` enforce that rule
+
 ## Related Docs
 
 - [roadmap.md](roadmap.md)

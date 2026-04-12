@@ -34,12 +34,16 @@ The mainline shipped these outcomes:
 
 Remaining work is extension work, not unfinished mainline debt:
 
-- architecture hardening for lifecycle coordination and runtime source-of-truth boundaries
 - broader planning anomaly coverage
 - richer planning and channel acceptance samples
 - additional operator UX and recovery depth
 
-The architecture hardening line is tracked here:
+The architecture hardening line is now closed with two explicit decisions:
+
+- `lifecycle_coordinator.py` owns runtime lifecycle projection
+- `scripts/runtime/` is canonical and `plugin/scripts/runtime/` is a strict synchronized mirror
+
+Reference:
 
 - [workstreams/architecture-hardening/README.md](workstreams/architecture-hardening/README.md)
 - future roadmap candidates under workstreams and todo tracking

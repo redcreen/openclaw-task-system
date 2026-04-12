@@ -2,6 +2,22 @@
 
 # 架构整改
 
+## 当前状态
+
+这条 workstream 现在已经进入 closeout，而不是继续开放诊断。
+
+仓库已经收口成两条明确决定：
+
+- `lifecycle_coordinator.py` 拥有 runtime lifecycle projection
+- `scripts/runtime/` 是唯一 canonical editable runtime tree，`plugin/scripts/runtime/` 是严格同步镜像
+
+当前 enforcement 入口：
+
+- `python3 scripts/runtime/runtime_mirror.py --check`
+- `python3 scripts/runtime/plugin_doctor.py`
+- `bash scripts/run_tests.sh`
+- `bash scripts/install_remote.sh`
+
 ## 为什么要单独开这条工作流
 
 Phase 0-6 主线已经交付，但实现层还带着两类结构性债务：

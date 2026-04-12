@@ -115,8 +115,15 @@ openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.gi
 ## 运行时与源码目录
 
 - [`plugin/`](./plugin)：可安装的 OpenClaw 插件 payload
-- [`scripts/runtime/`](./scripts/runtime)：运行时工具、诊断入口、acceptance helper 与 CLI
+- [`scripts/runtime/`](./scripts/runtime)：唯一 canonical editable runtime source tree
+- [`plugin/scripts/runtime/`](./plugin/scripts/runtime)：供 installable plugin payload 使用的严格同步镜像
 - [`config/`](./config)：运行时与插件配置样例
+
+canonical source 规则：
+
+- runtime 代码只在 [`scripts/runtime/`](./scripts/runtime) 下直接编辑
+- 用 `python3 scripts/runtime/runtime_mirror.py --write` 同步 [`plugin/scripts/runtime/`](./plugin/scripts/runtime)
+- 把 `runtime_mirror.py --check`、`plugin_doctor.py`、`scripts/install_remote.sh` 与 `scripts/run_tests.sh` 当作这条规则的 enforcement path
 
 ## 验证入口
 
@@ -143,4 +150,11 @@ planning 验收：
 ```bash
 python3 scripts/runtime/planning_acceptance.py --json
 python3 scripts/runtime/planning_acceptance_suite.py --json
+```
+
+runtime mirror 同步：
+
+```bash
+python3 scripts/runtime/runtime_mirror.py --check
+python3 scripts/runtime/runtime_mirror.py --write
 ```

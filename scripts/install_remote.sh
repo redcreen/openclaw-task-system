@@ -31,6 +31,9 @@ fi
 
 cd "${repo_dir}"
 
+echo "[openclaw-task-system] verifying canonical runtime mirror"
+"${PYTHON_BIN}" scripts/runtime/runtime_mirror.py --check >/dev/null
+
 echo "[openclaw-task-system] validating plugin bundle"
 "${PYTHON_BIN}" scripts/runtime/plugin_doctor.py >/dev/null
 

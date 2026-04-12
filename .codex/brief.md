@@ -3,7 +3,7 @@
 ## Delivery Tier
 - Tier: `medium`
 - Why this tier: multi-session maintenance needs a lightweight but durable control surface
-- Last reviewed: 2026-04-11
+- Last reviewed: 2026-04-12
 
 ## Outcome
 
@@ -31,7 +31,7 @@ Turn OpenClaw from a chat-only flow into a task-supervised runtime that can acce
 
 ## Definition of Done
 
-- `deep` validation gate passes for control surface, docs, i18n, governance, and doc quality
+- architecture retrofit notes, plan, and status match the actual repo boundary decisions
 - `./scripts/run_tests.sh` passes
 - Public docs provide a clear English/Chinese landing path
-- Current runtime boundaries and next maintenance slice are visible from `.codex/status.md`
+- current runtime boundaries, execution line, and next maintenance slice are visible from `.codex/status.md`

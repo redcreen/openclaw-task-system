@@ -2,6 +2,10 @@
 
 [English](README.md) | [中文](README.zh-CN.md)
 
+## 起步阅读
+
+优先先读下面这套 canonical stack；`docs/` 里其他文件都应该是在补充、运维化或归档这些主问题，而不是与它们竞争主入口。
+
 ## 正式主文档栈
 
 建议先看这几份：
@@ -33,8 +37,9 @@
 
 ## 目录角色
 
+## Markdown 治理
+
 - 参考文档：[reference/README.zh-CN.md](reference/README.zh-CN.md)
 - 工作流文档：[workstreams/README.zh-CN.md](workstreams/README.zh-CN.md)
 - 归档文档：[archive/README.zh-CN.md](archive/README.zh-CN.md)
-
-归档目录用于存放历史验收记录、交接说明和已退役的整理文档，避免这些内容继续挤占当前主文档栈。
+- 开发日志：[devlog/README.zh-CN.md](devlog/README.zh-CN.md)

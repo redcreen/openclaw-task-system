@@ -137,6 +137,12 @@ def render_markdown() -> str:
     lines.extend(
         [
             "",
+            "## Canonical Runtime Source",
+            "",
+            "- editable source: `scripts/runtime/`",
+            "- installable mirror: `plugin/scripts/runtime/`",
+            "- sync command: `python3 scripts/runtime/runtime_mirror.py --write`",
+            "",
             "## Suggested Install Command",
             "",
             "`openclaw plugins install ./plugin`",
@@ -156,6 +162,9 @@ def render_json() -> str:
     payload = {
         "checks": [asdict(check) for check in run_checks()],
         "installCommand": "openclaw plugins install ./plugin",
+        "canonicalRuntimeSource": "scripts/runtime/",
+        "runtimeMirrorDir": "plugin/scripts/runtime/",
+        "runtimeMirrorSyncCommand": "python3 scripts/runtime/runtime_mirror.py --write",
         "openclawConfigSnippet": build_openclaw_config_snippet(),
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)

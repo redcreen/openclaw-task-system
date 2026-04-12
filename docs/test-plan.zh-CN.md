@@ -43,7 +43,7 @@ testsuite 必须覆盖：
 
 详细分组见 [testsuite.zh-CN.md](testsuite.zh-CN.md)。
 
-## 手工与半真实检查
+## 手工检查
 
 涉及真实外发或 planning contract 时，至少再看：
 

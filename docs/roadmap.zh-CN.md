@@ -45,10 +45,10 @@ flowchart LR
 
 ## 当前整改专项
 
-当前除了继续保持主线稳定外，还要优先推进这条架构整改专项：
+当前除了继续保持主线稳定外，架构整改专项已经收口为两条明确决定：
 
-- 收 `lifecycle coordinator` 所有权
-- 收 `runtime source-of-truth` 边界
+- `lifecycle_coordinator.py` 拥有 runtime lifecycle projection
+- `scripts/runtime/` 是 canonical source，而 `plugin/scripts/runtime/` 是严格同步镜像
 
 入口文档：
 

@@ -82,6 +82,12 @@ flowchart LR
 - 收 `runtime source-of-truth` 的边界
 - 减少因为生命周期所有权分裂而产生的 plugin 侧 repair 逻辑
 
+当前这条 hardening 决定已经明确：
+
+- `scripts/runtime/` 是唯一 canonical editable runtime source
+- `plugin/scripts/runtime/` 是 installable plugin payload 使用的严格同步镜像
+- `runtime_mirror.py --check`、`plugin_doctor.py`、`scripts/install_remote.sh` 与 `scripts/run_tests.sh` 共同承担这条规则的 enforcement
+
 ## 取舍与非目标
 
 - 它是监督运行时，不是新的通用 orchestrator

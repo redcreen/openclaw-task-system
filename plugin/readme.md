@@ -18,9 +18,15 @@ Current first-stage hook behavior:
 
 This package now bundles its runtime and config assets directly:
 
-- `scripts/runtime/`
+- `scripts/runtime/` (strict synchronized mirror of the repo canonical runtime under `../scripts/runtime/`)
 - `config/`
 - generated runtime state under `data/`
+
+Maintainer rule:
+
+- edit runtime code in the repo canonical tree: `scripts/runtime/`
+- sync the plugin payload mirror with `python3 scripts/runtime/runtime_mirror.py --write`
+- treat `python3 scripts/runtime/runtime_mirror.py --check` as the pre-ship mirror assertion
 
 Useful bundled runtime entrypoints now include:
 
