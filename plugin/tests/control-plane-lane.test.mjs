@@ -7,6 +7,7 @@ import {
   createApi,
   createFakeRuntimeRoot,
   readDebugEvents,
+  readHookCalls,
   readHookCommands,
   resetGlobalState,
   waitForDebugEvent,
@@ -278,6 +279,119 @@ test("agent_end delivers finalize failure control-plane message when runtime ret
     assert.equal(terminalCommitted?.payload?.blockedBy, "task-failed");
     assert.equal(terminalCleared?.payload?.terminalPhase, "cleared");
     assert.equal(terminalCleared?.payload?.reason, "finalize-active-complete");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("llm_output finalizes task after finalize-active skipped for delayed visible output", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot({
+    registerResponse: buildRegisterDecision({
+      task_id: "task-health-race",
+      task_status: "running",
+      classification_reason: "observed-task",
+    }),
+    progressActiveResponse: {
+      updated: true,
+      task: {
+        task_id: "task-health-race",
+        status: "running",
+        meta: {
+          finalize_skipped_reason: "success-without-visible-progress",
+        },
+      },
+    },
+    finalizeActiveResponses: [
+      {
+        updated: false,
+        reason: "awaiting-visible-output",
+        task: {
+          task_id: "task-health-race",
+          status: "running",
+          meta: {
+            finalize_skipped_reason: "success-without-visible-progress",
+          },
+        },
+      },
+      {
+        updated: true,
+        task: {
+          task_id: "task-health-race",
+          status: "done",
+        },
+      },
+    ],
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "对，标准晨测数据可以记录了",
+        body: "对，标准晨测数据可以记录了",
+        channel: "telegram",
+        senderId: "8705812936",
+      },
+      {
+        sessionKey: "agent:health:telegram:direct:8705812936",
+        channelId: "telegram",
+        conversationId: "8705812936",
+        accountId: "default",
+        senderId: "8705812936",
+        agentId: "health",
+      },
+    );
+
+    await plugin.agentEnd(
+      {
+        success: true,
+        messages: [],
+        durationMs: 50,
+      },
+      {
+        sessionKey: "agent:health:telegram:direct:8705812936",
+        channelId: "telegram",
+        conversationId: "8705812936",
+        accountId: "default",
+        senderId: "8705812936",
+        agentId: "health",
+      },
+    );
+
+    await plugin.llmOutput(
+      {
+        assistantTexts: [
+          "[[reply_to_current]] 好，这组我按标准晨测记：体重 82.95kg，血压 110/70，脉搏 77。",
+        ],
+      },
+      {
+        sessionKey: "agent:health:telegram:direct:8705812936",
+        agentId: "health",
+        channelId: "telegram",
+        conversationId: "8705812936",
+        accountId: "default",
+        senderId: "8705812936",
+      },
+    );
+
+    const hookCalls = await readHookCalls(callsPath);
+    const finalizeCalls = hookCalls.filter((entry) => entry.command === "finalize-active");
+    assert.equal(finalizeCalls.length, 2);
+    assert.equal(finalizeCalls[0]?.payload?.has_visible_output, false);
+    assert.equal(finalizeCalls[0]?.payload?.result_summary, "");
+    assert.equal(finalizeCalls[1]?.payload?.has_visible_output, true);
+    assert.equal(
+      finalizeCalls[1]?.payload?.result_summary,
+      "好，这组我按标准晨测记：体重 82.95kg，血压 110/70，脉搏 77。",
+    );
+
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    const repairStart = debugEvents.find((entry) => entry.event === "llm_output:finalize-skipped-repair:start");
+    const repairOk = debugEvents.find((entry) => entry.event === "llm_output:finalize-skipped-repair:ok");
+    assert.equal(repairStart?.payload?.taskId, "task-health-race");
+    assert.equal(repairOk?.payload?.updated, true);
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
   }

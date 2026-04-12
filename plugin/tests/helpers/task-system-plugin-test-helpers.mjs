@@ -113,8 +113,11 @@ export async function createFakeRuntimeRoot(options = {}) {
     estimated_wait_seconds: 45,
   };
   const registerResponses = Array.isArray(options.registerResponses) ? options.registerResponses : null;
+  const progressActiveResponse = options.progressActiveResponse ?? { updated: true };
+  const progressActiveResponses = Array.isArray(options.progressActiveResponses) ? options.progressActiveResponses : null;
   const followupResponse = options.followupResponse ?? { should_send: false };
   const finalizeActiveResponse = options.finalizeActiveResponse ?? { updated: true };
+  const finalizeActiveResponses = Array.isArray(options.finalizeActiveResponses) ? options.finalizeActiveResponses : null;
   const mainContinuityResponse = options.mainContinuityResponse ?? {
     runbook_status: "ok",
     primary_action_kind: "none",
@@ -206,8 +209,11 @@ export async function createFakeRuntimeRoot(options = {}) {
   const followupDelayMs = Number.isFinite(options.followupDelayMs) ? Number(options.followupDelayMs) : 0;
   const serializedRegisterResponse = JSON.stringify(JSON.stringify(registerResponse));
   const serializedRegisterResponses = JSON.stringify(JSON.stringify(registerResponses));
+  const serializedProgressActiveResponse = JSON.stringify(JSON.stringify(progressActiveResponse));
+  const serializedProgressActiveResponses = JSON.stringify(JSON.stringify(progressActiveResponses));
   const serializedFollowupResponse = JSON.stringify(JSON.stringify(followupResponse));
   const serializedFinalizeActiveResponse = JSON.stringify(JSON.stringify(finalizeActiveResponse));
+  const serializedFinalizeActiveResponses = JSON.stringify(JSON.stringify(finalizeActiveResponses));
   const serializedMainContinuityResponse = JSON.stringify(JSON.stringify(mainContinuityResponse));
   const serializedMainTasksSummaryResponse = JSON.stringify(JSON.stringify(mainTasksSummaryResponse));
   const serializedTaskmonitorControlResponse = JSON.stringify(JSON.stringify(taskmonitorControlResponse));
@@ -286,8 +292,32 @@ elif command == "register":
         print(json.dumps(response, ensure_ascii=False))
     else:
         print(json.dumps(json.loads(${serializedRegisterResponse}), ensure_ascii=False))
+elif command == "progress-active":
+    responses = json.loads(${serializedProgressActiveResponses})
+    if isinstance(responses, list) and responses:
+        raw = calls_path.read_text(encoding="utf-8") if calls_path.exists() else ""
+        command_count = sum(
+            1
+            for line in raw.splitlines()
+            if line.strip() and json.loads(line).get("command") == "progress-active"
+        )
+        response = responses[min(max(command_count - 1, 0), len(responses) - 1)]
+        print(json.dumps(response, ensure_ascii=False))
+    else:
+        print(json.dumps(json.loads(${serializedProgressActiveResponse}), ensure_ascii=False))
 elif command == "finalize-active":
-    print(json.dumps(json.loads(${serializedFinalizeActiveResponse}), ensure_ascii=False))
+    responses = json.loads(${serializedFinalizeActiveResponses})
+    if isinstance(responses, list) and responses:
+        raw = calls_path.read_text(encoding="utf-8") if calls_path.exists() else ""
+        command_count = sum(
+            1
+            for line in raw.splitlines()
+            if line.strip() and json.loads(line).get("command") == "finalize-active"
+        )
+        response = responses[min(max(command_count - 1, 0), len(responses) - 1)]
+        print(json.dumps(response, ensure_ascii=False))
+    else:
+        print(json.dumps(json.loads(${serializedFinalizeActiveResponse}), ensure_ascii=False))
 elif command == "should-send-short-followup":
     if ${JSON.stringify(followupDelayMs)} > 0:
         import time

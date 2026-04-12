@@ -898,6 +898,7 @@ async function withTimeout<T>(
 const INTERNAL_SUMMARY_NOISE_PATTERN =
   /(内部调度|调度状态|tool_call|tool_calls_section|follow-?up|tool-?chain|\[wd\])/i;
 const TASK_USER_CONTENT_MARKER_PATTERN = /<\/?task_user_content>/gi;
+const REPLY_TO_CURRENT_MARKER_PATTERN = /\[\[reply_to_current\]\]/gi;
 const IMMEDIATE_SUMMARY_MAX_CHARS = 120;
 
 function clampImmediateSummary(text: string): string {
@@ -948,7 +949,9 @@ function hasRawTaskUserContentMarker(text: string): boolean {
 
 function sanitizeUserFacingMessage(text: string): string {
   const raw = typeof text === "string" ? text : "";
-  const withoutMarkers = raw.replace(TASK_USER_CONTENT_MARKER_PATTERN, " ");
+  const withoutMarkers = raw
+    .replace(TASK_USER_CONTENT_MARKER_PATTERN, " ")
+    .replace(REPLY_TO_CURRENT_MARKER_PATTERN, " ");
   return stripInternalUserFacingNoise(withoutMarkers);
 }
 
@@ -2659,6 +2662,81 @@ const taskSystemPlugin = {
     const controlPlaneLatestSupersedableTokenByTask = new Map<string, number>();
     const controlPlaneLatestSupersedableMetaByTask = new Map<string, ControlPlaneBlockerMeta>();
     let controlPlaneEnqueueToken = 0;
+
+    const shouldRepairFinalizeSkippedTask = (
+      progressResult: unknown,
+    ): progressResult is {
+      task: { task_id?: string; status?: string; meta?: Record<string, unknown> };
+    } => {
+      if (!progressResult || typeof progressResult !== "object") {
+        return false;
+      }
+      const task = (progressResult as Record<string, unknown>).task;
+      if (!task || typeof task !== "object") {
+        return false;
+      }
+      const record = task as Record<string, unknown>;
+      const meta = record.meta;
+      if (!meta || typeof meta !== "object") {
+        return false;
+      }
+      return (
+        normalizeText(String(record.status || "")) === "running" &&
+        normalizeText(String((meta as Record<string, unknown>).finalize_skipped_reason || "")) ===
+          "success-without-visible-progress"
+      );
+    };
+
+    const maybeFinalizeAfterDelayedVisibleOutput = async (params: {
+      agentId: string;
+      sessionKey: string;
+      taskId?: string;
+      progressResult: unknown;
+      visibleText: string;
+      source: "llm_output" | "message_sending";
+    }): Promise<void> => {
+      if (!shouldRepairFinalizeSkippedTask(params.progressResult)) {
+        return;
+      }
+      const taskId = normalizeText(params.progressResult.task.task_id || params.taskId || "");
+      if (!taskId) {
+        return;
+      }
+      const resultSummary = sanitizeUserFacingMessage(params.visibleText).slice(0, 240);
+      if (!resultSummary) {
+        return;
+      }
+      await appendDebugLog(config, `${params.source}:finalize-skipped-repair:start`, {
+        agentId: params.agentId,
+        sessionKey: params.sessionKey,
+        taskId,
+        schedulerDecision: "entered",
+        reason: "delayed-visible-output-after-finalize-skip",
+      });
+      const finalizeResult = await callHook(api, config, "finalize-active", {
+        agent_id: params.agentId,
+        session_key: params.sessionKey,
+        task_id: taskId,
+        success: true,
+        has_visible_output: true,
+        result_summary: resultSummary,
+      });
+      await appendDebugLog(config, `${params.source}:finalize-skipped-repair:ok`, {
+        agentId: params.agentId,
+        sessionKey: params.sessionKey,
+        taskId,
+        schedulerDecision: finalizeResult?.updated ? "completed" : "noop",
+        reason: finalizeResult?.updated ? "delayed-visible-output-finalized" : "delayed-visible-output-finalize-noop",
+        updated: Boolean(finalizeResult?.updated),
+      });
+      if (finalizeResult?.updated) {
+        pendingReceipts.delete(taskId);
+        activeTaskBindings.delete(params.sessionKey);
+        recentActivationBySession.delete(params.sessionKey);
+        controlPlaneTerminalByTask.delete(taskId);
+      }
+    };
+
     api.registerTool({
       name: "ts_attach_promise_guard",
       description:
@@ -3979,11 +4057,19 @@ const taskSystemPlugin = {
         schedulerDecision: "entered",
         reason: "progress-sync",
       });
-      await callHook(api, config, "progress-active", {
+      const progressResult = await callHook(api, config, "progress-active", {
         agent_id: agentId,
         session_key: sessionKey,
         task_id: activeTaskBinding?.taskId,
         progress_note: normalizeText(event.content).slice(0, 240),
+      });
+      await maybeFinalizeAfterDelayedVisibleOutput({
+        agentId,
+        sessionKey,
+        taskId: activeTaskBinding?.taskId,
+        progressResult,
+        visibleText: normalizeText(event.content),
+        source: "message_sending",
       });
       return sendingResult;
     });
@@ -4091,11 +4177,19 @@ const taskSystemPlugin = {
         schedulerDecision: "entered",
         reason: "progress-sync",
       });
-      await callHook(api, config, "progress-active", {
+      const progressResult = await callHook(api, config, "progress-active", {
         agent_id: agentId,
         session_key: sessionKey,
         task_id: activeTaskBinding?.taskId,
         progress_note: text.slice(0, 240),
+      });
+      await maybeFinalizeAfterDelayedVisibleOutput({
+        agentId,
+        sessionKey,
+        taskId: activeTaskBinding?.taskId,
+        progressResult,
+        visibleText: text,
+        source: "llm_output",
       });
     });
 
