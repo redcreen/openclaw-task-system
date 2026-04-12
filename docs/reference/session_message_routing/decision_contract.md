@@ -13,7 +13,7 @@ This document defines the runtime-owned decision contract for same-session routi
 | `control-plane` | status, cancel, pause, resume, continue, or other operator-style commands | no |
 | `steering` | a refinement, correction, or constraint on the active task | depends on execution stage |
 | `queueing` | a new independent task | yes |
-| `collect-more` | the user explicitly wants the system to wait for more input before starting | not yet |
+| `collect-more` | the user explicitly wants the system to wait for more input before starting | no |
 
 ## Execution Decision
 

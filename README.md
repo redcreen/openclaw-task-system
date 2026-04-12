@@ -62,7 +62,7 @@ See:
 
 ## Project Status
 
-The mainline roadmap is complete:
+The mainline roadmap and the first post-hardening closeout milestone are complete:
 
 - Phase 0: complete
 - Phase 1: complete
@@ -71,8 +71,11 @@ The mainline roadmap is complete:
 - Phase 4: complete
 - Phase 5: complete
 - Phase 6 minimum closure: complete
+- Milestone 1: post-hardening closeout: complete
 
-The remaining work is extension work, not unfinished mainline debt.
+There is no active closeout debt in the repo today.
+
+Any future extension work should be named as a new roadmap candidate instead of lingering as generic follow-up.
 
 ## Quick Start
 

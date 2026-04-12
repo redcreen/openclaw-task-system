@@ -62,7 +62,7 @@ same-session routing 现在已经是正式交付能力：
 
 ## 当前状态
 
-正式主线 roadmap 已完成：
+正式主线 roadmap 以及第一条 post-hardening 收口里程碑都已完成：
 
 - Phase 0：完成
 - Phase 1：完成
@@ -71,8 +71,11 @@ same-session routing 现在已经是正式交付能力：
 - Phase 4：完成
 - Phase 5：完成
 - Phase 6 最小闭环：完成
+- Milestone 1：post-hardening 收口：完成
 
-后续剩余工作属于扩展方向，不是主线欠账。
+仓库当前没有“还没收口的 closeout 欠账”。
+
+如果后面要继续做扩展能力，应该先把它命名成新的 roadmap candidate，而不是继续挂成泛化 follow-up。
 
 ## 快速开始
 

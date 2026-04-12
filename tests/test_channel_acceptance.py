@@ -38,7 +38,7 @@ class ChannelAcceptanceTests(unittest.TestCase):
         payload = channel_acceptance.run_channel_acceptance()
 
         self.assertTrue(payload["ok"])
-        self.assertEqual(len(payload["steps"]), 4)
+        self.assertEqual(len(payload["steps"]), 5)
         self.assertTrue(all(step["ok"] for step in payload["steps"]))
 
     def test_render_markdown_includes_sample_steps(self) -> None:
@@ -48,6 +48,7 @@ class ChannelAcceptanceTests(unittest.TestCase):
         self.assertIn("- channel-matrix-contract: ok", rendered)
         self.assertIn("- feishu-session-focus-contract: ok", rendered)
         self.assertIn("- telegram-session-focus-contract: ok", rendered)
+        self.assertIn("- webchat-session-focus-contract: ok", rendered)
         self.assertIn("- observed-channel-fallback-contract: ok", rendered)
 
 

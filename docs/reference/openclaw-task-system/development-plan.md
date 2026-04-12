@@ -8,96 +8,83 @@ This plan bridges the roadmap and `.codex/plan.md`.
 
 Use it when maintainers need one durable place to answer:
 
-- what the next project-level milestone is
-- how that milestone should be executed
-- what must be verified before the repo can call the slice closed
+- what the most recent project-level milestone closed
+- what was required to close it
+- when a new project-level milestone should be opened again
 
 ## Current Position
 
-The repo has already completed:
+The repo has now completed:
 
 - Phase 0-6 minimum closure
 - architecture hardening closeout
 - bilingual public-doc convergence
-
-The next project-level milestone is:
-
 - `Milestone 1: post-hardening closeout`
 
-This milestone should be executed as one uninterrupted long-task line rather than reopened as many small cleanup slices.
+No newer project-level milestone is active today.
+
+This plan now records the completed closeout milestone and the rule for opening the next one.
 
 ## Milestone Overview
 
 | Milestone | Status | Objective | Validation | Exit Condition |
 | --- | --- | --- | --- | --- |
-| Milestone 1: post-hardening closeout | next | close the remaining compound/future-first boundary work, deepen release-facing evidence, and leave the repo in a clean post-hardening state | `bash scripts/run_tests.sh`, `python3 scripts/runtime/release_gate.py --json`, planning / channel / main-ops acceptance helpers, docs consistency checks | remaining work is either shipped, archived, or explicitly moved into a new roadmap candidate instead of lingering as generic follow-up |
+| Milestone 1: post-hardening closeout | complete | close the remaining compound/future-first boundary work, deepen release-facing evidence, and leave the repo in a clean post-hardening state | `bash scripts/run_tests.sh`, `python3 scripts/runtime/release_gate.py --json`, planning / channel / main-ops acceptance helpers, docs consistency checks | boundary docs, acceptance depth, and operator/release-facing closeout are converged without reopening architecture debt |
 
-## Ordered Execution Queue
+## Completed Closeout Queue
 
 ### 1. Boundary Convergence
 
-Close the product and runtime boundary around:
+Delivered:
 
-- compound follow-up behavior
-- future-first planning expectations
-- output-channel separation
-- user-visible versus runtime-owned status projection
+- compound follow-up docs now describe the shipped runtime boundary instead of an open design placeholder
+- output-channel separation docs now match the current runtime contract instead of treating `task_user_content` as the active long-term protocol
+- same-session routing decision docs now describe `collect-more` as a shipped non-task path
+- user-visible versus runtime-owned status projection is described consistently across the active docs stack
 
-Exit signal:
+Result:
 
-- docs and runtime behavior describe the same boundary
-- no shipped behavior still depends on hand-wavy "temporary" wording in the active docs stack
+- docs and runtime behavior now describe the same boundary
+- the active docs stack no longer depends on "temporary" or "open boundary" wording to explain shipped behavior
 
 ### 2. Evidence Depth
 
-Deepen release-facing evidence where the repo still calls out limited real-channel proof:
+Delivered:
 
-- planning acceptance evidence depth
-- channel acceptance sample depth
-- semi-real or real dated records where current docs explicitly say coverage is still thin
+- planning acceptance now proves that a scheduled follow-up summary stays in control-plane projection instead of leaking into business content
+- channel acceptance now includes an explicit bounded-focus sample for `webchat`
+- main-ops acceptance now includes `followup-task-missing` operator recovery projection alongside the earlier anomaly and watchdog samples
 
-Exit signal:
+Result:
 
-- acceptance coverage no longer relies on a single dated record or summary-only wording for the remaining risky areas
+- release-facing acceptance depth no longer depends on summary-only wording for the remaining risky areas
 
 ### 3. Operator And Release-Facing Closeout
 
-Finish the maintainer-facing closeout work:
+Delivered:
 
-- operator snapshot and runbook alignment
-- release-gate wording and entrypoint alignment
-- archive and promotion guidance consistency
+- operator and release-facing docs now point to the same validation entrypoints
+- roadmap, README, todo intake, and control-surface docs all describe the same post-closeout state
+- archive and promotion guidance remain aligned with the repo's planning evidence workflow
 
-Exit signal:
+Result:
 
 - operators can recover, triage, and validate from one coherent command set
 - release-facing docs no longer point at half-finished or duplicated guidance
 
-### 4. Final Closeout Pass
+### 4. Next Activation Rule
 
-Do one final convergence pass before calling the milestone closed:
+Open a new project-level milestone only when all of the following are true:
 
-- refresh roadmap, todo, and active docs wording
-- archive superseded temporary notes if needed
-- capture a devlog or handoff only if the reasoning changed materially
+1. extension work graduates from `docs/todo.md` into a named roadmap candidate
+2. the candidate has explicit validation and exit conditions
+3. the repo would otherwise start carrying generic follow-up debt again
 
-Exit signal:
-
-- the remaining backlog is explicit and small
-- `.codex/status.md`, `.codex/plan.md`, roadmap, and test-plan all point at the same post-closeout state
-
-## Execution Rule
-
-Treat this milestone as one long-task execution line:
-
-1. start from the first open queue item
-2. continue automatically until a real blocker, checkpoint, or decision gate appears
-3. avoid reopening already-closed slices just because they are nearby
-4. only stop when the milestone can either be closed or deliberately split into a new named roadmap candidate
+Until then, use `roadmap.md`, `test-plan.md`, and `.codex/status.md` as the steady-state entrypoints.
 
 ## Validation Stack
 
-Minimum validation for milestone closeout:
+Validation that closed this milestone:
 
 ```bash
 bash scripts/run_tests.sh
@@ -107,4 +94,4 @@ python3 scripts/runtime/channel_acceptance.py --json
 python3 scripts/runtime/main_ops_acceptance.py --json
 ```
 
-Use additional real or semi-real evidence capture when the slice touches delivery or planning contracts directly.
+Use additional real or semi-real evidence capture when a future change touches delivery or planning contracts directly.

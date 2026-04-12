@@ -47,6 +47,12 @@ testsuite 必须覆盖：
 - planning acceptance helper
 - same-session routing acceptance
 
+当前 release-facing 样本深度已经显式包含：
+
+- 已排定 follow-up 摘要仍留在控制面投影里
+- `webchat` 的 bounded-focus 覆盖
+- `followup-task-missing` 的 operator recovery 投影
+
 详细分组见 [testsuite.zh-CN.md](testsuite.zh-CN.md)。
 
 ## 手工检查

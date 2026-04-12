@@ -46,18 +46,20 @@ tool-assisted planning 引入了一个结构性问题：
 3. 用户可见业务内容必须走单独的内容通道
 4. 普通主答复不能再承载裸排程状态
 
-### 这一阶段的最小实现
+### 当前已发货的 runtime contract
 
-这一阶段选定的最小实现是：
+当前已发货的 runtime contract 是：
 
-1. 要求用户可见业务内容必须放进：
-   - `<task_user_content> ... </task_user_content>`
-2. 一旦某条任务已经使用了 planning tools，runtime 之后只转发这个内容块里的东西
-3. 如果没有这个内容块，runtime 选择抑制用户可见内容，而不是继续猜
-4. 排程成功/失败确认仍然单独走 `[wd]`
+1. 排程成功/失败确认仍然单独走 runtime-owned `[wd]` 或其他控制面消息
+2. 一旦 planning 状态已建立，runtime 优先信任 structured planning metadata，而不是自由文本里的排程描述
+3. future-first 任务可以通过 `main_user_content_mode` 显式抑制即时业务内容，或只保留一条短摘要
+4. 如果 runtime 不能安全信任即时业务内容，就应抑制它，而不是继续猜
 5. 到点 follow-up 内容继续回复原消息，且不带 `[wd]`
-6. runtime 不能把字面量 `<task_user_content>` 标签泄漏给用户
-7. 一旦 promise guard 已 armed，structured-content gate 必须能跨 reload / rehydrate 持续生效
+6. runtime 不能把原始 planning marker 或 scheduling metadata 泄漏给用户
+
+历史上的 `task_user_content` 校验现在只保留一个窄用途：
+
+- 防止旧 transcript 泄漏模式悄悄回归，并为历史清理提供审计入口
 
 ### 在 live review 中进一步确认的产品约束
 

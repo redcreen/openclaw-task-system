@@ -47,6 +47,12 @@ The testsuite must cover:
 - planning acceptance helpers
 - same-session routing acceptance
 
+Current release-facing sample depth explicitly includes:
+
+- scheduled follow-up summaries staying in control-plane projection
+- bounded-focus coverage for `webchat`
+- `followup-task-missing` operator recovery projection
+
 Detailed grouping lives in [testsuite.md](testsuite.md).
 
 ## Manual Checks

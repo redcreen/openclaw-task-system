@@ -4,7 +4,7 @@
 
 ## Status
 
-The mainline roadmap is complete through Phase 6 minimum closure.
+The mainline roadmap is complete through Phase 6 minimum closure, and the first post-hardening closeout milestone is also complete.
 
 Completed:
 
@@ -15,6 +15,7 @@ Completed:
 - Phase 4: producer contract and same-session semantics
 - Phase 5: channel rollout and acceptance
 - Phase 6 minimum closure: supervisor-first planning runtime
+- Milestone 1: post-hardening closeout
 
 For the full Chinese detail, see [roadmap.zh-CN.md](roadmap.zh-CN.md).
 
@@ -34,9 +35,9 @@ The mainline shipped these outcomes:
 
 | Horizon | Focus | Exit Signal |
 | --- | --- | --- |
-| Current | keep Phase 0-6 and the hardening closeout stable | the testsuite, release gate, and dated evidence workflow stay green |
-| Next | execute one post-hardening closeout milestone as a single long-task line | compound/future-first boundary work, evidence depth, and operator-facing closeout converge without reopening architecture debt |
-| Later | evaluate stronger planning or steering capability without replacing the original executor path | new capability still preserves `[wd]` independence, runtime truth, and supervisor-first boundaries |
+| Current | keep Phase 0-6 and the post-hardening closeout stable | the testsuite, release gate, and dated evidence workflow stay green |
+| Next | evaluate stronger planning or steering capability only through a new explicit roadmap candidate | new capability still preserves `[wd]` independence, runtime truth, and supervisor-first boundaries |
+| Later | refresh higher-fidelity evidence or deeper operator ergonomics only when they become named candidates | extension work does not drift back into generic closeout debt |
 
 ## Milestones
 
@@ -46,15 +47,19 @@ The mainline shipped these outcomes:
 | Phase 3-4 | complete | add delayed reply, watchdog, continuity, and host delivery | continuity and scheduler evidence chain | restart and recovery flows are explainable |
 | Phase 5 | complete | strengthen dashboard, queues, lanes, triage, and operator projections | main ops toolchain | user and operator views project the same truth |
 | Phase 6 minimum closure | complete | lock planning acceptance, future-first output, and same-session routing into a minimum shipped closure | planning acceptance toolchain | automation and semi-real acceptance stay green |
-| Milestone 1: post-hardening closeout | next long task | close the remaining compound/future-first boundary work, deepen release-facing evidence, and finish operator-facing closeout | current mainline stability and release-facing validation entrypoints | remaining work is either shipped, archived, or moved into a new explicit roadmap candidate |
+| Milestone 1: post-hardening closeout | complete | close the remaining compound/future-first boundary work, deepen release-facing evidence, and finish operator-facing closeout | current mainline stability and release-facing validation entrypoints | boundary docs, acceptance depth, and operator/release-facing closeout are converged without reopening architecture debt |
 
-## Current Extension Areas
+## Future Candidate Areas
 
-Remaining work is extension work, not unfinished mainline debt:
+No active post-hardening closeout debt remains.
 
-- broader planning anomaly coverage
-- richer planning and channel acceptance samples
-- additional operator UX and recovery depth
+If extension work resumes, name it explicitly instead of treating it as ambient follow-up.
+
+Potential future candidates:
+
+- stronger structured planning or tool decomposition for broader compound requests
+- richer real-channel evidence refreshes when delivery or planning contracts change
+- deeper steering or operator ergonomics that still preserve runtime truth and supervisor-first boundaries
 
 The architecture hardening line is now closed with two explicit decisions:
 

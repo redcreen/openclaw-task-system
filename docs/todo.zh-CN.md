@@ -15,12 +15,17 @@
 ## 当前状态
 
 - Phase 6 最小闭环已交付
+- Milestone 1：post-hardening 收口已完成
 - same-session routing 已交付
 - `task_user_content` 已退出 runtime 正式协议
 - 架构整改已经收口，应以 [roadmap.zh-CN.md](roadmap.zh-CN.md) 和 [architecture.zh-CN.md](architecture.zh-CN.md) 为准
 
-## 当前扩展方向
+## 后续候选收集
 
-- 扩更多 planning anomaly recovery coverage
-- 补更多真实 planning / channel acceptance 样本
-- 继续打磨 operator UX 和 recovery 深度
+这里不应再挂活跃的 closeout 欠账。
+
+只保留那些真实存在、但还没成熟到可以升级成命名 roadmap candidate 的事项，例如：
+
+- 面向更广 compound request 的 structured planning / tool decomposition
+- 当 delivery contract 变化时补更高保真的 real planning / channel evidence
+- 在不破坏 runtime truth 的前提下继续深化 operator UX 与 recovery 深度

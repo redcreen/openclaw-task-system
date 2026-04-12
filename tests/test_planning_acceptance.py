@@ -13,7 +13,7 @@ class PlanningAcceptanceTests(unittest.TestCase):
         payload = planning_acceptance.run_planning_acceptance()
 
         self.assertTrue(payload["ok"])
-        self.assertEqual(len(payload["steps"]), 10)
+        self.assertEqual(len(payload["steps"]), 11)
         self.assertTrue(all(step["ok"] for step in payload["steps"]))
 
     def test_render_markdown_includes_planning_steps(self) -> None:
@@ -29,6 +29,7 @@ class PlanningAcceptanceTests(unittest.TestCase):
         self.assertIn("- promise-without-task-projects-recovery-contract: ok", rendered)
         self.assertIn("- planner-timeout-projects-recovery-contract: ok", rendered)
         self.assertIn("- missing-followup-task-projects-recovery-contract: ok", rendered)
+        self.assertIn("- scheduled-followup-summary-stays-in-control-plane: ok", rendered)
         self.assertIn("- materialize-and-finalize-followup: ok", rendered)
         self.assertIn("- claim-overdue-followup-and-project-ops: ok", rendered)
 

@@ -247,6 +247,76 @@ def run_main_ops_acceptance() -> dict[str, Any]:
             )
         )
 
+        missing_config, missing_paths, missing_store = _scenario_context(temp_dir, "missing-followup-task")
+        missing_session = "session:main:ops-missing-followup"
+        missing_task = missing_store.register_task(
+            agent_id="main",
+            session_key=missing_session,
+            channel="telegram",
+            chat_id="chat:main:ops-missing-followup",
+            task_label="missing follow-up task",
+        )
+        missing_task.meta["tool_followup_plan"] = {
+            "plan_id": "plan_missing_task",
+            "status": "scheduled",
+            "followup_due_at": "2099-01-01T00:00:00+00:00",
+            "followup_task_id": "task_missing_followup_record",
+            "followup_summary": "5分钟后同步结果",
+            "main_user_content_mode": "none",
+        }
+        missing_task.meta["planning_promise_guard"] = {
+            "status": "scheduled",
+            "expected_by_finalize": True,
+            "promise_summary": "5分钟后同步结果",
+        }
+        missing_store.save_task(missing_task)
+        missing_dashboard = get_main_dashboard_summary(config_path=missing_config, paths=missing_paths)
+        missing_continuity = get_main_continuity_summary(config_path=missing_config, paths=missing_paths)
+        missing_triage = get_main_triage_summary(config_path=missing_config, paths=missing_paths)
+        rendered_missing_dashboard = render_main_dashboard(config_path=missing_config, paths=missing_paths)
+        rendered_missing_continuity = render_main_continuity(config_path=missing_config, paths=missing_paths)
+        steps.append(
+            MainOpsAcceptanceStep(
+                step="missing-followup-projects-ops-recovery-contract",
+                ok=(
+                    str(missing_dashboard.get("status") or "") == "error"
+                    and int(((missing_dashboard.get("health") or {}).get("planning_followup_task_missing_count") or 0)) == 1
+                    and str((missing_dashboard.get("action_hint_command") or ""))
+                    == f"python3 scripts/runtime/main_ops.py continuity --session-key '{missing_session}'"
+                    and int(missing_continuity.get("planning_anomaly_task_count") or 0) == 1
+                    and str((missing_continuity.get("top_risk_session") or {}).get("session_key") or "") == missing_session
+                    and str(missing_triage.get("primary_action_kind") or "") == "inspect-missing-followup-task"
+                    and str(missing_triage.get("primary_action_command") or "")
+                    == f"python3 scripts/runtime/main_ops.py show {missing_task.task_id}"
+                    and f"- top_followup_session: {missing_session}" in rendered_missing_dashboard
+                    and f"continuity --session-key '{missing_session}'" in rendered_missing_dashboard
+                    and "- planning_anomaly_task_count: 1" in rendered_missing_continuity
+                ),
+                detail=json.dumps(
+                    {
+                        "dashboard": {
+                            "status": missing_dashboard.get("status"),
+                            "planning_followup_task_missing_count": (missing_dashboard.get("health") or {}).get(
+                                "planning_followup_task_missing_count"
+                            ),
+                            "action_hint_command": missing_dashboard.get("action_hint_command"),
+                        },
+                        "continuity": {
+                            "planning_anomaly_task_count": missing_continuity.get("planning_anomaly_task_count"),
+                            "top_risk_session": (missing_continuity.get("top_risk_session") or {}).get("session_key"),
+                        },
+                        "triage": {
+                            "primary_action_kind": missing_triage.get("primary_action_kind"),
+                            "primary_action_command": missing_triage.get("primary_action_command"),
+                        },
+                        "rendered_dashboard": rendered_missing_dashboard,
+                        "rendered_continuity": rendered_missing_continuity,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        )
+
         auto_config, auto_paths, auto_store = _scenario_context(temp_dir, "auto-resume")
         auto_task = auto_store.register_task(
             agent_id="main",

@@ -47,17 +47,20 @@ The accepted design direction is output channel separation:
 3. user-visible business content uses a separate content channel
 4. ordinary reply text must not carry raw scheduling state
 
-## Minimum Implementation In The Current Phase
+## Current Shipped Runtime Contract
 
-The minimum implementation for the current phase is:
+The shipped runtime contract is:
 
-1. user-visible business content must live inside `<task_user_content> ... </task_user_content>`
-2. once a task uses planning tools, runtime forwards only that content block
-3. if the block is missing, runtime suppresses user-visible content instead of guessing
-4. scheduling success or failure still goes through `[wd]`
+1. scheduling success or failure still goes through runtime-owned `[wd]` or other control-plane messages
+2. once planning state is in play, runtime trusts structured planning metadata first instead of free-form scheduling text
+3. future-first tasks may explicitly suppress immediate business content or reduce it to one short summary through `main_user_content_mode`
+4. if runtime cannot safely trust immediate business content, it suppresses that content instead of guessing
 5. due-time follow-up content replies in the original thread without `[wd]`
-6. runtime must never leak literal `<task_user_content>` tags to the user
-7. once a promise guard is armed, the structured-content gate must survive reload and rehydrate
+6. runtime must never leak raw planning markers or scheduling metadata back to the user
+
+Historical `task_user_content` validation still remains for one narrow reason:
+
+- leak prevention and audit of old transcript patterns while the cleaner output-channel boundary stays enforced elsewhere
 
 ## Additional Product Constraints
 

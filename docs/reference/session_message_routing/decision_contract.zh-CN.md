@@ -21,7 +21,7 @@
 | `control-plane` | 状态查询、取消、暂停、恢复、继续等控制面指令 | 否 |
 | `steering` | 对当前 active task 的补充、修正或约束 | 视执行阶段而定 |
 | `queueing` | 独立新任务 | 是，进入新 task |
-| `collect-more` | 明确要求先等后续补充再执行 | 暂不进入 |
+| `collect-more` | 明确要求先等后续补充再执行 | 否 |
 
 #### 2.2 execution decision
 

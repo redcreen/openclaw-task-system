@@ -2,35 +2,35 @@
 
 ## Current Phase
 
-Post-hardening maintenance has rolled from docs retrofit into one explicit next milestone: a post-hardening closeout run that should execute as one long-task line.
+Post-hardening closeout is complete. The repo is back in steady-state maintenance until a new named roadmap candidate exists.
 
 ## Current Execution Line
-- Objective: close the remaining post-hardening boundary work in one uninterrupted run across compound/future-first convergence, evidence depth, operator/release-facing closeout, and final docs/archive convergence
+- Objective: keep the shipped runtime, docs, and release-facing evidence stable after closing Milestone 1
 - Plan Link: `docs/reference/openclaw-task-system/development-plan.md`
-- Runway: one long-task milestone pass instead of reopening unrelated mini-slices
-- Progress: `1/4`
-- Stop Conditions: release-facing validation fails, the work reopens architecture ownership debt, real-channel evidence changes what counts as mandatory release proof, or the milestone must be split into a new roadmap candidate
+- Runway: no open closeout tasks; reopen planning only when a new explicit roadmap candidate is named
+- Progress: `4/4`
+- Stop Conditions: release-facing validation fails, evidence requirements materially change, or new capability work needs a named roadmap candidate
 - Validation: `bash scripts/run_tests.sh`, `python3 scripts/runtime/release_gate.py --json`, `python3 scripts/runtime/planning_acceptance_suite.py --json`, `python3 scripts/runtime/channel_acceptance.py --json`, and `python3 scripts/runtime/main_ops_acceptance.py --json`
 
 ## Execution Tasks
 - [x] EL-1 define the next milestone in roadmap and durable project-level development plan docs
-- [ ] EL-2 close compound follow-up, future-first, and output-separation boundary drift from active docs and runtime-facing evidence
-- [ ] EL-3 deepen planning/channel/operator evidence while keeping the release-facing gates green
-- [ ] EL-4 do one final closeout pass across roadmap, test-plan, archive guidance, and control surfaces, then either close the milestone or split a new named roadmap candidate
+- [x] EL-2 close compound follow-up, future-first, and output-separation boundary drift from active docs and runtime-facing evidence
+- [x] EL-3 deepen planning/channel/operator evidence while keeping the release-facing gates green
+- [x] EL-4 do one final closeout pass across roadmap, test-plan, archive guidance, and control surfaces, then either close the milestone or split a new named roadmap candidate
 
 ## Architecture Supervision
 - Signal: `green`
-- Signal Basis: architecture hardening is closed, the docs stack is converged again, and the next milestone is now explicitly framed as one long-task closeout line with a durable development plan
-- Problem Class: milestone execution clarity
+- Signal Basis: architecture hardening stayed closed, the active docs now match the shipped compound/future-first/output-channel boundary, and release-facing acceptance depth expanded without reopening ownership debt
+- Problem Class: milestone closeout complete
 - Root Cause Hypothesis: post-hardening work had remained too diffuse across extension bullets and small slices, which made “later closeout” easy to defer without one milestone owner or execution line
-- Correct Layer: promote the remaining work into one named milestone with a durable plan and control-surface ownership
-- Rejected Shortcut: keep describing the remainder as generic extension work without a milestone, queue, or explicit end condition
+- Correct Layer: close the milestone explicitly and return to watch-mode maintenance until a new named roadmap candidate exists
+- Rejected Shortcut: keep a fake active closeout line after the boundary and evidence work is already done
 - Escalation Gate: continue automatically
 
 ## Escalation Model
-- Continue Automatically: operator-surface refinements that preserve the same runtime truth source and recovery ownership
-- Raise But Continue: snapshot or doc changes that widen operator visibility without changing underlying recovery behavior
-- Require User Decision: any change that alters release gates, acceptance ownership, or what counts as mandatory real-channel evidence
+- Continue Automatically: steady-state refinements that preserve the same runtime truth source, release gate, and recovery ownership
+- Raise But Continue: higher-fidelity evidence refreshes or doc clarifications that do not change release-gate ownership
+- Require User Decision: any new roadmap candidate or any change that alters release gates, acceptance ownership, or what counts as mandatory real-channel evidence
 
 ## Slices
 - Slice: lifecycle coordinator boundary
@@ -111,11 +111,11 @@ Post-hardening maintenance has rolled from docs retrofit into one explicit next 
   - Exit Condition: public English docs stand alone, templates are copyable, durable references are free of session-specific review text, and control-surface state reflects the slice
 
 - Slice: milestone 1 post-hardening closeout
-  - Objective: execute the remaining post-hardening work as one long-task milestone instead of many disconnected cleanup slices
+  - Objective: complete the post-hardening boundary, evidence, and operator/release-facing closeout as one long-task milestone
   - Dependencies: `docs/reference/openclaw-task-system/development-plan.md`, roadmap extension areas, planning/channel/operator acceptance helpers, and release-facing docs
-  - Risks: the milestone stays too vague, evidence depth remains thin in the highest-risk areas, or the repo keeps carrying generic “close later” language without an end condition
-  - Validation: release-facing gates stay green while EL-2 through EL-4 converge
-  - Exit Condition: the remaining work is either shipped, archived, or explicitly broken into a new named roadmap candidate
+  - Risks: future extension work reappears as unnamed closeout debt instead of a new explicit roadmap candidate
+  - Validation: release-facing gates closed green across `run_tests.sh`, `release_gate.py`, planning acceptance suite, channel acceptance, and main-ops acceptance
+  - Exit Condition: satisfied on 2026-04-12; the repo returned to watch-mode maintenance without opening a new roadmap candidate
 
 ## Development Log Capture
 

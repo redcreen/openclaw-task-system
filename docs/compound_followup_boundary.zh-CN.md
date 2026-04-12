@@ -2,7 +2,7 @@
 
 [English](compound_followup_boundary.md) | [中文](compound_followup_boundary.zh-CN.md)
 
-> 状态：开放设计边界
+> 状态：已发货的 runtime 边界
 > 范围：混合意图请求中的 delayed reply 与 continuation 语义
 
 ### 问题
@@ -48,24 +48,29 @@
 当前系统已经支持：
 
 - 对清晰、单一意图的 delayed reply 直接识别
-- 对部分简单复合请求提供止血式兼容：
-  - 前半段仍然作为普通任务立即执行
-  - 如果后半段意图足够明显，可以在主任务完成后物化一个 delayed follow-up
+- supervisor-first contract：runtime 会校验“稍后再做”的承诺背后是否真的落成了真实任务
+- acceptance coverage：显式证明 compound 请求在没有 structured tool plan 前，不能偷偷挂出 hidden follow-up state
 
-同时，当前 OpenClaw 的真实行为是：
+当前系统明确**不承诺**：
 
-- 即使是简单请求，默认也通常还是会进入原来的 agent / LLM 路径
+- 广泛自动支持 mixed-intent compound request
+- 从 legacy post-run phrasing 里静默补出 hidden follow-up task
+- 让 task-system 变成统一的前置语义分类器
 
-所以长期正确答案不应该是：
+这意味着当前已发货的 runtime 边界已经明确：
 
-- 让 task-system 变成一个统一的前置语义分类器
+- compound request 仍然可以先进入普通 task 路径
+- 但 runtime 不会只凭 compound wording 静默创建 delayed follow-up
+- 如果系统真的要承诺未来动作，必须先有可审计、可恢复的 structured planning state
+
+长期正确答案不应该是：
+
+- 让 task-system 继续长出更多 phrase / regex 规则
 
 而应该是：
 
 - 继续让 agent / LLM 理解请求
 - 让 task-system 监督并验证未来承诺是否真的落成 task
-
-这个 stopgap 是为了避免明显用户问题，但它不是最终模型。
 
 ### 正确的长期架构方向
 
@@ -95,7 +100,7 @@
 当前边界可以明确成：
 
 - 单一意图、表达清晰的 delayed reply：完全支持
-- 简单复合短语：仍然只是设计边界，不再由 runtime 静默自动物化 follow-up
+- compound 请求：没有 structured plan 前，不会由 runtime 静默自动物化 follow-up
 - 复杂或模糊的复合请求：不能长期依赖硬编码短语增长
 - `planning_acceptance.py` 现在会显式验证：复合请求在没有 structured tool plan 前，不能偷偷挂出 hidden follow-up state
 
@@ -118,7 +123,7 @@
 
 > 只要系统承诺了稍后再做一件事，背后就必须有一条真实的 scheduled task。
 
-### 下一步设计问题
+### 下一步 roadmap 方向
 
 一个很强的候选方向是：
 
@@ -130,4 +135,4 @@
 - 创建明确的 delayed follow-up
 - 进行多步任务拆解
 
-这个问题目前故意保持开放，留给下一轮 roadmap 讨论。
+下一轮真正要讨论的不是“再补哪些短语规则”，而是怎样把这类结构化 planning 能力变成新的明确 roadmap candidate。

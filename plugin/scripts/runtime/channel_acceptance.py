@@ -174,6 +174,21 @@ def run_channel_acceptance() -> dict[str, Any]:
         )
     )
 
+    webchat_session_key = "agent:main:webchat:room:acceptance"
+    webchat_focus = build_channel_acceptance_summary(session_key=webchat_session_key)
+    steps.append(
+        ChannelAcceptanceStep(
+            step="webchat-session-focus-contract",
+            ok=str(webchat_focus.get("focus_channel") or "") == "webchat"
+            and str(webchat_focus.get("focus_rollout_status") or "") == ROLLOUT_STATUS_ACCEPTED_WITH_BOUNDARY
+            and str(webchat_focus.get("focus_producer_mode") or "") == "dispatch-side-priority-only"
+            and int(webchat_focus.get("channel_count") or 0) == 1
+            and str(((webchat_focus.get("entries") or [{}])[0]).get("acceptance_scope") or "")
+            == ACCEPTANCE_SCOPE_DISPATCH_SIDE,
+            detail=json.dumps(webchat_focus, ensure_ascii=False),
+        )
+    )
+
     observed_fallback = build_channel_acceptance_summary(
         session_key="session:acceptance:channel:fallback",
         observed_channels=["sms-gateway"],

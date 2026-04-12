@@ -14,5 +14,5 @@ This directory contains stable reference material that supports the project but 
 
 ## Current Reference Entry Points
 
-- [openclaw-task-system/development-plan.md](openclaw-task-system/development-plan.md): project-level milestone and ordered execution queue for the next post-hardening long-task closeout
+- [openclaw-task-system/development-plan.md](openclaw-task-system/development-plan.md): project-level record of the completed post-hardening closeout and the rule for opening the next milestone
 - [session_message_routing/README.md](session_message_routing/README.md): shipped same-session routing contract, phases, and acceptance scope

@@ -7,6 +7,7 @@ This file is a temporary intake list, not the canonical roadmap or development p
 ## Current High-Level State
 
 - Phase 6 minimum closure is already shipped
+- Milestone 1: post-hardening closeout is already complete
 - same-session message routing is already shipped
 - `task_user_content` is deprecated as a runtime protocol
 - architecture hardening is already closed and should now be read from [roadmap.md](roadmap.md) and [architecture.md](architecture.md)
@@ -17,11 +18,15 @@ This file is a temporary intake list, not the canonical roadmap or development p
 - use [test-plan.md](test-plan.md) and [testsuite.md](testsuite.md) for validation scope
 - use this page only for items that are real but not yet mature enough to move back into the formal stack
 
-## Current Extension Areas
+## Future Candidate Intake
 
-- broader planning anomaly recovery coverage
-- more real planning and channel acceptance samples
-- further operator UX and recovery depth
+No active closeout debt should be tracked here.
+
+Keep only items that are real but not yet mature enough to become a named roadmap candidate, for example:
+
+- stronger structured planning or tool decomposition for broader compound requests
+- higher-fidelity real planning or channel evidence when delivery contracts change
+- deeper operator UX and recovery depth that still preserves runtime truth
 
 ## Graduation Rule
 

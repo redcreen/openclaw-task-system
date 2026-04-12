@@ -2,7 +2,7 @@
 
 # Compound Follow-Up Boundary
 
-> Status: open design boundary
+> Status: shipped runtime boundary
 > Scope: delayed replies and continuation semantics inside compound-intent requests
 
 ## Problem
@@ -51,6 +51,12 @@ What it intentionally does not promise:
 - silent runtime materialization of hidden follow-up tasks from legacy post-run phrasing
 - turning the task system into a universal front-door semantic classifier
 
+This means the shipped runtime boundary is now explicit:
+
+- a compound request may still register as ordinary task work
+- runtime does not silently create delayed follow-up state from the compound wording alone
+- if the system wants to promise future work, that promise must come from structured planning state that can be audited and recovered
+
 ## Long-Term Direction
 
 The durable direction is to split a request into structured work:
@@ -83,14 +89,14 @@ The core task-system contract must remain:
 
 > if the system promises to do something later, the truth source must contain a real scheduled task behind that promise
 
-## Next Design Question
+## Next Roadmap Direction
 
-A strong next step is to expose task creation and follow-up scheduling as explicit tools that the agent can call when it wants to create a future promise.
+The next roadmap candidate is not "teach the runtime more phrases."
 
-That would support:
+It is to expose explicit planning or tool-driven decomposition that can create:
 
-- normal immediate execution
+- normal immediate work
 - explicit delayed follow-up creation
-- multi-step task decomposition
+- multi-step task graphs with ordering
 
-without growing the runtime into a phrase-driven orchestrator.
+without turning the runtime into a phrase-driven orchestrator.

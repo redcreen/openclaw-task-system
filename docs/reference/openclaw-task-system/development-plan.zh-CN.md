@@ -8,96 +8,83 @@
 
 它用来回答三件事：
 
-- 项目级下一里程碑是什么
-- 这个里程碑应该怎么执行
-- 在什么验证通过后，才能把这条 slice 真正收口
+- 最近一个项目级里程碑是怎样收口的
+- 它靠什么验证关闭
+- 什么时候才应该重新开新的项目级里程碑
 
 ## 当前定位
 
-仓库已经完成：
+仓库现在已经完成：
 
 - Phase 0-6 最小闭环
 - 架构整改收口
 - 双语公开文档收敛
-
-当前项目级下一里程碑是：
-
 - `Milestone 1：post-hardening 收口`
 
-这条里程碑默认按“一口气执行的长任务”来推进，而不是重新拆回很多零散小收尾。
+当前没有新的项目级活跃里程碑。
+
+这份计划现在主要记录刚完成的 closeout 里程碑，以及下次重新开新里程碑的规则。
 
 ## 里程碑总览
 
 | 里程碑 | 状态 | 目标 | 验证 | 退出条件 |
 | --- | --- | --- | --- | --- |
-| Milestone 1：post-hardening 收口 | 下一里程碑 | 收紧 compound / future-first 边界、补足 release-facing 证据深度，并把仓库带到干净的 post-hardening 状态 | `bash scripts/run_tests.sh`、`python3 scripts/runtime/release_gate.py --json`、planning / channel / main-ops acceptance helpers、文档一致性检查 | 剩余工作要么已经交付，要么已经归档，要么被明确转移成新的 roadmap candidate，而不是继续挂成泛化 follow-up |
+| Milestone 1：post-hardening 收口 | 已完成 | 收紧 compound / future-first 边界、补足 release-facing 证据深度，并把仓库带到干净的 post-hardening 状态 | `bash scripts/run_tests.sh`、`python3 scripts/runtime/release_gate.py --json`、planning / channel / main-ops acceptance helpers、文档一致性检查 | 边界文档、acceptance 深度与 operator/release-facing 收尾已经收敛，且没有重新打开架构债务 |
 
-## 顺序执行队列
+## 已完成的收口队列
 
 ### 1. 边界收敛
 
-先把这些产品与 runtime 边界收紧：
+已交付：
 
-- compound follow-up
-- future-first planning 预期
-- output-channel separation
-- 用户可见状态与 runtime-owned 状态投影
+- compound follow-up 文档现在描述的是已发货 runtime 边界，而不是开放设计占位
+- output-channel separation 文档现在与当前 runtime contract 一致，不再把 `task_user_content` 写成现役长期协议
+- same-session routing 决策文档现在把 `collect-more` 说明为已发货的非普通任务路径
+- 用户可见状态与 runtime-owned 状态投影在活跃文档栈里已经统一
 
-退出信号：
+结果：
 
-- 文档和 runtime 行为描述的是同一条边界
-- 主文档栈里不再依赖模糊的“临时兼容”说法去解释已交付行为
+- 文档与 runtime 行为现在描述的是同一条边界
+- 主文档栈不再依赖模糊的“临时兼容”说法解释已交付行为
 
 ### 2. 证据深度
 
-补足当前仍然偏薄的 release-facing 证据：
+已交付：
 
-- planning acceptance evidence depth
-- channel acceptance sample depth
-- 当前文档明确写出仍偏弱的真实或半真实 dated record
+- planning acceptance 现在显式证明：已排定的 follow-up 摘要仍留在控制面投影里，不会混进业务内容
+- channel acceptance 现在包含 `webchat` 的 bounded-focus 样本
+- main-ops acceptance 现在补上了 `followup-task-missing` 的运维恢复投影样本
 
-退出信号：
+结果：
 
-- 剩余高风险区域不再只靠一条 dated record 或 summary-only 文案支撑
+- 剩余高风险区域不再只靠 summary-only 文案支撑
 
 ### 3. 运维与发布侧收口
 
-完成维护者侧的最后收口：
+已交付：
 
-- operator snapshot 与 runbook 对齐
-- release gate 文案与入口命令对齐
-- archive 与 promotion guidance 一致
+- operator 与 release-facing 文档现在指向同一套验证入口
+- roadmap、README、todo intake 和控制面文档现在指向同一个 post-closeout 状态
+- archive 与 promotion guidance 继续和 planning evidence workflow 保持一致
 
-退出信号：
+结果：
 
 - 运维人员可以从同一套命令集完成 recovery、triage 与 validation
 - 发布文档不再指向半完成或重复的指导
 
-### 4. 最终收口
+### 4. 下次重新开题的规则
 
-在宣布这条 milestone 完成前，再做一次总收敛：
+只有满足下面三条时，才重新开一个新的项目级里程碑：
 
-- 刷新 roadmap、todo 和 active docs 表述
-- 必要时把临时记录归档
-- 只有在 reasoning 真发生变化时才补 devlog / handoff
+1. 扩展工作从 `docs/todo.md` 升级成一个有名字的 roadmap candidate
+2. 这个候选已经有明确验证和退出条件
+3. 如果不显式命名，仓库就会重新开始积累泛化 follow-up debt
 
-退出信号：
-
-- 剩余 backlog 明确且很小
-- `.codex/status.md`、`.codex/plan.md`、roadmap 和 test-plan 指向同一个 post-closeout 状态
-
-## 执行规则
-
-把这条 milestone 当成一条长任务执行线：
-
-1. 从第一个未完成队列项开始
-2. 除非遇到真实 blocker、checkpoint 或 decision gate，否则持续推进
-3. 不因为“顺手”就重开已经收口的旧 slice
-4. 只有当这条 milestone 可以正式关闭，或被刻意拆成新的 roadmap candidate 时才停
+在那之前，稳态入口应以 `roadmap.md`、`test-plan.md` 和 `.codex/status.md` 为准。
 
 ## 验证栈
 
-里程碑收口的最小验证：
+关闭这条里程碑时使用的验证栈：
 
 ```bash
 bash scripts/run_tests.sh
@@ -107,4 +94,4 @@ python3 scripts/runtime/channel_acceptance.py --json
 python3 scripts/runtime/main_ops_acceptance.py --json
 ```
 
-如果这轮触及真实外发或 planning contract，还应补真实或半真实 evidence capture。
+之后如果新的改动再次触及真实外发或 planning contract，仍应补真实或半真实 evidence capture。

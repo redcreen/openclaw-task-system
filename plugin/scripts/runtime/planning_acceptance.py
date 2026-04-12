@@ -592,6 +592,37 @@ def run_planning_acceptance() -> dict[str, Any]:
             },
             config_path=config_path,
         )
+        scheduled_followup = should_send_short_followup_from_payload(
+            {"task_id": source_task_id},
+            config_path=config_path,
+        )
+        scheduled_followup_metadata = (
+            (scheduled_followup.get("control_plane_message") or {}).get("metadata") or {}
+            if isinstance(scheduled_followup.get("control_plane_message"), dict)
+            else {}
+        )
+        steps.append(
+            AcceptanceStep(
+                step="scheduled-followup-summary-stays-in-control-plane",
+                ok=(
+                    bool(scheduled.get("scheduled"))
+                    and bool(scheduled_followup.get("should_send"))
+                    and str(scheduled_followup_metadata.get("planning_plan_status") or "") == "scheduled"
+                    and str(scheduled_followup_metadata.get("planning_followup_summary") or "") == "5分钟后同步最终结论"
+                    and "5分钟后同步最终结论" in str(scheduled_followup.get("followup_message") or "")
+                    and str(scheduled_followup_metadata.get("planning_recovery_hint") or "")
+                    == "inspect-source-task-and-reschedule-late-followup"
+                    and "<task_user_content>" not in str(scheduled_followup.get("followup_message") or "")
+                ),
+                detail=json.dumps(
+                    {
+                        "scheduled": scheduled,
+                        "short_followup": scheduled_followup,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        )
         finalized = finalize_planned_followup_from_payload(
             {
                 "source_task_id": source_task_id,
