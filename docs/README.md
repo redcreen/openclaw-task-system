@@ -37,16 +37,19 @@ Start with these documents:
 
 ## Directory Roles
 
-- reference docs: [reference/README.md](reference/README.md)
-- workstreams: [workstreams/README.md](workstreams/README.md)
-- archive: [archive/README.md](archive/README.md)
-- development log: [devlog/README.md](devlog/README.md)
+- [reference/README.md](reference/README.md): durable contracts, deeper design references, and stable facts that are too specific for the landing stack
+- [workstreams/README.md](workstreams/README.md): active investigations or retrofit tracks that have not yet converged into the main docs stack
+- [archive/README.md](archive/README.md): dated evidence, superseded plans, and historical records kept for traceability
+- [devlog/README.md](devlog/README.md): durable implementation narratives for non-obvious decisions, regressions, and fixes
 
 Archive is for historical acceptance records, handoff notes, and superseded cleanup plans that should remain available without crowding the active docs stack.
 
 ## Markdown Governance
 
-- reference docs: [reference/README.md](reference/README.md)
-- workstreams: [workstreams/README.md](workstreams/README.md)
-- archive: [archive/README.md](archive/README.md)
-- development log: [devlog/README.md](devlog/README.md)
+Keep one primary question per page and place it in the narrowest stable directory that still matches its role:
+
+- landing docs stay at the repo root or `docs/`
+- durable references live under [reference/](reference/README.md)
+- active retrofit notes live under [workstreams/](workstreams/README.md) until they converge
+- dated evidence and superseded material move to [archive/](archive/README.md)
+- implementation reasoning with durable value belongs in [devlog/](devlog/README.md)

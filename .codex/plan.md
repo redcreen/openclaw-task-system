@@ -2,29 +2,29 @@
 
 ## Current Phase
 
-Post-hardening feature work after Phase 6 mainline closure; dry-run evidence promotion policy is now explicit, repo-side promotion preserves dated records, and the release-facing line remains green.
+Post-hardening maintenance continued with a docs retrofit pass; the public bilingual docs stack is converged again and the release-facing line remains green.
 
 ## Current Execution Line
-- Objective: make the dry-run planning evidence workflow say when it must be promoted into a dated archive record
-- Plan Link: `dry-run evidence promotion policy`
-- Runway: one checkpoint-sized planning evidence policy pass across bundle/suite output, runbook wording, and archive guidance
+- Objective: replace placeholder public docs with standalone English content, repair docs landing roles, and remove session-specific review text from durable reference docs
+- Plan Link: `docs retrofit: bilingual public docs convergence`
+- Runway: one checkpoint-sized docs convergence pass across landing docs, planning docs, and same-session routing reference pages
 - Progress: `4/4`
-- Stop Conditions: dry-run output leaves promotion ambiguous, partial label runs look archive-worthy, or runbook / archive docs disagree about when dated evidence is mandatory
-- Validation: `python3 -m unittest discover -s tests -p 'test_prepare_planning_acceptance.py' -v`, `python3 -m unittest discover -s tests -p 'test_run_planning_acceptance_bundle.py' -v`, `python3 -m unittest discover -s tests -p 'test_planning_acceptance_suite.py' -v`, `python3 scripts/runtime/run_planning_acceptance_bundle.py --json --date 2026-04-12`, and `python3 scripts/runtime/release_gate.py --json`
+- Stop Conditions: public docs still contain fake bilingual placeholders, landing-page governance remains duplicated, template pages are not copyable, or durable docs still carry session-specific review instructions
+- Validation: placeholder scan returns `total=0` and `bash scripts/run_tests.sh`
 
 ## Execution Tasks
-- [x] EL-1 define promotion states for green full dry-runs, partial dry-runs, failed dry-runs, and repo-writing runs
-- [x] EL-2 expose that policy from bundle / suite output together with the next archive command
-- [x] EL-3 refresh runbook, archive guidance, and `.codex/*` so maintainers know when dry-run evidence must be promoted
-- [x] EL-4 verify policy output and keep the broader release-facing gate green
+- [x] EL-1 repair `docs/README*` so directory roles and markdown governance are explicit instead of duplicated or blank
+- [x] EL-2 replace placeholder English public docs with standalone, repository-relative content
+- [x] EL-3 make planning acceptance templates copyable and remove session-specific review instructions from durable reference docs
+- [x] EL-4 verify placeholder scan cleanliness and keep the broader testsuite green
 
 ## Architecture Supervision
 - Signal: `green`
-- Signal Basis: targeted planning-evidence tests, safe repo-writing bundle refresh, and `release_gate.py --json` all stayed green after the promotion safeguard
-- Problem Class: evidence promotion policy
-- Root Cause Hypothesis: dry-run rehearsal now existed, but maintainers still had no executable rule for when a green rehearsal had to become dated repo evidence
-- Correct Layer: policy belongs in the bundle / suite output plus runbook / archive docs, not as tribal knowledge
-- Rejected Shortcut: leave promotion judgment as an unwritten reviewer convention outside the shipped tooling
+- Signal Basis: the placeholder scan now returns `total=0`, planning template pages render as copyable templates, and `bash scripts/run_tests.sh` passed after the docs pass
+- Problem Class: documentation convergence
+- Root Cause Hypothesis: the public docs stack had drifted into placeholder bilingual pages and duplicated landing-page governance, which made GitHub-facing docs look unfinished despite shipped runtime behavior
+- Correct Layer: fix durable docs and control-surface state directly in-repo
+- Rejected Shortcut: keep relying on cross-language placeholder jumps or chat-context instructions instead of converging the public docs
 - Escalation Gate: continue automatically
 
 ## Escalation Model
@@ -102,6 +102,13 @@ Post-hardening feature work after Phase 6 mainline closure; dry-run evidence pro
   - Risks: partial dry-runs get mistaken for formal evidence, or maintainers do not know when dated archive evidence is mandatory
   - Validation: promotion-policy tests stay green, bundle / suite expose policy fields, and docs point to the same promotion rule and command
   - Exit Condition: green full dry-runs, failed dry-runs, partial dry-runs, and repo-writing runs each surface an explicit promotion state
+
+- Slice: docs retrofit convergence
+  - Objective: replace placeholder bilingual public docs with standalone pages and repair docs landing / template quality
+  - Dependencies: `docs/README*`, planning acceptance docs, same-session routing reference docs, and `.codex/*`
+  - Risks: GitHub-facing docs look unfinished, template pages are not directly reusable, or durable docs keep session-specific review instructions
+  - Validation: placeholder scan returns zero and `bash scripts/run_tests.sh` stays green
+  - Exit Condition: public English docs stand alone, templates are copyable, durable references are free of session-specific review text, and control-surface state reflects the slice
 
 - Slice: post-hardening feature follow-on
   - Objective: continue broader release-gate depth and real-channel evidence work on top of the tightened planning, channel, and operator acceptance baseline

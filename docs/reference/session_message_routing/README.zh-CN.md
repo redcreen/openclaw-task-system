@@ -163,9 +163,8 @@ flowchart LR
 - 它能自然吸收当前已存在的 `same-session-steering / agent-scoped-task-queue / highest-priority-lane`
 - 它已经由 `same_session_routing_acceptance.py` 验证，并并入 `stable_acceptance.py`
 
-# 9. 现在需要你做什么
+### 9. 验证入口
 
-## 请在真实 Feishu 里发 1 条正常任务，等它完成，然后回复我：`发了`
-
-- 目标：验证 `task-completed / task-failed` 的 Feishu 投递已经恢复正常
-- 我会随后检查日志，确认 `account_id / chat_id / reply target` 不再丢失
+```bash
+python3 scripts/runtime/same_session_routing_acceptance.py --json
+```

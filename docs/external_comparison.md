@@ -4,19 +4,20 @@
 
 ## Purpose
 
-This document records which external systems influenced the project and which directions were intentionally rejected.
+This document records which ideas the project borrowed from external agent or control-plane systems and which directions it explicitly rejected.
 
-For full Chinese detail, see [external_comparison.zh-CN.md](external_comparison.zh-CN.md).
+## What The Project Borrowed
 
-## Main Takeaways
-
-The project borrowed:
+The repository intentionally adopted these patterns:
 
 - control-plane as a first-class layer
-- clearer queue / control-plane / worker separation
-- explicit same-session steering and queueing semantics
+- explicit queue / control-plane / worker separation
+- formal same-session steering and queueing semantics
+- operator-visible recovery and supervision views instead of black-box execution
 
-The project intentionally did not become:
+## What The Project Rejected
+
+The repository intentionally did not become:
 
 - a generic orchestrator
 - a distributed control plane product
@@ -30,3 +31,7 @@ The correct shape for this repository remains:
 - supervisor-first
 - task runtime first, not orchestrator first
 - user-visible control-plane as a product capability, not a side effect
+
+## When To Use This Note
+
+Use this page when explaining why the project keeps emphasizing supervision, truthful control-plane feedback, and recoverable runtime state instead of continuing to pile more execution logic into the agent path.

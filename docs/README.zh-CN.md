@@ -37,9 +37,17 @@
 
 ## 目录角色
 
+- [reference/README.zh-CN.md](reference/README.zh-CN.md)：放稳定 contract、长期设计参考和不适合堆进主入口的精确信息
+- [workstreams/README.zh-CN.md](workstreams/README.zh-CN.md)：放仍在推进中的专项整改或探索性工作流，收敛后再回主栈
+- [archive/README.zh-CN.md](archive/README.zh-CN.md)：放 dated evidence、已退役方案和需要留档但不该挤占主入口的历史材料
+- [devlog/README.zh-CN.md](devlog/README.zh-CN.md)：放对未来维护仍有价值的实现经过、权衡和验证记录
+
 ## Markdown 治理
 
-- 参考文档：[reference/README.zh-CN.md](reference/README.zh-CN.md)
-- 工作流文档：[workstreams/README.zh-CN.md](workstreams/README.zh-CN.md)
-- 归档文档：[archive/README.zh-CN.md](archive/README.zh-CN.md)
-- 开发日志：[devlog/README.zh-CN.md](devlog/README.zh-CN.md)
+每份文档尽量只回答一个主问题，并放到最窄但稳定的目录里：
+
+- 主入口文档留在仓库根目录或 `docs/`
+- 稳定参考资料进入 [reference/](reference/README.zh-CN.md)
+- 仍在整改中的专题先放 [workstreams/](workstreams/README.zh-CN.md)
+- dated evidence 和退役材料进入 [archive/](archive/README.zh-CN.md)
+- 有长期复盘价值的实现叙事进入 [devlog/](devlog/README.zh-CN.md)

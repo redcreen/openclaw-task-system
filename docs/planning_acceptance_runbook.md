@@ -6,25 +6,45 @@
 
 This runbook explains how to run real or semi-real planning acceptance and capture evidence back into the repository.
 
-For full Chinese detail, see [planning_acceptance_runbook.zh-CN.md](planning_acceptance_runbook.zh-CN.md).
+## When To Use It
+
+Run this flow when a change touches any of the following:
+
+- planning or future-first contracts
+- delayed follow-up materialization
+- planning anomaly detection or projection
+- release-facing acceptance coverage
+- the planning evidence workflow itself
 
 ## Minimum Sequence
 
 1. validate the base runtime and plugin health
-2. run the planning acceptance helpers or bundle
-3. capture artifacts
-4. fill an acceptance record under `docs/archive/`
-5. write back conclusions and next steps
+2. run the planning acceptance helper or the full bundle
+3. capture artifacts and summaries
+4. create or refresh a dated record under `docs/archive/`
+5. write back conclusions, gaps, and follow-up actions
 
 ## Main Entry Points
 
+Base preparation:
+
 ```bash
 python3 scripts/runtime/prepare_planning_acceptance.py --json
+```
+
+Repo-writing evidence bundle:
+
+```bash
 python3 scripts/runtime/run_planning_acceptance_bundle.py --json
+```
+
+Standalone artifact capture:
+
+```bash
 python3 scripts/runtime/capture_planning_acceptance_artifacts.py --json
 ```
 
-To rehearse the same workflow without writing under `docs/archive/` or `docs/artifacts/`, add `--dry-run`.
+Dry-run rehearsal without writing into `docs/archive/` or `docs/artifacts/`:
 
 ```bash
 python3 scripts/runtime/prepare_planning_acceptance.py --dry-run --json
@@ -52,6 +72,8 @@ python3 scripts/runtime/run_planning_acceptance_bundle.py --json --date YYYY-MM-
 
 This promotion refreshes repo-side artifacts and preserves an existing dated archive record instead of replacing it with the template again.
 
+## How To Read Promotion Status
+
 Interpret the structured policy fields this way:
 
 - `promotion_status=ready-for-archive`: the dry-run is strong enough to promote when formal dated evidence is needed
@@ -60,6 +82,15 @@ Interpret the structured policy fields this way:
 - `promotion_status=already-archived`: this run already wrote repo-side evidence
 
 The bundle and suite commands now emit that promotion policy directly in JSON and markdown output.
+
+## Record Update Checklist
+
+After a repo-writing run, update or verify:
+
+- the dated archive record under `docs/archive/`
+- artifact links under `docs/artifacts/`
+- any follow-up note in `.codex/status.md` if the evidence changes the active slice
+- runbook wording if the command flow or promotion contract changed
 
 Template and example:
 

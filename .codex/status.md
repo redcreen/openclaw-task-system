@@ -7,35 +7,35 @@
 
 ## Current Phase
 
-Post-hardening feature work is underway; the broader release gate is still green and the latest extension slice made dry-run evidence promotion explicit and safe for existing archive records.
+Documentation retrofit is complete for this slice; the bilingual landing stack is aligned again, placeholder English public docs were replaced with standalone content, and the broader release gate remained green.
 
 ## Active Slice
 
-`dry-run evidence promotion policy`
+`docs retrofit: bilingual public docs convergence`
 
 ## Current Execution Line
-- Objective: make the dry-run planning evidence workflow say when it must be promoted into a dated archive record
-- Plan Link: `dry-run evidence promotion policy`
-- Runway: one checkpoint-sized planning evidence policy pass across bundle/suite output, runbook wording, and archive guidance
+- Objective: replace placeholder public docs with standalone English content, repair docs landing roles, and remove session-specific review text from durable reference pages
+- Plan Link: `docs retrofit: bilingual public docs convergence`
+- Runway: one checkpoint-sized documentation convergence pass across landing docs, planning docs, and same-session routing reference pages
 - Progress: `4/4` tasks complete
-- Stop Conditions: dry-run output leaves promotion ambiguous, partial label runs look archive-worthy, or runbook / archive docs disagree about when dated evidence is mandatory
+- Stop Conditions: placeholder English pages remain in the public docs stack, docs landing still duplicates governance content, durable docs still contain session-specific review instructions, or template pages are not copyable as-is
 
 ## Execution Tasks
-- [x] EL-1 define promotion states for green full dry-runs, partial dry-runs, failed dry-runs, and repo-writing runs
-- [x] EL-2 expose that policy from bundle / suite output together with the next archive command
-- [x] EL-3 refresh runbook, archive guidance, and `.codex/*` so maintainers know when dry-run evidence must be promoted
-- [x] EL-4 verify policy output and keep the broader release-facing gate green
+- [x] EL-1 repair `docs/README*` so directory roles and markdown governance are explicit instead of duplicated or blank
+- [x] EL-2 replace placeholder English pages in the public docs stack with standalone, repository-relative documentation
+- [x] EL-3 make planning acceptance templates copyable and remove session-specific review instructions from durable reference docs
+- [x] EL-4 verify the placeholder scan is clean and the project testsuite still passes
 
 ## Architecture Supervision
 - Signal: `green`
-- Signal Basis: promotion-policy tests, safe repo-writing bundle refresh, and `release_gate.py --json` all stayed green after the archive-promotion safeguard pass
-- Root Cause Hypothesis: dry-run rehearsal now existed, but maintainers still had no executable rule for when a green rehearsal had to become dated repo evidence
-- Correct Layer: policy belongs in the bundle / suite output plus runbook and archive docs
+- Signal Basis: placeholder scan now returns `total=0`, planning template pages render as copyable templates, and `bash scripts/run_tests.sh` stayed green after the docs retrofit
+- Root Cause Hypothesis: the public docs stack had drifted into fake bilingual placeholders, duplicated landing-page governance, and one durable reference page still carried session-specific review instructions
+- Correct Layer: fix the durable docs themselves and refresh `.codex/*`; do not rely on chat context or ad hoc reviewer memory
 - Escalation Gate: continue automatically
 
 ## Current Escalation State
 - Current Gate: continue automatically
-- Reason: this slice deepened operator visibility without changing the underlying runtime truth source or recovery ownership
+- Reason: this slice changed documentation and control-surface quality without altering runtime truth-source ownership or delivery behavior
 - Next Review Trigger: review again when blockers change, the active slice rolls forward, or release-facing work begins
 
 ## Done
@@ -72,20 +72,26 @@ Post-hardening feature work is underway; the broader release gate is still green
 - planning bundle / suite output now expose explicit promotion states for `ready-for-archive`, `insufficient-signal`, `blocked`, and `already-archived`
 - runbook and archive docs now say when a green dry-run must be promoted into a dated archive record
 - repo-side planning evidence promotion now refreshes artifacts without clobbering an existing dated archive record back to template content
+- docs landing pages now explain directory roles and markdown governance without duplicated placeholder sections
+- placeholder English pages for compound follow-up, planning/tool usage, output separation, planning evidence, task-user-content, todo tracking, and same-session routing reference docs now stand on their own
+- planning acceptance record templates are now copyable in both English and Chinese
+- durable same-session routing reference docs no longer contain a session-specific Feishu review instruction
+- placeholder-doc scan returned `total=0`
+- `bash scripts/run_tests.sh` passed after the docs retrofit
 
 ## In Progress
 
-- selecting the next post-hardening slice after the dry-run evidence policy pass
-- keeping the new promotion policy aligned with real-channel evidence collection and future archive refreshes
+- selecting the next post-hardening slice after the docs retrofit pass
+- keeping the refreshed public docs aligned with future runtime and acceptance changes
 
 ## Blockers / Open Decisions
 
 - none currently.
 
 ## Next 3 Actions
-1. Choose the next post-hardening slice from real Feishu / Telegram evidence capture instead of reopening already-covered planning evidence policy.
-2. Keep the promotion policy aligned if planning bundle capture targets or archive expectations change again.
-3. Use `python3 scripts/runtime/run_planning_acceptance_bundle.py --json --date YYYY-MM-DD` for future archive promotions and only treat `--force` as backward-compatible no-op wording.
+1. Choose the next post-hardening feature or evidence slice instead of reopening already-converged docs placeholder work.
+2. Keep public docs aligned whenever runtime routing, planning acceptance, or control-plane contracts change again.
+3. Re-run the placeholder scan plus `bash scripts/run_tests.sh` before future docs-heavy release-facing commits.
 
 ## Development Log Capture
 
