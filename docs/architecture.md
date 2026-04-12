@@ -53,17 +53,17 @@ The current shipped architecture explicitly includes:
 - planning anomaly projection and recovery hints
 - install drift visibility between source payload and local installed runtime
 
-The current architecture-hardening workstream focuses on:
+The architecture-hardening workstream is now closed.
 
-- lifecycle coordinator ownership
-- runtime source-of-truth convergence
-- reducing plugin-side repair logic created by split lifecycle ownership
+It closed with these explicit decisions:
 
-The current hardening decision is now explicit:
+- `lifecycle_coordinator.py` owns runtime lifecycle projection
 
 - `scripts/runtime/` is the canonical editable runtime source
 - `plugin/scripts/runtime/` is a strict synchronized mirror for the installable plugin payload
 - `runtime_mirror.py --check`, `plugin_doctor.py`, `scripts/install_remote.sh`, and `scripts/run_tests.sh` enforce that rule
+
+Remaining work is post-hardening extension work, not unresolved architecture-retrofit debt.
 
 ## Related Docs
 

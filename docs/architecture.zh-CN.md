@@ -74,19 +74,19 @@ flowchart LR
 - restart / continuity / watchdog 是否能如实恢复
 - dashboard 与用户可见状态是否仍然一致
 
-## 当前整改重点
+## 架构整改收口结果
 
-当前架构整改的重点是：
+这条架构整改 workstream 已经收口。
 
-- 收 `lifecycle coordinator` 的所有权
-- 收 `runtime source-of-truth` 的边界
-- 减少因为生命周期所有权分裂而产生的 plugin 侧 repair 逻辑
+最终明确下来的决定是：
 
-当前这条 hardening 决定已经明确：
+- `lifecycle_coordinator.py` 拥有 runtime lifecycle projection
 
 - `scripts/runtime/` 是唯一 canonical editable runtime source
 - `plugin/scripts/runtime/` 是 installable plugin payload 使用的严格同步镜像
 - `runtime_mirror.py --check`、`plugin_doctor.py`、`scripts/install_remote.sh` 与 `scripts/run_tests.sh` 共同承担这条规则的 enforcement
+
+后续剩余工作属于 post-hardening 扩展项，不再属于未收口的架构整改债务。
 
 ## 取舍与非目标
 

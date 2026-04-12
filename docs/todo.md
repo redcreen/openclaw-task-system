@@ -9,6 +9,7 @@ This file is a temporary intake list, not the canonical roadmap or development p
 - Phase 6 minimum closure is already shipped
 - same-session message routing is already shipped
 - `task_user_content` is deprecated as a runtime protocol
+- architecture hardening is already closed and should now be read from [roadmap.md](roadmap.md) and [architecture.md](architecture.md)
 
 ## Reading Rules
 
@@ -18,7 +19,6 @@ This file is a temporary intake list, not the canonical roadmap or development p
 
 ## Current Extension Areas
 
-- architecture hardening for lifecycle coordinator and runtime source-of-truth boundaries
 - broader planning anomaly recovery coverage
 - more real planning and channel acceptance samples
 - further operator UX and recovery depth

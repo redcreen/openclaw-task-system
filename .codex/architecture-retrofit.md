@@ -3,12 +3,13 @@
 ## Trigger
 
 - Tier: `medium`
-- Active Slice: `runtime source-of-truth convergence`
-- Current Execution Line: formalize `scripts/runtime/` as the canonical editable runtime tree, make `plugin/scripts/runtime/` a strict synchronized mirror, and close architecture hardening with explicit tooling and docs
+- Retrofit Status: `closed`
+- Final Slice: `runtime source-of-truth convergence`
+- Closeout Result: `lifecycle_coordinator.py` owns runtime lifecycle projection and `scripts/runtime/` is the single canonical editable runtime tree with `plugin/scripts/runtime/` as a strict synchronized mirror
 - Architecture Signal: `green`
 - Escalation Gate: `continue automatically`
 
-## Primary Symptoms
+## Original Symptoms
 
 - lifecycle ownership had already improved, but runtime source ownership was still ambiguous
 - maintainers could still read `scripts/runtime/` and `plugin/scripts/runtime/` as peer-owned trees
@@ -42,6 +43,12 @@
 ## Current Risks / Open Decisions
 
 - none currently.
+
+## Current State
+
+- the architecture hardening line is closed
+- the remaining repo work is post-hardening extension work, not unresolved architecture retrofit debt
+- roadmap, architecture docs, workstream notes, and control surfaces now agree on the hardening closeout
 
 ## Target Architecture
 
