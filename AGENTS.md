@@ -41,3 +41,4 @@ Before claiming the task is done:
 - Do not edit `~/.openclaw/extensions/openclaw-task-system` directly.
 - Do not bypass `.growware/` contracts when interpreting feedback or deciding deploy actions.
 - Default to local-first verification before any host restart or plugin reinstall.
+- Do not use the live `feishu6-chat` production session for manual terminal debugging; if a `terminal-takeover` polluted it, rotate it first with `python3 scripts/runtime/growware_session_hygiene.py --session-key 'agent:growware:feishu:direct:...' --reset --restart --json`.

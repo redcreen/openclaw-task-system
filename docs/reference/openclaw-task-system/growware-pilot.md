@@ -38,9 +38,36 @@ task-system runtime
 - [`.growware/channels.json`](../../../.growware/channels.json)
 - [`.growware/contracts/feedback-event.v1.json`](../../../.growware/contracts/feedback-event.v1.json)
 - [`.growware/contracts/incident-record.v1.json`](../../../.growware/contracts/incident-record.v1.json)
+- [`.growware/policies/feedback-intake.v1.json`](../../../.growware/policies/feedback-intake.v1.json)
 - [`.growware/policies/judge.v1.json`](../../../.growware/policies/judge.v1.json)
 - [`.growware/policies/deploy-gate.v1.json`](../../../.growware/policies/deploy-gate.v1.json)
 - [`.growware/ops/daemon-interface.v1.json`](../../../.growware/ops/daemon-interface.v1.json)
+
+## Session Hygiene
+
+- `feishu6-chat` is a production feedback ingress, so its transcript cannot stay polluted by `terminal-takeover` work
+- If the dedicated `growware` direct session has mixed in manual debugging context, rotate the session before accepting more real feedback
+- Rotation archives the old transcript, issues a fresh session id, and can fail the stuck task with an explicit reason
+
+Inspect the current production session:
+
+```bash
+python3 scripts/runtime/growware_session_hygiene.py \
+  --session-key 'agent:growware:feishu:direct:ou_6bead7a2b071454aeed7239e9de15d62' \
+  --json
+```
+
+Rotate the production session and archive the stuck task as failed:
+
+```bash
+python3 scripts/runtime/growware_session_hygiene.py \
+  --session-key 'agent:growware:feishu:direct:ou_6bead7a2b071454aeed7239e9de15d62' \
+  --fail-task-id task_487d4937033a4a2da97d6044e1b53af2 \
+  --failure-reason session-polluted-by-terminal-takeover \
+  --reset \
+  --restart \
+  --json
+```
 
 ## Operational Commands
 

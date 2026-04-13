@@ -50,6 +50,32 @@ task-system runtime
 - Growware close-out 现在要求显式标记执行来源：`daemon-owned` 或 `terminal-takeover`
 - 对 `growware` agent 而言，完成态会额外通过 control-plane lane 回到 `feishu6`，不再只依赖正文输出
 
+## Session Hygiene
+
+- `feishu6-chat` 是生产反馈入口，不允许长期复用被 `terminal-takeover` 污染过的 transcript
+- 如果 `growware` 的直连 session 已经混入人工调试上下文，先轮换 session，再继续收真实反馈
+- 轮换会同时保留旧 transcript 归档、生成新的 session id，并可顺手把卡住任务按可解释原因失败归档
+
+检查当前生产 session：
+
+```bash
+python3 scripts/runtime/growware_session_hygiene.py \
+  --session-key 'agent:growware:feishu:direct:ou_6bead7a2b071454aeed7239e9de15d62' \
+  --json
+```
+
+轮换生产 session，并把卡住任务归档失败：
+
+```bash
+python3 scripts/runtime/growware_session_hygiene.py \
+  --session-key 'agent:growware:feishu:direct:ou_6bead7a2b071454aeed7239e9de15d62' \
+  --fail-task-id task_487d4937033a4a2da97d6044e1b53af2 \
+  --failure-reason session-polluted-by-terminal-takeover \
+  --reset \
+  --restart \
+  --json
+```
+
 ## 运维命令
 
 预检：
