@@ -1,0 +1,23 @@
+{
+  "schema": "growware.incident-record.v1",
+  "required": [
+    "project_id",
+    "incident_id",
+    "source",
+    "severity",
+    "summary",
+    "evidence",
+    "timestamp"
+  ],
+  "properties": {
+    "project_id": "string",
+    "incident_id": "string",
+    "source": "feedback | runtime-log | verification | deploy",
+    "severity": "info | low | medium | high",
+    "summary": "string",
+    "evidence": "array<object>",
+    "repairability": "observe-only | needs-approval | auto-low-risk",
+    "affected_paths": "array<string>",
+    "timestamp": "ISO-8601 string"
+  }
+}

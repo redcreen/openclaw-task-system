@@ -57,6 +57,7 @@ If extension work resumes, name it explicitly instead of treating it as ambient 
 
 Potential future candidates:
 
+- Growware `Project 1` pilot: connect `feishu6-chat`, project-local `.growware/`, the local deploy gate, and a dedicated `growware` agent to validate a local feedback -> code -> verify -> deploy loop
 - stronger structured planning or tool decomposition for broader compound requests
 - richer real-channel evidence refreshes when delivery or planning contracts change
 - deeper steering or operator ergonomics that still preserve runtime truth and supervisor-first boundaries
@@ -70,6 +71,7 @@ Reference:
 
 - [workstreams/architecture-hardening/README.md](workstreams/architecture-hardening/README.md)
 - [reference/openclaw-task-system/development-plan.md](reference/openclaw-task-system/development-plan.md)
+- [reference/openclaw-task-system/growware-pilot.md](reference/openclaw-task-system/growware-pilot.md)
 - future roadmap candidates under workstreams and todo tracking
 
 ## Delivered Subproject: Same-Session Message Routing

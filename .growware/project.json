@@ -1,0 +1,34 @@
+{
+  "schema": "growware.project.v1",
+  "projectId": "openclaw-task-system",
+  "displayName": "OpenClaw Task System",
+  "projectRoot": "/Users/redcreen/Project/openclaw-task-system",
+  "repository": {
+    "slug": "redcreen/openclaw-task-system",
+    "branch": "main"
+  },
+  "growware": {
+    "stage": "stage-0-to-stage-3",
+    "mode": "single-project-local-loop",
+    "workspaceRoot": "/Users/redcreen/Project/openclaw-task-system",
+    "daemon": {
+      "agentId": "growware",
+      "workspace": "/Users/redcreen/Project/openclaw-task-system",
+      "agentDir": "/Users/redcreen/.openclaw/agents/growware/agent"
+    }
+  },
+  "watch": {
+    "plugins": [
+      "openclaw-task-system"
+    ],
+    "logSources": [
+      "openclaw-host",
+      "plugin-runtime"
+    ]
+  },
+  "deploy": {
+    "mode": "local-openclaw-plugin",
+    "command": "python3 scripts/runtime/growware_local_deploy.py --json",
+    "requiresApproval": true
+  }
+}

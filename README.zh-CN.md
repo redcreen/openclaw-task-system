@@ -111,6 +111,7 @@ openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.gi
 - [`docs/plugin_installation.zh-CN.md`](./docs/plugin_installation.zh-CN.md)：安装路径、配置与 install drift 说明
 - [`docs/usage_guide.zh-CN.md`](./docs/usage_guide.zh-CN.md)：日常运维与命令入口
 - [`docs/testsuite.zh-CN.md`](./docs/testsuite.zh-CN.md)：详细自动化与验收清单
+- [`docs/reference/openclaw-task-system/growware-pilot.zh-CN.md`](./docs/reference/openclaw-task-system/growware-pilot.zh-CN.md)：Growware `Project 1` 接入、`feishu6-chat` 绑定和 `.growware/` 真相源
 - [`docs/reference/session_message_routing/README.zh-CN.md`](./docs/reference/session_message_routing/README.zh-CN.md)：same-session routing 的正式 contract
 - [`docs/reference/README.zh-CN.md`](./docs/reference/README.zh-CN.md)：稳定参考资料
 - [`docs/archive/README.zh-CN.md`](./docs/archive/README.zh-CN.md)：历史记录与已退役文档

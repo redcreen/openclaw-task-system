@@ -1,0 +1,17 @@
+{
+  "schema": "growware.daemon-interface.v1",
+  "commands": {
+    "preflight": "python3 scripts/runtime/growware_preflight.py --json",
+    "bind_openclaw": "python3 scripts/runtime/growware_openclaw_binding.py --write --restart --json",
+    "tests": "python3 -m unittest discover -s tests -p 'test_growware_*.py'",
+    "deploy_local": "python3 scripts/runtime/growware_local_deploy.py --json",
+    "plugin_smoke": "python3 scripts/runtime/plugin_smoke.py --json",
+    "stable_acceptance": "python3 scripts/runtime/stable_acceptance.py --json"
+  },
+  "responsibilities": [
+    "load project-local .growware contracts",
+    "map feishu6 feedback to project events",
+    "run safe local verification and deploy helpers",
+    "report decisions and outcomes back to feishu6"
+  ]
+}

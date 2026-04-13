@@ -111,6 +111,7 @@ Useful secondary docs:
 - [`docs/plugin_installation.md`](./docs/plugin_installation.md): install paths, config, and install drift notes
 - [`docs/usage_guide.md`](./docs/usage_guide.md): daily operations and runtime commands
 - [`docs/testsuite.md`](./docs/testsuite.md): detailed automation and acceptance inventory
+- [`docs/reference/openclaw-task-system/growware-pilot.md`](./docs/reference/openclaw-task-system/growware-pilot.md): Growware `Project 1` onboarding, `feishu6-chat` binding, and `.growware/` truth
 - [`docs/reference/session_message_routing/README.md`](./docs/reference/session_message_routing/README.md): shipped same-session routing contract
 - [`docs/reference/README.md`](./docs/reference/README.md): durable reference notes
 - [`docs/archive/README.md`](./docs/archive/README.md): historical records and superseded docs

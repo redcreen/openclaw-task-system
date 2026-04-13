@@ -1,0 +1,16 @@
+{
+  "schema": "growware.deploy-gate.v1",
+  "defaults": {
+    "requiresApproval": true,
+    "approvalChannel": "feishu6-chat",
+    "rollbackSupported": true
+  },
+  "lowRiskRules": [
+    "documentation-only change",
+    "non-runtime test-only change"
+  ],
+  "blockedRules": [
+    "openclaw config mutation without validation",
+    "runtime deploy without plugin smoke"
+  ]
+}

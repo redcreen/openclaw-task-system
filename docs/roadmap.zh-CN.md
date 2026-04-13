@@ -51,6 +51,7 @@ flowchart LR
 
 潜在候选方向：
 
+- Growware `Project 1` pilot：把 `feishu6-chat`、项目内 `.growware/`、本地 deploy gate 和专用 `growware` agent 接上，验证 feedback -> code -> verify -> deploy 的本地闭环
 - 为更广泛的 compound request 引入更强的 structured planning / tool decomposition
 - 当 delivery 或 planning contract 变化时，补更高保真的 real-channel evidence
 - 在不破坏 runtime truth 与 supervisor-first 边界的前提下，继续深化 steering 或 operator ergonomics
@@ -64,3 +65,4 @@ flowchart LR
 
 - [workstreams/architecture-hardening/README.zh-CN.md](workstreams/architecture-hardening/README.zh-CN.md)
 - [reference/openclaw-task-system/development-plan.zh-CN.md](reference/openclaw-task-system/development-plan.zh-CN.md)
+- [reference/openclaw-task-system/growware-pilot.zh-CN.md](reference/openclaw-task-system/growware-pilot.zh-CN.md)

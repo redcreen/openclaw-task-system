@@ -1,0 +1,27 @@
+{
+  "schema": "growware.channels.v1",
+  "feedbackChannel": {
+    "provider": "feishu",
+    "accountId": "feishu6-chat",
+    "roles": [
+      "feedback",
+      "approval",
+      "notification"
+    ]
+  },
+  "fallbackChannels": [
+    {
+      "provider": "telegram",
+      "roles": [
+        "notification",
+        "approval"
+      ],
+      "status": "candidate"
+    }
+  ],
+  "runtimeSurface": {
+    "mode": "all-mounted-task-system-channels",
+    "pluginId": "openclaw-task-system",
+    "classification": "b-surface"
+  }
+}
