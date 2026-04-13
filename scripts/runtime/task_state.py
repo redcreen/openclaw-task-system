@@ -416,7 +416,15 @@ class TaskStore:
             task.meta.update(meta)
         return self._finalize_task(task, archive=archive)
 
-    def fail_task(self, task_id: str, reason: str, *, archive: bool = True, user_visible: bool = True) -> TaskState:
+    def fail_task(
+        self,
+        task_id: str,
+        reason: str,
+        *,
+        archive: bool = True,
+        user_visible: bool = True,
+        meta: Optional[dict[str, Any]] = None,
+    ) -> TaskState:
         task = self.load_task(task_id)
         ts = now_iso()
         task.status = STATUS_FAILED
@@ -426,6 +434,8 @@ class TaskStore:
         if user_visible:
             task.last_user_visible_update_at = ts
             task.monitor_state = "normal"
+        if meta:
+            task.meta.update(meta)
         return self._finalize_task(task, archive=archive)
 
     def cancel_task(

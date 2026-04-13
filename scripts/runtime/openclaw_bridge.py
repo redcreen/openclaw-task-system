@@ -632,21 +632,28 @@ def record_completed(
     task_id: str,
     result_summary: Optional[str] = None,
     *,
+    meta: Optional[dict[str, Any]] = None,
     paths: Optional[TaskPaths] = None,
     config: Optional[TaskSystemConfig] = None,
     config_path: Optional[Path] = None,
 ) -> TaskState:
     runtime_config = config or load_task_system_config(config_path=config_path)
-    return finish_main_task(task_id, result_summary=result_summary, paths=paths or runtime_config.build_paths() or default_paths())
+    return finish_main_task(
+        task_id,
+        result_summary=result_summary,
+        meta=meta,
+        paths=paths or runtime_config.build_paths() or default_paths(),
+    )
 
 
 def record_failed(
     task_id: str,
     reason: str,
     *,
+    meta: Optional[dict[str, Any]] = None,
     paths: Optional[TaskPaths] = None,
     config: Optional[TaskSystemConfig] = None,
     config_path: Optional[Path] = None,
 ) -> TaskState:
     runtime_config = config or load_task_system_config(config_path=config_path)
-    return fail_main_task(task_id, reason, paths=paths or runtime_config.build_paths() or default_paths())
+    return fail_main_task(task_id, reason, meta=meta, paths=paths or runtime_config.build_paths() or default_paths())

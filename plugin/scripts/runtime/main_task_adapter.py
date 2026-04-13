@@ -164,11 +164,14 @@ def finish_main_task(
     task_id: str,
     *,
     result_summary: Optional[str] = None,
+    meta: Optional[dict[str, Any]] = None,
     paths: Optional[TaskPaths] = None,
 ) -> TaskState:
     store = TaskStore(paths=paths or default_paths())
-    meta = {"result_summary": result_summary} if result_summary else None
-    return store.complete_task(task_id, meta=meta)
+    final_meta = dict(meta or {})
+    if result_summary:
+        final_meta["result_summary"] = result_summary
+    return store.complete_task(task_id, meta=final_meta or None)
 
 
 def block_main_task(
@@ -195,7 +198,8 @@ def fail_main_task(
     task_id: str,
     reason: str,
     *,
+    meta: Optional[dict[str, Any]] = None,
     paths: Optional[TaskPaths] = None,
 ) -> TaskState:
     store = TaskStore(paths=paths or default_paths())
-    return store.fail_task(task_id, reason)
+    return store.fail_task(task_id, reason, meta=meta)

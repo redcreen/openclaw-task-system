@@ -23,6 +23,8 @@ GENERIC_SUCCESS_SUMMARIES = {
     "assistant",
 }
 REPLY_TO_CURRENT_MARKER = "[[reply_to_current]]"
+EXECUTION_SOURCE_DAEMON = "daemon-owned"
+EXECUTION_SOURCE_TERMINAL = "terminal-takeover"
 
 SameSessionRoutingClassifier = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -71,6 +73,27 @@ def _build_control_plane_message(
     return message
 
 
+def _normalize_execution_source(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {EXECUTION_SOURCE_DAEMON, EXECUTION_SOURCE_TERMINAL}:
+        return normalized
+    return EXECUTION_SOURCE_DAEMON
+
+
+def _resolve_execution_source(task: Optional[Any], requested: Any = None) -> str:
+    if requested is not None and str(requested or "").strip():
+        return _normalize_execution_source(requested)
+    if task is not None:
+        return _normalize_execution_source(task.meta.get("execution_source"))
+    return EXECUTION_SOURCE_DAEMON
+
+
+def _should_render_execution_source(task: Optional[Any], execution_source: str) -> bool:
+    if execution_source == EXECUTION_SOURCE_TERMINAL:
+        return True
+    return bool(task is not None and str(getattr(task, "agent_id", "") or "").strip() == "growware")
+
+
 def _compact_task_target(task: Any) -> Optional[str]:
     target = str(task.meta.get("original_user_request") or task.task_label or "").strip()
     if not target:
@@ -81,21 +104,22 @@ def _compact_task_target(task: Any) -> Optional[str]:
     return compact
 
 
-def _build_terminal_message_text(task: Any, *, success: bool) -> str:
+def _build_terminal_message_text(task: Any, *, success: bool, execution_source: str) -> str:
     summary = str(task.meta.get("result_summary") or "").strip()
+    source_suffix = f"（{execution_source}）" if _should_render_execution_source(task, execution_source) else ""
     if success:
         normalized_summary = summary.lower()
         generic_summary = normalized_summary in GENERIC_SUCCESS_SUMMARIES or summary.startswith("{")
         if summary and not generic_summary:
-            return f"当前任务已完成：{summary}"
+            return f"当前任务已完成{source_suffix}：{summary}"
         target = _compact_task_target(task)
         if target:
-            return f"当前任务已完成：{target}"
-        return "当前任务已完成。"
+            return f"当前任务已完成{source_suffix}：{target}"
+        return f"当前任务已完成{source_suffix}。"
     failure_reason = str(getattr(task, "failure_reason", "") or task.meta.get("failure_reason") or "").strip()
     if failure_reason:
-        return f"当前任务已失败：{failure_reason}"
-    return "当前任务已失败。"
+        return f"当前任务已失败{source_suffix}：{failure_reason}"
+    return f"当前任务已失败{source_suffix}。"
 
 
 def _render_same_session_routing_receipt(routing: dict[str, Any]) -> Optional[dict[str, Any]]:
@@ -166,26 +190,26 @@ def _build_queue_receipt_text(
     if estimated_wait_seconds and not suppress_short_eta:
         if ahead_count > 0 and running_count <= 0:
             return (
-                f"已收到，你的请求已进入队列；前面还有 {ahead_count} 个号，"
-                f"你现在排第 {position} 位，预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到处理。"
+                f"收到，这件事我先记下了；前面还有 {ahead_count} 条在处理，"
+                f"你这边排第 {position} 位，预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后给你结果。"
             )
         if running_count <= 0:
             return (
-                f"已收到，你的请求已进入队列；你现在排第 {position} 位，"
-                f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到处理。"
+                f"收到，这件事我已经接着处理；你这边排第 {position} 位，"
+                f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后给你结果。"
             )
         return (
-            f"已收到，当前有 {running_count} 条任务正在处理；你的请求已进入队列，"
-            f"前面还有 {ahead_count} 个号，你现在排第 {position} 位，"
-            f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到处理。"
+            f"收到，我这边还有 {running_count} 条任务在处理；这件事已经接上了，"
+            f"前面还有 {ahead_count} 条，你这边排第 {position} 位，"
+            f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后给你结果。"
         )
     if ahead_count > 0 and running_count <= 0:
-        return f"已收到，你的请求已进入队列；前面还有 {ahead_count} 个号，你现在排第 {position} 位。"
+        return f"收到，这件事我先记下了；前面还有 {ahead_count} 条在处理，你这边排第 {position} 位。"
     if running_count <= 0:
-        return f"已收到，你的请求已进入队列；你现在排第 {position} 位。"
+        return f"收到，这件事我已经接着处理；你这边排第 {position} 位。"
     return (
-        f"已收到，当前有 {running_count} 条任务正在处理；你的请求已进入队列，"
-        f"前面还有 {ahead_count} 个号，你现在排第 {position} 位。"
+        f"收到，我这边还有 {running_count} 条任务在处理；这件事已经接上了，"
+        f"前面还有 {ahead_count} 条，你这边排第 {position} 位。"
     )
 
 
@@ -200,23 +224,27 @@ def _build_blocked_control_plane_message(task: Any, *, reason: Optional[str] = N
     )
 
 
-def _build_completed_control_plane_message(task: Any) -> dict[str, Any]:
+def _build_completed_control_plane_message(task: Any, *, execution_source: Optional[str] = None) -> dict[str, Any]:
+    normalized_source = _resolve_execution_source(task, execution_source)
     return _build_control_plane_message(
         kind="task-completed",
         event_name="task-completed",
         priority="p1-task-management",
-        text=_build_terminal_message_text(task, success=True),
+        text=_build_terminal_message_text(task, success=True, execution_source=normalized_source),
         task=task,
+        metadata={"execution_source": normalized_source},
     )
 
 
-def _build_failed_control_plane_message(task: Any) -> dict[str, Any]:
+def _build_failed_control_plane_message(task: Any, *, execution_source: Optional[str] = None) -> dict[str, Any]:
+    normalized_source = _resolve_execution_source(task, execution_source)
     return _build_control_plane_message(
         kind="task-failed",
         event_name="task-failed",
         priority="p1-task-management",
-        text=_build_terminal_message_text(task, success=False),
+        text=_build_terminal_message_text(task, success=False, execution_source=normalized_source),
         task=task,
+        metadata={"execution_source": normalized_source},
     )
 
 
@@ -303,14 +331,21 @@ def complete_task_lifecycle(
     task_id: str,
     *,
     result_summary: Optional[str] = None,
+    execution_source: Optional[str] = None,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
-    task = record_completed(task_id, result_summary=result_summary, config_path=config_path)
+    normalized_source = _resolve_execution_source(None, execution_source)
+    task = record_completed(
+        task_id,
+        result_summary=result_summary,
+        meta={"execution_source": normalized_source},
+        config_path=config_path,
+    )
     return {
         "updated": True,
         "task": task.to_dict(),
         "lifecycle_transition": "completed",
-        "control_plane_message": _build_completed_control_plane_message(task),
+        "control_plane_message": _build_completed_control_plane_message(task, execution_source=normalized_source),
     }
 
 
@@ -318,14 +353,21 @@ def fail_task_lifecycle(
     task_id: str,
     *,
     reason: str,
+    execution_source: Optional[str] = None,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
-    task = record_failed(task_id, reason, config_path=config_path)
+    normalized_source = _resolve_execution_source(None, execution_source)
+    task = record_failed(
+        task_id,
+        reason,
+        meta={"execution_source": normalized_source},
+        config_path=config_path,
+    )
     return {
         "updated": True,
         "task": task.to_dict(),
         "lifecycle_transition": "failed",
-        "control_plane_message": _build_failed_control_plane_message(task),
+        "control_plane_message": _build_failed_control_plane_message(task, execution_source=normalized_source),
     }
 
 
@@ -408,6 +450,7 @@ def finalize_active_lifecycle(
 ) -> dict[str, Any]:
     _, store = _resolve_store(config_path)
     success = bool(payload.get("success", False))
+    execution_source = _resolve_execution_source(active_task, payload.get("execution_source"))
     result_summary = _sanitize_visible_text(payload.get("result_summary") or payload.get("summary"))
     if success:
         last_progress_note = _sanitize_visible_text(active_task.meta.get("last_progress_note"))
@@ -441,22 +484,28 @@ def finalize_active_lifecycle(
         _clear_legacy_post_run_continuation(store, active_task)
         completed = store.complete_task(
             active_task.task_id,
-            meta={"result_summary": result_summary or "agent run completed"},
+            meta={
+                "result_summary": result_summary or "agent run completed",
+                "execution_source": execution_source,
+            },
         )
         return {
             "updated": True,
             "reason": "completed",
             "task": completed.to_dict(),
             "lifecycle_transition": "completed",
-            "control_plane_message": _build_completed_control_plane_message(completed),
+            "control_plane_message": _build_completed_control_plane_message(
+                completed,
+                execution_source=execution_source,
+            ),
         }
 
     failure_reason = str(payload.get("reason") or payload.get("error") or "agent run failed").strip()
-    failed = store.fail_task(active_task.task_id, failure_reason)
+    failed = store.fail_task(active_task.task_id, failure_reason, meta={"execution_source": execution_source})
     return {
         "updated": True,
         "reason": "failed",
         "task": failed.to_dict(),
         "lifecycle_transition": "failed",
-        "control_plane_message": _build_failed_control_plane_message(failed),
+        "control_plane_message": _build_failed_control_plane_message(failed, execution_source=execution_source),
     }

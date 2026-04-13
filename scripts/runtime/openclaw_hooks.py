@@ -143,16 +143,16 @@ def _describe_running_progress(task: Any, *, estimated_wait_seconds: Optional[in
         else:
             core = f"预计约 {estimated_steps} 个阶段，当前在第 {current_stage} 个阶段。"
         if target:
-            message = f"已收到你的消息，当前仍在处理中；正在推进：{target}；{core}"
+            message = f"收到，我还在处理这件事；正在推进：{target}；{core}"
         else:
-            message = f"已收到你的消息，当前仍在处理中；{core}"
+            message = f"收到，我还在处理这件事；{core}"
     elif target and progress_update_count > 0:
         message = (
-            f"已收到你的消息，当前仍在处理中；正在推进：{target}；"
+            f"收到，我还在处理这件事；正在推进：{target}；"
             f"已记录 {progress_update_count} 次内部进展。"
         )
     elif target:
-        message = f"已收到你的消息，当前仍在处理中；正在推进：{target}，完成后给你正式结果。"
+        message = f"收到，我还在处理这件事；正在推进：{target}，完成后给你正式结果。"
     if message and wait_hint:
         message = f"{message}{wait_hint}"
     return {
@@ -1062,6 +1062,7 @@ def completed_from_payload(
         complete_task_lifecycle(
             payload["task_id"],
             result_summary=payload.get("result_summary"),
+            execution_source=payload.get("execution_source"),
             config_path=config_path,
         )
     )
@@ -1076,11 +1077,7 @@ def completed_active_from_payload(
     task_id = active.get("task_id")
     if not task_id:
         return {"updated": False, "reason": "no-active-task"}
-    return complete_task_lifecycle(
-        str(task_id),
-        result_summary=payload.get("result_summary"),
-        config_path=config_path,
-    )
+    return complete_task_lifecycle(str(task_id), result_summary=payload.get("result_summary"), execution_source=payload.get("execution_source"), config_path=config_path)
 
 
 def failed_from_payload(
@@ -1089,7 +1086,12 @@ def failed_from_payload(
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
     return _flatten_lifecycle_task_result(
-        fail_task_lifecycle(payload["task_id"], reason=payload["reason"], config_path=config_path)
+        fail_task_lifecycle(
+            payload["task_id"],
+            reason=payload["reason"],
+            execution_source=payload.get("execution_source"),
+            config_path=config_path,
+        )
     )
 
 
@@ -1102,7 +1104,12 @@ def failed_active_from_payload(
     task_id = active.get("task_id")
     if not task_id:
         return {"updated": False, "reason": "no-active-task"}
-    return fail_task_lifecycle(str(task_id), reason=payload["reason"], config_path=config_path)
+    return fail_task_lifecycle(
+        str(task_id),
+        reason=payload["reason"],
+        execution_source=payload.get("execution_source"),
+        config_path=config_path,
+    )
 
 
 def finalize_active_from_payload(
@@ -1159,79 +1166,78 @@ def should_send_short_followup_from_payload(
     blocked_reason = str(task.meta.get("blocked_reason") or task.block_reason or "").strip()
     running_progress = _describe_running_progress(task, estimated_wait_seconds=estimated_wait_seconds)
 
-    followup_message = "已收到你的消息，当前仍在处理中；稍后给你正式结果。"
+    followup_message = "收到，我还在处理这件事；有结果我马上回你。"
     if task.status in {"received", "queued"}:
         position = queue_position or max(ahead_count + 1, 1)
         if estimated_wait_seconds and ahead_count > 0:
             followup_message = (
-                f"已收到你的消息，当前仍在排队处理中；前面还有 {ahead_count} 个号，"
-                f"你现在排第 {position} 位，预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到处理。"
+                f"收到，这件事还在排队往前推；前面还有 {ahead_count} 条，"
+                f"你这边排第 {position} 位，预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后轮到你。"
             )
         elif ahead_count > 0:
             followup_message = (
-                f"已收到你的消息，当前仍在排队处理中；前面还有 {ahead_count} 个号，"
-                f"你现在排第 {position} 位。"
+                f"收到，这件事还在排队往前推；前面还有 {ahead_count} 条，你这边排第 {position} 位。"
             )
         else:
             if user_facing_status_code == USER_STATUS_PENDING_START:
-                followup_message = "已收到你的消息，当前状态：待开始；马上继续。"
+                followup_message = "收到，这件事马上开始处理。"
             elif user_facing_status_code == USER_STATUS_RECEIVED:
-                followup_message = "已收到你的消息，当前状态：已收到；马上继续进入处理。"
+                followup_message = "收到，这件事已经接住了，马上开始处理。"
             else:
-                followup_message = f"已收到你的消息，当前状态：{user_facing_status}；马上继续。"
+                followup_message = f"收到，这件事现在是“{user_facing_status}”，我马上继续。"
     elif task.status == "running":
         last_progress_note = str(task.meta.get("last_progress_note") or "").strip()
         if last_progress_note:
-            followup_message = f"已收到你的消息，当前仍在处理中；最近进展：{last_progress_note}"
+            followup_message = f"收到，我还在处理这件事；最近进展：{last_progress_note}"
         elif planning_anomaly == "promise-without-task":
             target = promise_summary or followup_summary or "后续同步"
             followup_message = (
-                f"已收到你的消息，当前仍在处理中；但 {target} 这条后续安排还没有成功落成真实任务，"
+                f"收到，我还在处理这件事；但 {target} 这条后续安排还没有成功落成真实任务，"
                 "如果这条安排仍然需要，我会补建真实任务；如果不需要，会明确撤回这条承诺。"
             )
         elif planning_anomaly == "planner-timeout":
             target = promise_summary or followup_summary or "后续安排"
             followup_message = (
-                f"已收到你的消息，当前仍在处理中；但 {target} 这条 planning 路径刚才超时了，"
+                f"收到，我还在处理这件事；但 {target} 这条 planning 路径刚才超时了，"
                 "我会优先核对源任务，决定是补建 follow-up 还是明确要求你重发 delayed 部分。"
             )
         elif planning_anomaly == "followup-task-missing":
             target = followup_summary or promise_summary or "后续安排"
             followup_message = (
-                f"已收到你的消息，当前仍在处理中；但 {target} 这条后续安排的真实任务记录缺失了，"
+                f"收到，我还在处理这件事；但 {target} 这条后续安排的真实任务记录缺失了，"
                 "我会先补建或重新关联这条 follow-up，再继续依赖这条 planning 状态。"
             )
         elif bool(planning_status.get("overdue_on_materialize")):
             target = followup_summary or promise_summary or "后续安排"
             followup_message = (
-                f"已收到你的消息，当前仍在处理中；但 {target} 这条后续安排是在已过原定时间后才落成的，"
+                f"收到，我还在处理这件事；但 {target} 这条后续安排是在已过原定时间后才落成的，"
                 "我会先确认这条 late follow-up 是否仍然有效，必要时重新约定新的时间。"
             )
         elif plan_status == "planned":
             target = followup_summary or promise_summary or "后续同步"
             followup_message = (
-                f"已收到你的消息，当前仍在处理中；正在把 {target} 物化成真实 follow-up 任务，"
+                f"收到，我还在处理这件事；正在把 {target} 物化成真实 follow-up 任务，"
                 "完成后会再给你明确安排状态。"
             )
         elif plan_status in {"scheduled", "fulfilled"} and followup_summary:
             followup_message = (
-                f"已收到你的消息，当前仍在处理中；已建立后续安排：{followup_summary}。"
+                f"收到，我还在处理这件事；已建立后续安排：{followup_summary}。"
                 "我先继续把眼前这一步收口。"
             )
         elif promise_summary:
             followup_message = (
-                f"已收到你的消息，当前仍在处理中；当前在推进即时部分，同时校验后续安排：{promise_summary}。"
+                f"收到，我还在处理这件事；当前在推进即时部分，同时校验后续安排：{promise_summary}。"
             )
         elif blocked_reason:
-            followup_message = f"已收到你的消息，当前仍在处理中；当前阻塞点：{blocked_reason}。"
+            followup_message = f"收到，我还在处理这件事；当前阻塞点：{blocked_reason}。"
         elif running_progress["progress_message"]:
             followup_message = str(running_progress["progress_message"])
         elif estimated_wait_seconds:
             wait_hint = _render_wait_hint(estimated_wait_seconds)
             if wait_hint:
-                followup_message = f"已收到你的消息，当前仍在处理中；{wait_hint}"
+                followup_message = f"收到，我还在处理这件事；{wait_hint}"
         elif active_count > 1 or running_count > 1:
-            followup_message = "已收到你的消息，当前仍在处理中；系统还有其他活动任务，我会继续同步进展。"
+            followup_message = "收到，我还在处理这件事；系统里还有别的活动任务，我会继续同步进展。"
 
     return {
         "should_send": True,

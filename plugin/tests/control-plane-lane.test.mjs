@@ -446,6 +446,67 @@ test("agent_end no longer sends generic duration-only completion summary to fina
   }
 });
 
+test("growware agent_end still sends completion control-plane followup after visible output", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot({
+    finalizeActiveResponse: {
+      updated: true,
+      control_plane_message: {
+        schema: "openclaw.task-system.control-plane.v1",
+        kind: "task-completed",
+        event_name: "task-completed",
+        priority: "p1-task-management",
+        task_id: "task-growware-1",
+        text: "当前任务已完成（daemon-owned）：feishu6 完成通知已补齐",
+        metadata: {
+          execution_source: "daemon-owned",
+        },
+      },
+    },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages);
+
+  try {
+    await plugin.beforeDispatch(
+      {
+        content: "把 growware 的完成通知补到 feishu6",
+        body: "把 growware 的完成通知补到 feishu6",
+        channel: "feishu",
+        senderId: "ou_growware",
+      },
+      {
+        sessionKey: "agent:growware:feishu:direct:ou_growware",
+        channelId: "feishu",
+        conversationId: "chat-growware",
+        accountId: "feishu6-chat",
+        senderId: "ou_growware",
+        agentId: "growware",
+      },
+    );
+
+    await plugin.agentEnd(
+      {
+        success: true,
+        messages: [{ role: "assistant", content: "我已经把这条能力补上了。" }],
+        durationMs: 1200,
+      },
+      {
+        sessionKey: "agent:growware:feishu:direct:ou_growware",
+        channelId: "feishu",
+        conversationId: "chat-growware",
+        accountId: "feishu6-chat",
+        senderId: "ou_growware",
+        agentId: "growware",
+      },
+    );
+
+    assert.equal(sentMessages.at(-1)?.text, "[wd] 当前任务已完成（daemon-owned）：feishu6 完成通知已补齐");
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("agent_end task-completed host retry keeps bound feishu delivery target when ctx omits account and chat", async () => {
   resetGlobalState();
   const { runtimeRoot } = await createFakeRuntimeRoot({

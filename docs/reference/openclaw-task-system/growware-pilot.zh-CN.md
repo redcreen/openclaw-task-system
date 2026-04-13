@@ -38,9 +38,17 @@ task-system runtime
 - [`.growware/channels.json`](../../../.growware/channels.json)
 - [`.growware/contracts/feedback-event.v1.json`](../../../.growware/contracts/feedback-event.v1.json)
 - [`.growware/contracts/incident-record.v1.json`](../../../.growware/contracts/incident-record.v1.json)
+- [`.growware/policies/feedback-intake.v1.json`](../../../.growware/policies/feedback-intake.v1.json)
 - [`.growware/policies/judge.v1.json`](../../../.growware/policies/judge.v1.json)
 - [`.growware/policies/deploy-gate.v1.json`](../../../.growware/policies/deploy-gate.v1.json)
 - [`.growware/ops/daemon-interface.v1.json`](../../../.growware/ops/daemon-interface.v1.json)
+
+## 当前已落地的 Growware baseline
+
+- `growware` agent 的 same-session classifier 已由项目本地 `.growware/policies/feedback-intake.v1.json` 驱动
+- `feishu6-chat` 上的自然语言反馈，默认先进入 daemon-owned intake，再决定是并入当前任务还是排成新任务
+- Growware close-out 现在要求显式标记执行来源：`daemon-owned` 或 `terminal-takeover`
+- 对 `growware` agent 而言，完成态会额外通过 control-plane lane 回到 `feishu6`，不再只依赖正文输出
 
 ## 运维命令
 

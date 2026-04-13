@@ -10,6 +10,14 @@ This repository is the source of truth for the `openclaw-task-system` runtime.
 - All runtime code changes happen in [`scripts/runtime/`](./scripts/runtime/), never in the installed extension directory.
 - After changing runtime code, sync the plugin mirror with `python3 scripts/runtime/runtime_mirror.py --write`.
 
+## Feedback Execution Policy
+
+- Messages arriving through `feishu6-chat` are not discussion-only by default.
+- If a natural-language message describes an undesired behavior in this repository and the intended fix is concrete enough, treat it as an implementation request.
+- Prefer editing code, running the smallest relevant verification, and then replying with the result.
+- Do not stop at "我会改" unless the request is ambiguous, unsafe, or blocked by missing permissions.
+- Only ask for clarification when the target behavior cannot be inferred with reasonable confidence.
+
 ## Required Verification
 
 Before claiming the task is done:

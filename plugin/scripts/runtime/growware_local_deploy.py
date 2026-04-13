@@ -14,6 +14,8 @@ from growware_project import resolve_project_root
 
 PLUGIN_RUNTIME_DIR = Path("plugin") / "scripts" / "runtime"
 PLUGIN_CONFIG_DIR = Path("plugin") / "config"
+PLUGIN_SOURCE_DIR = Path("plugin") / "src"
+GROWWARE_DIR = Path(".growware")
 PLUGIN_MANIFEST = Path("plugin") / "openclaw.plugin.json"
 INSTALLED_PLUGIN_ROOT = Path.home() / ".openclaw" / "extensions" / "openclaw-task-system"
 BACKUP_ROOT = Path.home() / ".openclaw" / "backups" / "openclaw-task-system"
@@ -47,6 +49,10 @@ def sync_installed_payload(project_root: Path) -> dict[str, Any]:
     runtime_target = installed_root / "scripts" / "runtime"
     config_source = project_root / PLUGIN_CONFIG_DIR
     config_target = installed_root / "config"
+    source_source = project_root / PLUGIN_SOURCE_DIR
+    source_target = installed_root / "src"
+    growware_source = project_root / GROWWARE_DIR
+    growware_target = installed_root / ".growware"
     backup_dir = BACKUP_ROOT / datetime.now().strftime("%Y%m%d-%H%M%S")
     backup_dir.mkdir(parents=True, exist_ok=True)
     installed_root.mkdir(parents=True, exist_ok=True)
@@ -56,11 +62,19 @@ def sync_installed_payload(project_root: Path) -> dict[str, Any]:
             shutil.copytree(runtime_target, backup_dir / "runtime", dirs_exist_ok=True)
         if config_target.exists():
             shutil.copytree(config_target, backup_dir / "config", dirs_exist_ok=True)
+        if source_target.exists():
+            shutil.copytree(source_target, backup_dir / "src", dirs_exist_ok=True)
+        if growware_target.exists():
+            shutil.copytree(growware_target, backup_dir / ".growware", dirs_exist_ok=True)
         if (installed_root / "openclaw.plugin.json").exists():
             shutil.copy2(installed_root / "openclaw.plugin.json", backup_dir / "openclaw.plugin.json")
 
     _sync_dir(runtime_source, runtime_target)
     _sync_dir(config_source, config_target)
+    if source_source.exists():
+        _sync_dir(source_source, source_target)
+    if growware_source.exists():
+        _sync_dir(growware_source, growware_target)
     shutil.copy2(plugin_root / "openclaw.plugin.json", installed_root / "openclaw.plugin.json")
     return {
         "command": ["sync-installed-payload"],

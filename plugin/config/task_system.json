@@ -3,6 +3,22 @@
     "enabled": true,
     "storageDir": "./data",
     "agents": {
+      "growware": {
+        "enabled": true,
+        "autoStart": true,
+        "sameSessionRouting": {
+          "enabled": true,
+          "classifier": {
+            "enabled": true,
+            "command": [
+              "python3",
+              "scripts/runtime/growware_feedback_classifier.py"
+            ],
+            "timeoutMs": 1500,
+            "minConfidence": 0.78
+          }
+        }
+      },
       "main": {
         "enabled": true,
         "autoStart": true,

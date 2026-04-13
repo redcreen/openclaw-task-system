@@ -37,12 +37,17 @@ class GrowwareProjectTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            (growware_dir / "policies" / "feedback-intake.v1.json").write_text(
+                json.dumps({"defaultExecutionSource": "daemon-owned"}),
+                encoding="utf-8",
+            )
 
             summary = growware_project.build_summary(root)
 
         self.assertEqual(summary["projectId"], "demo")
         self.assertEqual(summary["feedbackChannel"]["accountId"], "feishu6-chat")
         self.assertEqual(summary["runtimeSurface"]["pluginId"], "openclaw-task-system")
+        self.assertEqual(summary["feedbackIntake"]["defaultExecutionSource"], "daemon-owned")
 
 
 if __name__ == "__main__":

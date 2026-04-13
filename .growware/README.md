@@ -21,3 +21,4 @@ Current default:
 - `A channel = feishu6-chat`
 - `A roles = feedback + approval + notification`
 - `Telegram = fallback candidate`
+- `policies/feedback-intake.v1.json` is the project-local truth source for natural-language feedback intake and close-out provenance

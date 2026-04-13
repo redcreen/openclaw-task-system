@@ -244,6 +244,68 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(routing["reason_code"], "config-driven-classifier")
         self.assertEqual(routing["active_task_id"], first["task_id"])
 
+    def test_register_from_payload_uses_growware_feedback_classifier_for_natural_language_refinement(self) -> None:
+        classifier_script = Path(__file__).resolve().parents[1] / "scripts" / "runtime" / "growware_feedback_classifier.py"
+        self.config_path.write_text(
+            json.dumps(
+                {
+                    "taskSystem": {
+                        "storageDir": str(self.paths.data_dir),
+                        "agents": {
+                            "growware": {
+                                "sameSessionRouting": {
+                                    "enabled": True,
+                                    "classifier": {
+                                        "enabled": True,
+                                        "command": [sys.executable, str(classifier_script)],
+                                        "timeoutMs": 1000,
+                                        "minConfidence": 0.78,
+                                    },
+                                }
+                            }
+                        },
+                    }
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        first = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "growware",
+                "session_key": "session:growware-feedback-classifier",
+                "channel": "feishu",
+                "account_id": "feishu6-chat",
+                "chat_id": "chat:growware-feedback-classifier",
+                "user_id": "ou_test",
+                "user_request": "把 growware 的回复话术收自然一点",
+                "estimated_steps": 3,
+            },
+            config_path=self.config_path,
+        )
+        second = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "growware",
+                "session_key": "session:growware-feedback-classifier",
+                "channel": "feishu",
+                "account_id": "feishu6-chat",
+                "chat_id": "chat:growware-feedback-classifier",
+                "user_id": "ou_test",
+                "user_request": "这段话再顺一点。",
+                "observe_only": True,
+            },
+            config_path=self.config_path,
+        )
+
+        routing = second["routing_decision"]
+        self.assertEqual(routing["decision_source"], "classifier")
+        self.assertTrue(routing["classifier_invoked"])
+        self.assertEqual(routing["classification"], "steering")
+        self.assertIn("wording-refinement", routing["reason_code"])
+
     def test_register_from_payload_activates_collecting_window_without_registering_task(self) -> None:
         self.config_path.write_text(
             json.dumps(
@@ -666,8 +728,8 @@ class OpenClawHooksTests(unittest.TestCase):
 
         self.assertTrue(result["should_send"])
         self.assertEqual(result["reason"], "task-active:queued")
-        self.assertIn("仍在排队处理中", result["followup_message"])
-        self.assertIn("前面还有 1 个号", result["followup_message"])
+        self.assertIn("还在排队往前推", result["followup_message"])
+        self.assertIn("前面还有 1 条", result["followup_message"])
         self.assertIn("control_plane_message", result)
         self.assertEqual(result["control_plane_message"]["event_name"], "short-task-followup")
         self.assertEqual(result["control_plane_message"]["priority"], "p2-progress-followup")
@@ -700,7 +762,7 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(result["reason"], "task-active:queued")
         self.assertEqual(result["user_facing_status_code"], "pending-start")
         self.assertEqual(result["user_facing_status"], "待开始")
-        self.assertIn("当前状态：待开始", result["followup_message"])
+        self.assertIn("马上开始处理", result["followup_message"])
         self.assertEqual(result["control_plane_message"]["user_facing_status_code"], "pending-start")
         self.assertEqual(result["control_plane_message"]["user_facing_status"], "待开始")
         self.assertEqual(result["control_plane_message"]["metadata"]["user_facing_status_code"], "pending-start")
@@ -1442,6 +1504,33 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
         self.assertEqual(finalized["control_plane_message"]["event_name"], "task-completed")
         self.assertIn("completed by agent_end", finalized["control_plane_message"]["text"])
+
+    def test_finalize_active_marks_growware_completion_with_execution_source(self) -> None:
+        registration = openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "growware",
+                "session_key": "session:growware-done",
+                "channel": "feishu",
+                "account_id": "feishu6-chat",
+                "chat_id": "chat:growware-done",
+                "user_request": "把 growware 的完成通知补到 feishu6",
+                "estimated_steps": 3,
+            }
+        )
+        assert registration["task_id"] is not None
+        finalized = openclaw_hooks.finalize_active_from_payload(
+            {
+                "agent_id": "growware",
+                "session_key": "session:growware-done",
+                "success": True,
+                "has_visible_output": True,
+                "result_summary": "feishu6 完成通知已补齐",
+            }
+        )
+        self.assertTrue(finalized["updated"])
+        self.assertEqual(finalized["task"]["status"], task_state_module.STATUS_DONE)
+        self.assertIn("daemon-owned", finalized["control_plane_message"]["text"])
+        self.assertEqual(finalized["control_plane_message"]["metadata"]["execution_source"], "daemon-owned")
 
     def test_should_send_short_followup_only_for_active_tasks(self) -> None:
         registration = openclaw_hooks.register_from_payload(

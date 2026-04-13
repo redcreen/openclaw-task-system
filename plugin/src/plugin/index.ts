@@ -110,7 +110,7 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
     immediateAckTemplate:
       typeof value.immediateAckTemplate === "string" && value.immediateAckTemplate.trim()
         ? value.immediateAckTemplate.trim()
-        : "已收到，正在开始处理；如果 30 秒内还没有新的阶段结果，我会先同步当前进展。",
+        : "收到，我先开始处理；如果 30 秒内还没有新的阶段结果，我会先同步进展。",
     shortTaskFollowupTimeoutMs:
       typeof value.shortTaskFollowupTimeoutMs === "number" && Number.isFinite(value.shortTaskFollowupTimeoutMs)
         ? Math.max(1000, Math.trunc(value.shortTaskFollowupTimeoutMs))
@@ -118,7 +118,7 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
     shortTaskFollowupTemplate:
       typeof value.shortTaskFollowupTemplate === "string" && value.shortTaskFollowupTemplate.trim()
         ? value.shortTaskFollowupTemplate.trim()
-        : "已收到你的消息，当前仍在处理中；稍后给你正式结果。",
+        : "收到，我还在处理这件事；有结果我马上回你。",
     syncProgressOnMessageSending: value.syncProgressOnMessageSending !== false,
     finalizeOnAgentEnd: value.finalizeOnAgentEnd !== false,
     minProgressMessageLength:
@@ -2226,20 +2226,20 @@ function buildImmediateReceiptMessage(
     const position = queuePosition ?? aheadCount + 1;
     if (runningCount <= 0 && aheadCount > 0) {
       if (estimatedWaitLabel) {
-        return `已收到，你的请求已进入队列；前面还有 ${aheadCount} 个号，你现在排第 ${position} 位，${estimatedWaitLabel}轮到处理。`;
+        return `收到，这件事我先记下了；前面还有 ${aheadCount} 条在处理，你这边排第 ${position} 位，${estimatedWaitLabel}给你结果。`;
       }
-      return `已收到，你的请求已进入队列；前面还有 ${aheadCount} 个号，你现在排第 ${position} 位。`;
+      return `收到，这件事我先记下了；前面还有 ${aheadCount} 条在处理，你这边排第 ${position} 位。`;
     }
     if (runningCount <= 0) {
       if (estimatedWaitLabel) {
-        return `已收到，你的请求已进入队列；你现在排第 ${position} 位，${estimatedWaitLabel}轮到处理。`;
+        return `收到，这件事我已经接着处理；你这边排第 ${position} 位，${estimatedWaitLabel}给你结果。`;
       }
-      return `已收到，你的请求已进入队列；你现在排第 ${position} 位。`;
+      return `收到，这件事我已经接着处理；你这边排第 ${position} 位。`;
     }
     if (estimatedWaitLabel) {
-      return `已收到，当前有 ${runningCount} 条任务正在处理；你的请求已进入队列，前面还有 ${aheadCount} 个号，你现在排第 ${position} 位，${estimatedWaitLabel}轮到处理。`;
+      return `收到，我这边还有 ${runningCount} 条任务在处理；这件事已经接上了，前面还有 ${aheadCount} 条，你这边排第 ${position} 位，${estimatedWaitLabel}给你结果。`;
     }
-    return `已收到，当前有 ${runningCount} 条任务正在处理；你的请求已进入队列，前面还有 ${aheadCount} 个号，你现在排第 ${position} 位。`;
+    return `收到，我这边还有 ${runningCount} 条任务在处理；这件事已经接上了，前面还有 ${aheadCount} 条，你这边排第 ${position} 位。`;
   };
 
   if (runtimeOwnedQueueReceipt) {
@@ -2262,12 +2262,12 @@ function buildImmediateReceiptMessage(
   }
   if (taskStatus === "running" && activeCount > 1) {
     if (estimatedWaitLabel) {
-      return `已收到，现在轮到你的请求开始处理了；当前队列里共有 ${activeCount} 条活动任务，${estimatedWaitLabel}内预计会有初步结果，我会继续同步真实进展。`;
+      return `收到，这件事已经开始处理了；当前还有 ${activeCount} 条活动任务，${estimatedWaitLabel}内我先给你同步一版结果。`;
     }
-    return `已收到，现在轮到你的请求开始处理了；当前队列里共有 ${activeCount} 条活动任务，我会继续同步真实进展。`;
+    return `收到，这件事已经开始处理了；当前还有 ${activeCount} 条活动任务，我会继续同步真实进展。`;
   }
   if (taskStatus === "running") {
-    return "已收到，正在开始处理；如果 30 秒内还没有新的阶段结果，我会先同步当前进展。";
+    return "收到，我先开始处理；如果 30 秒内还没有新的阶段结果，我会先同步进展。";
   }
   return fallback;
 }
@@ -4206,8 +4206,9 @@ const taskSystemPlugin = {
         }
         pendingReceipts.delete(taskId);
       }
+      const resolvedAgentId = resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId);
       await appendDebugLog(config, "agent_end", {
-        agentId: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
+        agentId: resolvedAgentId,
         sessionKey: normalizedSessionKey,
         success: event.success,
         error: event.error ?? null,
@@ -4240,7 +4241,7 @@ const taskSystemPlugin = {
               })
             : undefined;
       const finalizeResult = await callHook(api, config, "finalize-active", {
-        agent_id: resolveAgentId(ctx.agentId, normalizedSessionKey, config.defaultAgentId),
+        agent_id: resolvedAgentId,
         session_key: normalizedSessionKey,
         task_id: activeTaskBinding?.taskId,
         success: event.success,
@@ -4248,10 +4249,11 @@ const taskSystemPlugin = {
         result_summary: resultSummaryForFinalize,
         error: event.error,
       });
+      const growwareCompletionNotify = resolvedAgentId === "growware";
       const shouldDeliverFinalizeControlPlane =
         Boolean(finalizeResult?.control_plane_message) &&
         Boolean(activeTaskBinding?.taskId) &&
-        (!event.success || !hasVisibleOutputForFinalize);
+        (growwareCompletionNotify || !event.success || !hasVisibleOutputForFinalize);
       if (shouldDeliverFinalizeControlPlane) {
         const deliveryTarget = resolveControlPlaneDeliveryTarget(
           activeTaskBinding,
