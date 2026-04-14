@@ -15,4 +15,5 @@
 ## 当前参考入口
 
 - [openclaw-task-system/development-plan.zh-CN.md](openclaw-task-system/development-plan.zh-CN.md)：最近一次 post-hardening 收口里程碑的项目级记录，以及下次开新里程碑的规则
+- [openclaw-task-system/runtime-audit-self-heal-proposal.zh-CN.md](openclaw-task-system/runtime-audit-self-heal-proposal.zh-CN.md)：宿主侧运行日志审计、用户视角检查与保守自修复边界的讨论稿
 - [session_message_routing/README.zh-CN.md](session_message_routing/README.zh-CN.md)：same-session routing 的正式 contract、阶段结论与验收范围

@@ -1,0 +1,41 @@
+{
+  "schema": "growware.policy.index.v1",
+  "rules": [
+    {
+      "id": "growware.feedback-intake.same-session.v1",
+      "kind": "interaction-contract",
+      "status": "active",
+      "effect": "deny-without-approval",
+      "applies_to": [
+        "scripts/runtime/growware_feedback_classifier.py",
+        "plugin/scripts/runtime/growware_feedback_classifier.py",
+        "scripts/runtime/growware_project.py",
+        "scripts/runtime/growware_preflight.py",
+        "docs/reference/openclaw-task-system/growware-pilot.md"
+      ],
+      "rule_file": ".policy/rules/growware.feedback-intake.same-session.v1.json",
+      "source_docs": [
+        "docs/policy/interaction-contracts.md",
+        "docs/policy/interaction-contracts.zh-CN.md"
+      ]
+    },
+    {
+      "id": "growware.project.local-deploy.v1",
+      "kind": "verification-rule",
+      "status": "active",
+      "effect": "deny-without-approval",
+      "applies_to": [
+        "scripts/runtime/growware_policy_sync.py",
+        "scripts/runtime/growware_preflight.py",
+        "scripts/runtime/growware_openclaw_binding.py",
+        "scripts/runtime/growware_local_deploy.py",
+        "scripts/runtime/plugin_smoke.py"
+      ],
+      "rule_file": ".policy/rules/growware.project.local-deploy.v1.json",
+      "source_docs": [
+        "docs/policy/verification-rules.md",
+        "docs/policy/verification-rules.zh-CN.md"
+      ]
+    }
+  ]
+}

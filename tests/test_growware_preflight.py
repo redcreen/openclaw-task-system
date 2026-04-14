@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from tests.runtime_loader import load_runtime_module
+from tests.growware_policy_fixtures import sync_policy
 
 
 growware_preflight = load_runtime_module("growware_preflight")
@@ -20,6 +21,7 @@ class GrowwarePreflightTests(unittest.TestCase):
     def test_preflight_passes_for_valid_structure(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
+            sync_policy(root)
             _write_json(
                 root / ".growware" / "project.json",
                 {
@@ -54,6 +56,7 @@ class GrowwarePreflightTests(unittest.TestCase):
     def test_preflight_fails_when_feedback_channel_does_not_match(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
+            sync_policy(root)
             _write_json(
                 root / ".growware" / "project.json",
                 {

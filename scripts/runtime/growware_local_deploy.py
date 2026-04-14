@@ -95,6 +95,8 @@ def sync_installed_payload(project_root: Path) -> dict[str, Any]:
 def run_local_deploy(project_root: Path | None = None) -> dict[str, Any]:
     root = resolve_project_root(project_root)
     steps = [
+        run_command(["python3", "scripts/runtime/growware_policy_sync.py", "--write", "--json"], cwd=root),
+        run_command(["python3", "scripts/runtime/growware_policy_sync.py", "--check", "--json"], cwd=root),
         run_command(["python3", "scripts/runtime/runtime_mirror.py", "--write"], cwd=root),
         run_command(["python3", "scripts/runtime/plugin_doctor.py", "--json"], cwd=root),
     ]

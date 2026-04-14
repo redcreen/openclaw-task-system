@@ -1,38 +1,21 @@
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from tests.runtime_loader import load_runtime_module
+from tests.growware_policy_fixtures import sync_policy
 
 
 classifier_module = load_runtime_module("growware_feedback_classifier")
-
-
-def _write_json(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 class GrowwareFeedbackClassifierTests(unittest.TestCase):
     def test_feedback_about_wording_is_classified_as_same_task_refinement(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            _write_json(
-                root / ".growware" / "policies" / "feedback-intake.v1.json",
-                {
-                    "defaultExecutionSource": "daemon-owned",
-                    "sameSessionClassifier": {
-                        "minConfidence": 0.78,
-                        "steeringSignals": ["这个不是很自然语言", "正常人说话", "改成"],
-                        "queueingSignals": ["另外", "新增"],
-                        "bugSignals": ["有问题"],
-                        "ideaSignals": ["我想"],
-                    },
-                },
-            )
+            sync_policy(root)
 
             result = classifier_module.classify(
                 {
@@ -50,19 +33,7 @@ class GrowwareFeedbackClassifierTests(unittest.TestCase):
     def test_feedback_with_new_goal_is_classified_as_new_task(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            _write_json(
-                root / ".growware" / "policies" / "feedback-intake.v1.json",
-                {
-                    "defaultExecutionSource": "daemon-owned",
-                    "sameSessionClassifier": {
-                        "minConfidence": 0.78,
-                        "steeringSignals": ["改一下"],
-                        "queueingSignals": ["另外", "新增"],
-                        "bugSignals": ["失败"],
-                        "ideaSignals": ["我想"],
-                    },
-                },
-            )
+            sync_policy(root)
 
             result = classifier_module.classify(
                 {

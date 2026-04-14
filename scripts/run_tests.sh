@@ -13,11 +13,12 @@ python3 "$ROOT_DIR/scripts/runtime/runtime_mirror.py" --check
 
 echo
 echo "[testsuite] 1/4 Python runtime / CLI 回归"
-python3 -m unittest discover -s "$ROOT_DIR/tests" -v
+PYTHONPATH="$ROOT_DIR:$ROOT_DIR/tests${PYTHONPATH:+:$PYTHONPATH}" \
+python3 -m unittest discover -s "$ROOT_DIR/tests" -t "$ROOT_DIR" -v
 
 echo
 echo "[testsuite] 2/4 Node plugin / control-plane 回归"
-node --test "$ROOT_DIR/plugin/tests/*.test.mjs"
+node --test --test-concurrency=1 "$ROOT_DIR/plugin/tests/*.test.mjs"
 
 echo
 echo "[testsuite] 3/4 Plugin Doctor 结构检查"

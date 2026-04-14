@@ -4,6 +4,18 @@
   "requiredFiles": [
     ".codex/brief.md",
     ".codex/plan.md",
-    ".codex/status.md"
-  ]
+    ".codex/status.md",
+    ".codex/COMMANDS.md",
+    ".codex/control-surface.json"
+  ],
+  "managedBy": "project-assistant",
+  "controlSurfaceVersion": 3,
+  "surfaceVersions": {
+    "strategy": 1,
+    "programBoard": 1,
+    "deliverySupervision": 1,
+    "ptlSupervision": 1,
+    "workerHandoff": 1,
+    "entryRouting": 1
+  }
 }

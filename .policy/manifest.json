@@ -1,0 +1,8 @@
+{
+  "schema": "growware.policy.manifest.v1",
+  "contract_version": 1,
+  "generated_by": "project-assistant",
+  "generated_at": "2026-04-13T16:45:54Z",
+  "index": ".policy/index.json",
+  "rules_dir": ".policy/rules"
+}

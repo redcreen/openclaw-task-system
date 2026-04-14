@@ -1,6 +1,8 @@
 {
   "schema": "growware.daemon-interface.v1",
   "commands": {
+    "policy_sync": "python3 scripts/runtime/growware_policy_sync.py --check --json",
+    "policy_compile": "python3 scripts/runtime/growware_policy_sync.py --write --json",
     "preflight": "python3 scripts/runtime/growware_preflight.py --json",
     "bind_openclaw": "python3 scripts/runtime/growware_openclaw_binding.py --write --restart --json",
     "tests": "python3 -m unittest discover -s tests -p 'test_growware_*.py'",
@@ -9,9 +11,10 @@
     "stable_acceptance": "python3 scripts/runtime/stable_acceptance.py --json"
   },
   "responsibilities": [
-    "load project-local .growware contracts",
+    "load project-local docs/policy sources and compiled .policy rules",
     "map feishu6 feedback to project events",
     "classify natural-language feedback into runtime-owned executable intake",
+    "compile policy docs into .policy before verification and deploy",
     "run safe local verification and deploy helpers",
     "report decisions and outcomes back to feishu6",
     "mark every close-out as daemon-owned or terminal-takeover"

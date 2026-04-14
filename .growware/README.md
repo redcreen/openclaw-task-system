@@ -21,4 +21,7 @@ Current default:
 - `A channel = feishu6-chat`
 - `A roles = feedback + approval + notification`
 - `Telegram = fallback candidate`
-- `policies/feedback-intake.v1.json` is the project-local truth source for natural-language feedback intake and close-out provenance
+- `docs/policy/` is the human policy source for project-local intake and verification rules
+- `.policy/` is the compiled machine execution layer for Growware, daemon, and terminal takeover
+- `.growware/contracts/` and `.growware/ops/` remain the durable project-local control surface around that policy layer
+- `.growware/policies/*.json` remain compatibility inputs during the migration from legacy project-local policy JSON to compiled `.policy/`

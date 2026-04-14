@@ -69,6 +69,7 @@ openclaw plugins install ./plugin
 ## 安装前检查
 
 ```bash
+python3 scripts/runtime/growware_policy_sync.py --check --json
 python3 scripts/runtime/runtime_mirror.py --check
 python3 scripts/runtime/plugin_doctor.py
 python3 scripts/runtime/plugin_smoke.py
@@ -104,13 +105,14 @@ python3 scripts/runtime/configure_openclaw_plugin.py --write
 
 建议顺序：
 
-1. `plugin_doctor.py`
-2. `plugin_smoke.py`
-3. `main_ops.py dashboard --json`
-4. `stable_acceptance.py --json`
-5. 如果要跑更宽的 release-facing 验证，再跑 `release_gate.py --json`
-6. 如果改了 planning，再跑 `planning_acceptance_suite.py --json`
-7. 如果只是想先演练 planning 证据流程而不写仓库文档，再跑 `planning_acceptance_suite.py --dry-run --json`
+1. `growware_policy_sync.py`
+2. `plugin_doctor.py`
+3. `plugin_smoke.py`
+4. `main_ops.py dashboard --json`
+5. `stable_acceptance.py --json`
+6. 如果要跑更宽的 release-facing 验证，再跑 `release_gate.py --json`
+7. 如果改了 planning，再跑 `planning_acceptance_suite.py --json`
+8. 如果只是想先演练 planning 证据流程而不写仓库文档，再跑 `planning_acceptance_suite.py --dry-run --json`
 
 示例：
 

@@ -6,92 +6,100 @@
 
 这份计划文档位于 roadmap 和 `.codex/plan.md` 之间。
 
-它用来回答三件事：
+它用来回答：
 
-- 最近一个项目级里程碑是怎样收口的
-- 它靠什么验证关闭
-- 什么时候才应该重新开新的项目级里程碑
+- 最近一个已完成里程碑到底收了什么
+- 为什么现在又重新打开了新的里程碑
+- 下一步进入真实激活之前，还必须满足什么条件
 
 ## 当前定位
 
-仓库现在已经完成：
+仓库已经完成：
 
 - Phase 0-6 最小闭环
 - 架构整改收口
 - 双语公开文档收敛
 - `Milestone 1：post-hardening 收口`
 
-当前没有新的项目级活跃里程碑。
+现在新的项目级里程碑已经正式激活：
 
-这份计划现在主要记录刚完成的 closeout 里程碑，以及下次重新开新里程碑的规则。
+- `Milestone 2：Growware Project 1 pilot foundation`
+
+之所以要打开这条里程碑，是因为仓库里已经存在真实的 Growware pilot 落地工作，包括文档、policy 编译层、preflight / deploy gate 以及宿主侧 audit bootstrap。既然实现已经开始，这条线就不应该继续停留在“未来候选”状态。
 
 ## 里程碑总览
 
 | 里程碑 | 状态 | 目标 | 验证 | 退出条件 |
 | --- | --- | --- | --- | --- |
-| Milestone 1：post-hardening 收口 | 已完成 | 收紧 compound / future-first 边界、补足 release-facing 证据深度，并把仓库带到干净的 post-hardening 状态 | `bash scripts/run_tests.sh`、`python3 scripts/runtime/release_gate.py --json`、planning / channel / main-ops acceptance helpers、文档一致性检查 | 边界文档、acceptance 深度与 operator/release-facing 收尾已经收敛，且没有重新打开架构债务 |
+| Milestone 1：post-hardening 收口 | 已完成 | 收掉剩余 compound / future-first 边界、补 release-facing evidence，并把仓库带到干净的 post-hardening 状态 | `bash scripts/run_tests.sh`、`python3 scripts/runtime/release_gate.py --json`、planning / channel / main-ops acceptance helpers、文档一致性检查 | 边界文档、acceptance 深度与 operator / release-facing 收尾已经收敛，且没有重新打开架构债务 |
+| Milestone 2：Growware Project 1 pilot foundation | 进行中 | 把 Growware `Project 1` 从候选变成仓库内可维护的正式基线，收敛项目本地 policy 真相、激活 gate 与 host-audit bootstrap | Growware policy sync / preflight / binding preview、定向 Growware tests、`bash scripts/run_tests.sh`、runtime mirror、doctor / smoke 与文档对齐 | 编译后的 `.policy` 成为唯一 live runtime input，激活安全边界文档化且全绿，host-audit 范围也有明确边界 |
 
-## 已完成的收口队列
+## Milestone 2：Growware Project 1 Pilot Foundation
 
-### 1. 边界收敛
-
-已交付：
-
-- compound follow-up 文档现在描述的是已发货 runtime 边界，而不是开放设计占位
-- output-channel separation 文档现在与当前 runtime contract 一致，不再把 `task_user_content` 写成现役长期协议
-- same-session routing 决策文档现在把 `collect-more` 说明为已发货的非普通任务路径
-- 用户可见状态与 runtime-owned 状态投影在活跃文档栈里已经统一
-
-结果：
-
-- 文档与 runtime 行为现在描述的是同一条边界
-- 主文档栈不再依赖模糊的“临时兼容”说法解释已交付行为
-
-### 2. 证据深度
+### 1. 项目本地真相与 Policy Layer
 
 已交付：
 
-- planning acceptance 现在显式证明：已排定的 follow-up 摘要仍留在控制面投影里，不会混进业务内容
-- channel acceptance 现在包含 `webchat` 的 bounded-focus 样本
-- main-ops acceptance 现在补上了 `followup-task-missing` 的运维恢复投影样本
+- `.growware/` 现在记录了 Growware `Project 1`、`feishu6-chat` 以及项目本地 contracts / ops surface
+- `docs/policy/*.md` 现在是人类 policy source，`.policy/` 现在是编译后的机器执行层
+- `growware_policy_sync.py` 现在负责把 policy 文档编译成 manifest / index / rule artifacts
+- `growware_project.py` 现在会把 policy manifest / index / rule 数据暴露到项目摘要里
+- `growware_feedback_classifier.py` 现在读取编译后的 policy rule，而不是继续依赖遗留 prose 或直接读取 `.growware/policies`
 
-结果：
+还需要收口：
 
-- 剩余高风险区域不再只靠 summary-only 文案支撑
+- 把 `.growware/policies/*.json` 严格收束成兼容层输入，或者彻底移出 live runtime 依赖
+- 保证 install、mirror、preflight 和 deploy 流程都收敛到同一套编译 policy 真相
 
-### 3. 运维与发布侧收口
+### 2. 验证与 Pilot 激活安全
 
 已交付：
 
-- operator 与 release-facing 文档现在指向同一套验证入口
-- roadmap、README、todo intake 和控制面文档现在指向同一个 post-closeout 状态
-- archive 与 promotion guidance 继续和 planning evidence workflow 保持一致
+- `growware_preflight.py` 现在会检查 `policy-sync`
+- `growware_local_deploy.py` 现在会先做 policy sync write + check，再做 runtime mirror 和 doctor
+- 安装与 usage 文档已经把 `growware_policy_sync.py` 和宿主侧 audit 命令补进入口
+- plugin tests 与 Python tests 已经同步到当前 Growware 文案和 policy 路径
 
-结果：
+还需要收口：
 
-- 运维人员可以从同一套命令集完成 recovery、triage 与 validation
-- 发布文档不再指向半完成或重复的指导
+- 用同一条干净基线跑通 `growware_policy_sync.py`、`growware_preflight.py`、`growware_openclaw_binding.py --json`、runtime mirror、doctor、smoke 与 session hygiene guidance
+- 明确第一次真实 `feishu6-chat` 激活之前，哪些证据是必须具备的
 
-### 4. 下次重新开题的规则
+### 3. 宿主侧 Audit Bootstrap
 
-只有满足下面三条时，才重新开一个新的项目级里程碑：
+已交付：
 
-1. 扩展工作从 `docs/todo.md` 升级成一个有名字的 roadmap candidate
-2. 这个候选已经有明确验证和退出条件
-3. 如果不显式命名，仓库就会重新开始积累泛化 follow-up debt
+- `openclaw_runtime_audit.py` 现在会从真实 `~/.openclaw` 数据里检查 recent tasks、stale running tasks、failed deliveries、cron events、config health 与用户可见摘要
+- `tests/test_openclaw_runtime_audit.py` 已经覆盖 stale-task、failed-delivery、cron-error 与用户可见噪声过滤行为
+- 当前 audit 边界明确是只读 bootstrap，不是静默修复工具
 
-在那之前，稳态入口应以 `roadmap.md`、`test-plan.md` 和 `.codex/status.md` 为准。
+还需要收口：
+
+- 明确只读 audit 是否足以算作 Milestone 2 的组成部分，还是应该把 repair planning 升成下一个命名里程碑
+- 在宿主侧 policy 没明确之前，不把 audit 和 release gate 混成一条线
+
+### 4. 下一步激活门槛
+
+只有下面四条同时成立，才应该从 foundation 进入真实 pilot activation：
+
+1. 编译后的 `.policy` 已经成为 runtime 依赖的唯一 live intake / deploy 真相
+2. `growware_policy_sync.py`、`growware_preflight.py`、`growware_openclaw_binding.py --json`、定向 Growware tests、runtime mirror、doctor 和 smoke 在同一条基线上全部通过
+3. 专用 `growware` 生产 session 的 hygiene 规则已经明确、可复现
+4. roadmap 已经明确写清：host-side audit 仍然只是 bootstrap evidence，还是会升级成下一条 milestone
 
 ## 验证栈
 
-关闭这条里程碑时使用的验证栈：
+当前里程碑应主要依赖下面这组验证：
 
 ```bash
+python3 scripts/runtime/growware_policy_sync.py --check --json
+python3 scripts/runtime/growware_preflight.py --json
+python3 scripts/runtime/growware_openclaw_binding.py --json
+python3 -m unittest tests.test_growware_feedback_classifier tests.test_growware_policy_sync tests.test_growware_preflight tests.test_growware_project tests.test_openclaw_runtime_audit
 bash scripts/run_tests.sh
-python3 scripts/runtime/release_gate.py --json
-python3 scripts/runtime/planning_acceptance_suite.py --json
-python3 scripts/runtime/channel_acceptance.py --json
-python3 scripts/runtime/main_ops_acceptance.py --json
+python3 scripts/runtime/runtime_mirror.py --write
+python3 scripts/runtime/plugin_doctor.py --json
+python3 scripts/runtime/plugin_smoke.py --json
 ```
 
-之后如果新的改动再次触及真实外发或 planning contract，仍应补真实或半真实 evidence capture。
+只有当当前改动本来就是要真正本地部署进 OpenClaw 时，才额外运行 `python3 scripts/runtime/growware_local_deploy.py --json`；阶段性 review 本身不默认触发真实本地部署。

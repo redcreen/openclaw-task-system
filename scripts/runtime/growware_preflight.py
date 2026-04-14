@@ -12,6 +12,7 @@ from growware_project import (
     required_growware_files,
     resolve_project_root,
 )
+from growware_policy_sync import validate_policy_catalog
 
 
 def _check(ok: bool, name: str, detail: str) -> dict[str, Any]:
@@ -63,11 +64,23 @@ def build_preflight_report(project_root: Path | None = None) -> dict[str, Any]:
         )
     )
 
+    policy_report = validate_policy_catalog(root)
+    checks.append(
+        _check(
+            bool(policy_report.get("ok")),
+            "policy-sync",
+            "compiled .policy is consistent with docs/policy"
+            if policy_report.get("ok")
+            else f"warnings={policy_report.get('warnings')} missing={policy_report.get('missing')} mismatches={policy_report.get('mismatches')}",
+        )
+    )
+
     ok = all(check["ok"] for check in checks)
     return {
         "ok": ok,
         "projectRoot": str(root),
         "checks": checks,
+        "policy": policy_report,
     }
 
 

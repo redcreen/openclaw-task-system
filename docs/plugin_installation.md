@@ -69,6 +69,7 @@ When local install is blocked, the current recommended approach is:
 ## Pre-Install Checks
 
 ```bash
+python3 scripts/runtime/growware_policy_sync.py --check --json
 python3 scripts/runtime/runtime_mirror.py --check
 python3 scripts/runtime/plugin_doctor.py
 python3 scripts/runtime/plugin_smoke.py
@@ -104,13 +105,14 @@ The most common runtime config sources are:
 
 Recommended order:
 
-1. `plugin_doctor.py`
-2. `plugin_smoke.py`
-3. `main_ops.py dashboard --json`
-4. `stable_acceptance.py --json`
-5. `release_gate.py --json` for broader release-facing verification
-6. `planning_acceptance_suite.py --json` when planning behavior changed
-7. `planning_acceptance_suite.py --dry-run --json` when you want to rehearse the planning evidence flow without writing repo docs
+1. `growware_policy_sync.py`
+2. `plugin_doctor.py`
+3. `plugin_smoke.py`
+4. `main_ops.py dashboard --json`
+5. `stable_acceptance.py --json`
+6. `release_gate.py --json` for broader release-facing verification
+7. `planning_acceptance_suite.py --json` when planning behavior changed
+8. `planning_acceptance_suite.py --dry-run --json` when you want to rehearse the planning evidence flow without writing repo docs
 
 Example:
 

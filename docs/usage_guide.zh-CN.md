@@ -44,7 +44,16 @@ python3 scripts/runtime/main_ops.py dashboard --only-issues
 python3 scripts/runtime/main_ops.py triage
 python3 scripts/runtime/main_ops.py triage --compact
 python3 scripts/runtime/main_ops.py triage --json
+python3 scripts/runtime/openclaw_runtime_audit.py
+python3 scripts/runtime/openclaw_runtime_audit.py --json
+python3 scripts/runtime/openclaw_runtime_audit.py --lookback-hours 48 --recent-limit 20
 ```
+
+当你需要基于 `~/.openclaw` 里的真实运行数据做宿主侧体检，而不是看仓库内 testcase 时，用 `openclaw_runtime_audit.py`。它会同时给出：
+
+- 运维视角：最近 task runs、失败投递、cron 错误、配置健康
+- 用户视角：最近用户请求与终态回复摘要
+- 可执行的修复建议：卡死 running task、失败投递残留、cron 投递异常
 
 ### 队列与 Lane
 

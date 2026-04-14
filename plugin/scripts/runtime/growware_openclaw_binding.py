@@ -50,7 +50,6 @@ def build_growware_agent(project_root: Path, daemon: dict[str, Any]) -> dict[str
         "id": str(daemon.get("agentId") or "growware"),
         "name": "growware",
         "workspace": str(workspace.resolve()),
-        "repoRoot": str(project_root.resolve()),
         "agentDir": str(agent_dir.resolve()) if str(agent_dir) else str((Path.home() / ".openclaw" / "agents" / "growware" / "agent").resolve()),
     }
 

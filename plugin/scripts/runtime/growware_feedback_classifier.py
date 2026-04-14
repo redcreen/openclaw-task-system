@@ -12,6 +12,7 @@ from growware_project import load_feedback_intake_policy
 EXECUTION_SOURCE_DAEMON = "daemon-owned"
 CLASSIFICATION_STEERING = "steering"
 CLASSIFICATION_QUEUEING = "queueing"
+POLICY_RULE_ID = "growware.feedback-intake.same-session.v1"
 
 
 def _normalize_text(value: Any) -> str:
@@ -49,6 +50,7 @@ def classify(payload: dict[str, Any], *, project_root: Path | None = None) -> di
             "reason_code": "growware-feedback-wording-refinement",
             "reason_text": "The latest feedback is phrased like a refinement of the current result, so runtime should keep it on the active Growware task.",
             "execution_source": str(policy.get("defaultExecutionSource") or EXECUTION_SOURCE_DAEMON),
+            "policy_rule_id": POLICY_RULE_ID,
         }
 
     if _contains_any(new_message, queueing_signals):
@@ -59,6 +61,7 @@ def classify(payload: dict[str, Any], *, project_root: Path | None = None) -> di
             "reason_code": "growware-feedback-independent-request",
             "reason_text": "The latest feedback introduces a separate goal, so runtime should queue it as a new Growware task.",
             "execution_source": str(policy.get("defaultExecutionSource") or EXECUTION_SOURCE_DAEMON),
+            "policy_rule_id": POLICY_RULE_ID,
         }
 
     if _contains_any(new_message, bug_signals) and active_task_summary:
@@ -69,6 +72,7 @@ def classify(payload: dict[str, Any], *, project_root: Path | None = None) -> di
             "reason_code": "growware-feedback-bug-followup",
             "reason_text": "The latest feedback reports a problem against the current active result, so runtime should treat it as a same-task correction.",
             "execution_source": str(policy.get("defaultExecutionSource") or EXECUTION_SOURCE_DAEMON),
+            "policy_rule_id": POLICY_RULE_ID,
         }
 
     if _contains_any(new_message, idea_signals) and not active_task_summary:
@@ -79,6 +83,7 @@ def classify(payload: dict[str, Any], *, project_root: Path | None = None) -> di
             "reason_code": "growware-feedback-new-idea",
             "reason_text": "The feedback reads like a new idea without an active task anchor, so runtime should keep it as a new task.",
             "execution_source": str(policy.get("defaultExecutionSource") or EXECUTION_SOURCE_DAEMON),
+            "policy_rule_id": POLICY_RULE_ID,
         }
 
     if active_task_summary and any(token in new_message for token in ("这个", "它", "这条", "刚才", "上一个", "这次", "that", "this")):
@@ -89,6 +94,7 @@ def classify(payload: dict[str, Any], *, project_root: Path | None = None) -> di
             "reason_code": "growware-feedback-pronoun-followup",
             "reason_text": "The feedback points back to the active result with anaphora, so runtime should keep it on the current task.",
             "execution_source": str(policy.get("defaultExecutionSource") or EXECUTION_SOURCE_DAEMON),
+            "policy_rule_id": POLICY_RULE_ID,
         }
 
     return {
@@ -98,6 +104,7 @@ def classify(payload: dict[str, Any], *, project_root: Path | None = None) -> di
         "reason_code": "growware-feedback-default-new-task",
         "reason_text": "No stronger same-task refinement signal matched, so runtime keeps this as a separate Growware task.",
         "execution_source": str(policy.get("defaultExecutionSource") or EXECUTION_SOURCE_DAEMON),
+        "policy_rule_id": POLICY_RULE_ID,
         "context_excerpt": context_text[:160] or None,
     }
 

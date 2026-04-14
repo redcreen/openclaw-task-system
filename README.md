@@ -108,6 +108,7 @@ Read in this order:
 
 Useful secondary docs:
 
+- [`docs/policy/README.md`](./docs/policy/README.md): human policy source and compiled `.policy/` machine layer
 - [`docs/plugin_installation.md`](./docs/plugin_installation.md): install paths, config, and install drift notes
 - [`docs/usage_guide.md`](./docs/usage_guide.md): daily operations and runtime commands
 - [`docs/testsuite.md`](./docs/testsuite.md): detailed automation and acceptance inventory

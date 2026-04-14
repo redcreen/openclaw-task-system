@@ -1,0 +1,19 @@
+{
+  "schema": "growware.policy.provenance.v1",
+  "contract_version": 1,
+  "source_docs": [
+    {
+      "source": "docs/policy/interaction-contracts.md",
+      "translation": "docs/policy/interaction-contracts.zh-CN.md",
+      "rule_id": "growware.feedback-intake.same-session.v1",
+      "kind": "interaction-contract"
+    },
+    {
+      "source": "docs/policy/verification-rules.md",
+      "translation": "docs/policy/verification-rules.zh-CN.md",
+      "rule_id": "growware.project.local-deploy.v1",
+      "kind": "verification-rule"
+    }
+  ],
+  "warnings": []
+}

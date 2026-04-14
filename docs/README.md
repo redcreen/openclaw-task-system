@@ -23,6 +23,7 @@ Start with these documents:
 | Understand runtime layers and contracts | [architecture.md](architecture.md) |
 | See what is complete vs extension work | [roadmap.md](roadmap.md) |
 | Understand how release confidence is established | [test-plan.md](test-plan.md) |
+| Find project-local policy source and compiled machine layer | [policy/README.md](policy/README.md) |
 | Find detailed runtime and operator commands | [usage_guide.md](usage_guide.md) |
 | Find install details and install drift notes | [plugin_installation.md](plugin_installation.md) |
 | Find durable design references | [reference/README.md](reference/README.md) |
@@ -30,6 +31,7 @@ Start with these documents:
 ## Feature Index
 
 - same-session routing: [reference/session_message_routing/README.md](reference/session_message_routing/README.md)
+- project-local policy source: [policy/README.md](policy/README.md)
 - planning and future-first boundary: [llm_tool_task_planning.md](llm_tool_task_planning.md)
 - compound delayed boundary: [compound_followup_boundary.md](compound_followup_boundary.md)
 - channel and continuation lane decisions: [continuation_lane_decision_log.md](continuation_lane_decision_log.md), [output_channel_separation_decision_log.md](output_channel_separation_decision_log.md)

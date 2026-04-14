@@ -108,6 +108,7 @@ openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.gi
 
 补充资料：
 
+- [`docs/policy/README.zh-CN.md`](./docs/policy/README.zh-CN.md)：人类 policy source 与编译后的 `.policy/` 机器层
 - [`docs/plugin_installation.zh-CN.md`](./docs/plugin_installation.zh-CN.md)：安装路径、配置与 install drift 说明
 - [`docs/usage_guide.zh-CN.md`](./docs/usage_guide.zh-CN.md)：日常运维与命令入口
 - [`docs/testsuite.zh-CN.md`](./docs/testsuite.zh-CN.md)：详细自动化与验收清单

@@ -44,7 +44,16 @@ python3 scripts/runtime/main_ops.py dashboard --only-issues
 python3 scripts/runtime/main_ops.py triage
 python3 scripts/runtime/main_ops.py triage --compact
 python3 scripts/runtime/main_ops.py triage --json
+python3 scripts/runtime/openclaw_runtime_audit.py
+python3 scripts/runtime/openclaw_runtime_audit.py --json
+python3 scripts/runtime/openclaw_runtime_audit.py --lookback-hours 48 --recent-limit 20
 ```
+
+Use `openclaw_runtime_audit.py` when you need a host-side reality check from real OpenClaw data under `~/.openclaw` instead of repo-local tests. It summarizes:
+
+- operator health from recent task runs, failed deliveries, cron errors, and config health
+- user-visible history from recent requests and terminal summaries
+- explicit remediation suggestions for stale running tasks and delivery residue
 
 ### Queues and Lanes
 

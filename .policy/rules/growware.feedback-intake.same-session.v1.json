@@ -1,0 +1,103 @@
+{
+  "schema": "growware.policy.rule.v1",
+  "id": "growware.feedback-intake.same-session.v1",
+  "title": "Growware Feedback Intake Policy",
+  "kind": "interaction-contract",
+  "status": "active",
+  "effect": "deny-without-approval",
+  "owners": [
+    "project-owner",
+    "growware"
+  ],
+  "applies_to": [
+    "scripts/runtime/growware_feedback_classifier.py",
+    "plugin/scripts/runtime/growware_feedback_classifier.py",
+    "scripts/runtime/growware_project.py",
+    "scripts/runtime/growware_preflight.py",
+    "docs/reference/openclaw-task-system/growware-pilot.md"
+  ],
+  "allowed": [
+    "继续把同一条反馈当成当前 task 的修辞修正或 bug follow-up",
+    "把明显独立的新目标排成新的 Growware task",
+    "从文档重新编译 `.policy/` 并刷新运行时输入",
+    "用项目本地规则继续保持 `feishu6-chat` 的 intake 与 approval 语义"
+  ],
+  "forbidden": [
+    "直接跳过 `.policy/`，只靠聊天上下文决定 intake",
+    "把 daemon-owned 以外的执行来源伪装成默认源",
+    "未经批准就更改 classifier signals、默认执行来源或 channel 角色",
+    "把旧的 `.growware/policies` 当作运行时最终真相源"
+  ],
+  "approval_required": [
+    "更改 `sameSessionClassifier` 的 signal 列表",
+    "更改 `defaultExecutionSource`",
+    "更改 `feedbackChannel` 的角色或 provider/accountId",
+    "取消或放宽 same-session routing 的项目本地默认收敛"
+  ],
+  "required_checks": [
+    "python3 scripts/runtime/growware_policy_sync.py --check --json",
+    "python3 scripts/runtime/growware_preflight.py --json",
+    "python3 -m unittest tests.test_growware_feedback_classifier tests.test_growware_preflight"
+  ],
+  "source_docs": [
+    "docs/policy/interaction-contracts.md",
+    "docs/policy/interaction-contracts.zh-CN.md"
+  ],
+  "defaultExecutionSource": "daemon-owned",
+  "sameSessionClassifier": {
+    "enabled": true,
+    "minConfidence": 0.78,
+    "steeringSignals": [
+      "这个不是很自然语言",
+      "正常人说话",
+      "改自然一点",
+      "改一下",
+      "改成",
+      "不要了",
+      "不对",
+      "太机械",
+      "换个说法",
+      "再顺一点",
+      "更自然",
+      "this is not natural",
+      "make it sound natural",
+      "rewrite this reply",
+      "change the wording",
+      "remove this wording"
+    ],
+    "queueingSignals": [
+      "另外",
+      "再做一个",
+      "顺便",
+      "新增",
+      "新需求",
+      "also",
+      "another task",
+      "new task",
+      "separately"
+    ],
+    "bugSignals": [
+      "有问题",
+      "报错",
+      "失败",
+      "不工作",
+      "不生效",
+      "bug",
+      "broken",
+      "error"
+    ],
+    "ideaSignals": [
+      "我想",
+      "希望",
+      "想法",
+      "建议",
+      "idea",
+      "proposal"
+    ]
+  },
+  "completionNotification": {
+    "alwaysNotify": true,
+    "includeExecutionSource": true,
+    "channelRef": "feedbackChannel"
+  }
+}

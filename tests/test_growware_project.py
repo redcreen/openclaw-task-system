@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from tests.runtime_loader import load_runtime_module
+from tests.growware_policy_fixtures import sync_policy
 
 
 growware_project = load_runtime_module("growware_project")
@@ -15,6 +16,7 @@ class GrowwareProjectTests(unittest.TestCase):
     def test_build_summary_reads_project_and_channel_definitions(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
+            sync_policy(root)
             growware_dir = root / ".growware"
             (growware_dir / "contracts").mkdir(parents=True)
             (growware_dir / "policies").mkdir(parents=True)
@@ -48,6 +50,7 @@ class GrowwareProjectTests(unittest.TestCase):
         self.assertEqual(summary["feedbackChannel"]["accountId"], "feishu6-chat")
         self.assertEqual(summary["runtimeSurface"]["pluginId"], "openclaw-task-system")
         self.assertEqual(summary["feedbackIntake"]["defaultExecutionSource"], "daemon-owned")
+        self.assertEqual(summary["policyManifest"]["schema"], "growware.policy.manifest.v1")
 
 
 if __name__ == "__main__":

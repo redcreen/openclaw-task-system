@@ -4,9 +4,13 @@
 
 ## Status
 
-The mainline roadmap is complete through Phase 6 minimum closure, and the first post-hardening closeout milestone is also complete.
+The mainline roadmap is complete through Phase 6 minimum closure and `Milestone 1: post-hardening closeout`.
 
-Completed:
+A new named milestone is now active:
+
+- `Milestone 2: Growware Project 1 pilot foundation`
+
+Completed mainline milestones:
 
 - Phase 0: project definition and boundaries
 - Phase 1: protocol and truth-source alignment
@@ -31,13 +35,28 @@ The mainline shipped these outcomes:
 - continuity, watchdog, and recovery visibility
 - install drift visibility in doctor, ops, and stable acceptance
 
+## Growware Pilot Snapshot
+
+Delivered so far:
+
+- `.growware/` is now the durable project-local control surface for Growware `Project 1`, with `feishu6-chat` as the primary feedback / approval / notification ingress
+- `docs/policy/*.md` is now the human policy source and `.policy/` is the compiled machine layer for Growware runtime decisions
+- `growware_feedback_classifier.py`, `growware_project.py`, `growware_preflight.py`, and `growware_local_deploy.py` now consume or enforce the compiled policy layer
+- `openclaw_runtime_audit.py` now provides a read-only host-side audit bootstrap for real `~/.openclaw` data
+
+Open edges before activation:
+
+- close the remaining source-of-truth gap between compiled `.policy/` and legacy `.growware/policies/*.json`
+- prove one clean activation baseline across policy sync, preflight, binding preview, runtime mirror, doctor / smoke, and session hygiene
+- decide whether the read-only host audit is sufficient for Milestone 2 or whether repair planning should become the next named milestone
+
 ## Current / Next / Later
 
 | Horizon | Focus | Exit Signal |
 | --- | --- | --- |
-| Current | keep Phase 0-6 and the post-hardening closeout stable | the testsuite, release gate, and dated evidence workflow stay green |
-| Next | evaluate stronger planning or steering capability only through a new explicit roadmap candidate | new capability still preserves `[wd]` independence, runtime truth, and supervisor-first boundaries |
-| Later | refresh higher-fidelity evidence or deeper operator ergonomics only when they become named candidates | extension work does not drift back into generic closeout debt |
+| Current | close `Milestone 2: Growware Project 1 pilot foundation` by converging policy truth, pilot activation safety, and host-side audit positioning | compiled `.policy` is the only live intake / deploy truth, activation checks stay green, and operators have one documented baseline command set |
+| Next | activate the local feedback -> code -> verify -> deploy pilot on `feishu6-chat` only after the foundation gate is clean | binding preview, session hygiene, and local deploy can be rehearsed without unresolved drift or host-side blockers |
+| Later | consider conservative self-heal and broader planning / steering only after the pilot baseline is stable | new work does not reopen hidden ownership drift or bypass runtime truth |
 
 ## Milestones
 
@@ -47,22 +66,22 @@ The mainline shipped these outcomes:
 | Phase 3-4 | complete | add delayed reply, watchdog, continuity, and host delivery | continuity and scheduler evidence chain | restart and recovery flows are explainable |
 | Phase 5 | complete | strengthen dashboard, queues, lanes, triage, and operator projections | main ops toolchain | user and operator views project the same truth |
 | Phase 6 minimum closure | complete | lock planning acceptance, future-first output, and same-session routing into a minimum shipped closure | planning acceptance toolchain | automation and semi-real acceptance stay green |
-| Milestone 1: post-hardening closeout | complete | close the remaining compound/future-first boundary work, deepen release-facing evidence, and finish operator-facing closeout | current mainline stability and release-facing validation entrypoints | boundary docs, acceptance depth, and operator/release-facing closeout are converged without reopening architecture debt |
+| Milestone 1: post-hardening closeout | complete | close the remaining compound / future-first boundary work, deepen release-facing evidence, and finish operator-facing closeout | current mainline stability and release-facing validation entrypoints | boundary docs, acceptance depth, and operator / release-facing closeout are converged without reopening architecture debt |
+| Milestone 2: Growware Project 1 pilot foundation | active | turn Growware `Project 1` from a future candidate into a durable repo-owned baseline by shipping project-local policy truth, activation gates, and host-audit bootstrap | `.growware/`, `docs/policy/`, `.policy/`, Growware runtime scripts, binding preview, session hygiene, and validation entrypoints | project-local policy is the only live runtime input, activation safety is documented and green, and the host-audit bootstrap has a clear milestone boundary |
 
 ## Future Candidate Areas
 
-No active post-hardening closeout debt remains.
+`Milestone 2` is active now. Do not treat Growware pilot foundation as ambient follow-up.
 
-If extension work resumes, name it explicitly instead of treating it as ambient follow-up.
+Potential later candidates after Milestone 2:
 
-Potential future candidates:
-
-- Growware `Project 1` pilot: connect `feishu6-chat`, project-local `.growware/`, the local deploy gate, and a dedicated `growware` agent to validate a local feedback -> code -> verify -> deploy loop
+- live Growware pilot activation and real end-to-end evidence capture across `feishu6-chat`
+- conservative host-side repair planning / self-heal on top of `openclaw_runtime_audit.py`
 - stronger structured planning or tool decomposition for broader compound requests
 - richer real-channel evidence refreshes when delivery or planning contracts change
 - deeper steering or operator ergonomics that still preserve runtime truth and supervisor-first boundaries
 
-The architecture hardening line is now closed with two explicit decisions:
+The architecture hardening line remains closed with two explicit decisions:
 
 - `lifecycle_coordinator.py` owns runtime lifecycle projection
 - `scripts/runtime/` is canonical and `plugin/scripts/runtime/` is a strict synchronized mirror
@@ -70,9 +89,9 @@ The architecture hardening line is now closed with two explicit decisions:
 Reference:
 
 - [workstreams/architecture-hardening/README.md](workstreams/architecture-hardening/README.md)
-- [reference/openclaw-task-system/development-plan.md](reference/openclaw-task-system/development-plan.md)
+- [reference/openclaw-task-system/development-plan.md](reference/openclaw-task-system/development-plan.md#milestone-2-growware-project-1-pilot-foundation)
 - [reference/openclaw-task-system/growware-pilot.md](reference/openclaw-task-system/growware-pilot.md)
-- future roadmap candidates under workstreams and todo tracking
+- [reference/openclaw-task-system/runtime-audit-self-heal-proposal.md](reference/openclaw-task-system/runtime-audit-self-heal-proposal.md)
 
 ## Delivered Subproject: Same-Session Message Routing
 

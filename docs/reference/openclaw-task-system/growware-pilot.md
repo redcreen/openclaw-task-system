@@ -38,10 +38,29 @@ task-system runtime
 - [`.growware/channels.json`](../../../.growware/channels.json)
 - [`.growware/contracts/feedback-event.v1.json`](../../../.growware/contracts/feedback-event.v1.json)
 - [`.growware/contracts/incident-record.v1.json`](../../../.growware/contracts/incident-record.v1.json)
+- [`.growware/ops/daemon-interface.v1.json`](../../../.growware/ops/daemon-interface.v1.json)
 - [`.growware/policies/feedback-intake.v1.json`](../../../.growware/policies/feedback-intake.v1.json)
 - [`.growware/policies/judge.v1.json`](../../../.growware/policies/judge.v1.json)
 - [`.growware/policies/deploy-gate.v1.json`](../../../.growware/policies/deploy-gate.v1.json)
-- [`.growware/ops/daemon-interface.v1.json`](../../../.growware/ops/daemon-interface.v1.json)
+- [`docs/policy/README.md`](../../../docs/policy/README.md)
+- [`.policy/manifest.json`](../../../.policy/manifest.json)
+- [`.policy/index.json`](../../../.policy/index.json)
+- [`.policy/rules/growware.feedback-intake.same-session.v1.json`](../../../.policy/rules/growware.feedback-intake.same-session.v1.json)
+- [`.policy/rules/growware.project.local-deploy.v1.json`](../../../.policy/rules/growware.project.local-deploy.v1.json)
+
+The current contract is layered like this:
+
+- `docs/policy/*.md`: human-reviewed policy source
+- `.policy/`: compiled machine execution layer that Growware runtime should consume
+- `.growware/contracts/` and `.growware/ops/`: project-local control surface and executable wiring
+- `.growware/policies/*.json`: compatibility inputs retained while the repo finishes migrating away from legacy policy JSON
+
+## Current Baseline
+
+- `growware` agent's same-session classifier is driven by the compiled `.policy/rules/growware.feedback-intake.same-session.v1.json`
+- natural-language feedback on `feishu6-chat` first enters daemon-owned intake, then gets routed into the current task or a new task
+- Growware close-out now requires an explicit execution source: `daemon-owned` or `terminal-takeover`
+- for the `growware` agent, completion also flows back through the control-plane lane to `feishu6` instead of relying only on body text
 
 ## Session Hygiene
 
@@ -101,3 +120,4 @@ python3 scripts/runtime/growware_local_deploy.py --json
 - `Telegram` remains a fallback candidate, not the primary ingress
 - The deploy gate still defaults to explicit human approval
 - Code changes and plugin deployment are automated only within the local OpenClaw environment
+- Runtime intake and deploy verification should read compiled `.policy/` rather than prose docs or legacy policy JSON

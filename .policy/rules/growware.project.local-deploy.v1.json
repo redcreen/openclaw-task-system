@@ -1,0 +1,47 @@
+{
+  "schema": "growware.policy.rule.v1",
+  "id": "growware.project.local-deploy.v1",
+  "title": "Growware Verification Rule",
+  "kind": "verification-rule",
+  "status": "active",
+  "effect": "deny-without-approval",
+  "owners": [
+    "project-owner",
+    "growware"
+  ],
+  "applies_to": [
+    "scripts/runtime/growware_policy_sync.py",
+    "scripts/runtime/growware_preflight.py",
+    "scripts/runtime/growware_openclaw_binding.py",
+    "scripts/runtime/growware_local_deploy.py",
+    "scripts/runtime/plugin_smoke.py"
+  ],
+  "allowed": [
+    "预览 OpenClaw 绑定",
+    "编译或校验 `.policy/`",
+    "先跑 preflight 和 plugin smoke，再考虑本地 deploy",
+    "在人类批准后执行需要 `--write` 或 `--restart` 的本地动作"
+  ],
+  "forbidden": [
+    "在 policy 过期时把本地 deploy 当成可直接执行",
+    "直接跳过 `.policy/` 或 preflight 就修改 OpenClaw 绑定",
+    "把验证失败当成已经通过",
+    "把自动化当成可以绕过人工审批的理由"
+  ],
+  "approval_required": [
+    "growware_openclaw_binding.py --write --restart",
+    "`growware_local_deploy.py` 的任何真实写入步骤",
+    "对 deploy gate、plugin install flow 或审批边界的改动"
+  ],
+  "required_checks": [
+    "python3 scripts/runtime/growware_policy_sync.py --check --json",
+    "python3 scripts/runtime/growware_preflight.py --json",
+    "python3 scripts/runtime/growware_openclaw_binding.py --json",
+    "python3 scripts/runtime/plugin_smoke.py --json"
+  ],
+  "source_docs": [
+    "docs/policy/verification-rules.md",
+    "docs/policy/verification-rules.zh-CN.md"
+  ],
+  "requiresApproval": true
+}
