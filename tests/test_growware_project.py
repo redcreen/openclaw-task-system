@@ -19,7 +19,6 @@ class GrowwareProjectTests(unittest.TestCase):
             sync_policy(root)
             growware_dir = root / ".growware"
             (growware_dir / "contracts").mkdir(parents=True)
-            (growware_dir / "policies").mkdir(parents=True)
             (growware_dir / "ops").mkdir(parents=True)
             (growware_dir / "project.json").write_text(
                 json.dumps(
@@ -37,10 +36,6 @@ class GrowwareProjectTests(unittest.TestCase):
                         "runtimeSurface": {"pluginId": "openclaw-task-system"},
                     }
                 ),
-                encoding="utf-8",
-            )
-            (growware_dir / "policies" / "feedback-intake.v1.json").write_text(
-                json.dumps({"defaultExecutionSource": "daemon-owned"}),
                 encoding="utf-8",
             )
 

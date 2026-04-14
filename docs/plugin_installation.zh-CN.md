@@ -29,7 +29,7 @@
 稳定版远程安装：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.1.0/scripts/install_remote.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.2.0/scripts/install_remote.sh)
 ```
 
 主干最新版安装：
@@ -41,7 +41,7 @@ OPENCLAW_TASK_SYSTEM_REF=main bash <(curl -fsSL https://raw.githubusercontent.co
 纯 OpenClaw 安装：
 
 ```bash
-openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.git#v0.1.0
+openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.git#v0.2.0
 ```
 
 本地源码安装：

@@ -1,9 +1,9 @@
 # Strategy
 
 ## Current Strategic Direction
-- Direction: `Milestone 2: Growware Project 1 pilot foundation`
+- Direction: `Milestone 3: system performance testing and optimization`
 - Status: `active`
-- Why Now: current repo state already includes Growware policy, deploy, and host-audit foundation work that must be closed as an explicit milestone before live rollout
+- Why Now: Growware foundation is closed, so the highest-value next line is reproducible performance measurement before live activation or broader expansion
 
 ## Strategy Evidence Contract
 
@@ -27,9 +27,9 @@
 
 | Topic | Current Position | Why It Is Not Mainline |
 | --- | --- | --- |
-| future governance / architecture side-track | supporting backlog | 只有 durable 证据证明 Growware foundation 无法继续时，才回拉主线 |
-| maintainer-facing polish | supporting backlog | 只有它能明显降低接手成本时，才升级优先级 |
-| post-foundation activation and self-heal | supporting backlog | 只有当前 foundation gate 收干净后，才允许升级成下一条正式主线 |
+| live pilot activation | supporting backlog | 只有性能基线稳定后，才适合恢复 activation rehearsal |
+| host-side self-heal / repair planning | supporting backlog | 只有 audit bootstrap 的边界需要被业务正式提升时，才升级优先级 |
+| maintainer-facing polish | supporting backlog | 只有它能明显降低接手成本或测量摩擦时，才回拉主线 |
 
 ## Human Review Boundary
 
@@ -51,6 +51,6 @@
 - 不要让战略层静默膨胀成全能调度器；编排仍应保留在 program-board。
 
 ## Next Strategic Checks
-1. 确认 roadmap、development plan、当前切片和 Next 3 都已经切到同一条 Growware milestone。
-2. 判断 `.policy/` 与 `.growware/policies` 的真相源裂缝是否需要单独提升成专项切片。
-3. 如果 live pilot activation、approval 边界或 host-side self-heal 需要改变人类审批边界，整理成待人类裁决的建议。
+1. 确认 benchmark surface、fixtures 和预算足够代表真实用户与 operator 代价，而不是只覆盖方便测的路径。
+2. 判断性能阶段是否需要单独的基线脚本 / 产物目录，而不是继续把性能证据散落在临时命令输出里。
+3. 如果 activation rehearsal、self-heal 或更强 planning 试图提前插队，先检查它们是否会破坏“先测量、后扩线”的当前顺序。

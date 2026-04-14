@@ -2,76 +2,83 @@
 
 ## Current Phase
 
-`Milestone 2: Growware Project 1 pilot foundation` is active.
+`Milestone 3: system performance testing and optimization` is active.
 
-The repo is no longer in watch-mode maintenance because Growware policy, deploy, and host-audit work has already landed in code and docs.
+Milestone 2 is closed: compiled `.policy/` is now the only live Growware policy truth, the reviewed activation baseline is green, and host-side audit is explicitly frozen as bootstrap-only evidence.
 
 ## Current Execution Line
 
-- Objective: turn the current Growware foundation into a validated pilot baseline without regressing the shipped mainline
-- Plan Link: `docs/reference/openclaw-task-system/development-plan.md#milestone-2-growware-project-1-pilot-foundation`
-- Runway: the foundation is partially shipped; next close policy truth, activation safety, and audit positioning before any live rollout
-- Progress: `1/4`
-- Stop Conditions: policy truth remains split across layers, activation baseline stays ambiguous, host audit shows unresolved operator or user-visible issues, or release-facing validation fails
-- Validation: `python3 scripts/runtime/growware_policy_sync.py --check --json`, `python3 scripts/runtime/growware_preflight.py --json`, `python3 scripts/runtime/growware_openclaw_binding.py --json`, `python3 -m unittest tests.test_growware_feedback_classifier tests.test_growware_policy_sync tests.test_growware_preflight tests.test_growware_project tests.test_openclaw_runtime_audit`, `bash scripts/run_tests.sh`, `python3 scripts/runtime/runtime_mirror.py --write`, `python3 scripts/runtime/plugin_doctor.py --json`, and `python3 scripts/runtime/plugin_smoke.py --json`
+- Objective: establish a reproducible performance baseline for the shipped runtime and Growware operator surface without regressing the closed foundation milestone
+- Plan Link: `docs/reference/openclaw-task-system/development-plan.md#milestone-3-system-performance-testing-and-optimization`
+- Runway: define benchmark surfaces and budgets first, then add reproducible measurement entrypoints, capture the first baseline, and only then optimize the measured hotspots
+- Progress: `0/4`
+- Stop Conditions: measurement entrypoints are not reproducible, optimization starts before baseline capture, benchmark evidence depends on unstable host state, or runtime-safety validation regresses
+- Validation: `python3 scripts/runtime/growware_policy_sync.py --write --json`, `python3 scripts/runtime/growware_preflight.py --json`, `python3 scripts/runtime/growware_openclaw_binding.py --json`, `python3 -m unittest tests.test_growware_feedback_classifier tests.test_growware_policy_sync tests.test_growware_preflight tests.test_growware_project tests.test_openclaw_runtime_audit -v`, `bash scripts/run_tests.sh`, `python3 scripts/runtime/runtime_mirror.py --write`, `python3 scripts/runtime/plugin_doctor.py --json`, and `python3 scripts/runtime/plugin_smoke.py --json`
 
 ## Execution Tasks
 
-- [x] EL-1 review the current Growware pilot diff and open an explicit milestone in roadmap / development-plan / control-surface docs
-- [ ] EL-2 converge policy ownership so `docs/policy/*.md -> .policy/` is the only live runtime input and `.growware/policies/*.json` is bounded as compatibility-only
-- [ ] EL-3 prove a clean pilot activation baseline across policy sync, preflight, binding preview, runtime mirror, doctor / smoke, and session hygiene
-- [ ] EL-4 decide whether `openclaw_runtime_audit.py` stays Milestone 2 bootstrap evidence or becomes the lead slice of the next milestone
+- [ ] PL-1 define the first benchmark surface, sample fixtures, and performance budgets for runtime, control-plane, and operator entrypoints
+- [ ] PL-2 add or standardize reproducible measurement entrypoints so the same commands produce comparable baseline output
+- [ ] PL-3 capture the initial benchmark / profile baseline and attribute the top hotspots before changing behavior
+- [ ] PL-4 land the first evidence-backed optimization and wire the improved path into a regression gate
 
 ## Architecture Supervision
 
 - Signal: `yellow`
-- Signal Basis: source-of-truth drift is still visible between compiled policy, compatibility JSON, and activation docs
-- Problem Class: milestone opening / boundary convergence
-- Root Cause Hypothesis: Growware pilot implementation landed before roadmap and control surfaces formally named the new milestone, so compatibility layers and activation gates stayed implicit
-- Correct Layer: milestone-level boundary convergence across roadmap, policy source-of-truth, and operator activation gates
-- Rejected Shortcut: continue treating Growware work as a future candidate while runtime and deploy scripts already depend on it
-- Automatic Review Trigger: any change to `.policy/`, `.growware/`, binding flow, session hygiene, or host-audit evidence
+- Signal Basis: the repo has real performance-sensitive paths, but there is still no durable benchmark surface, baseline sample set, or agreed budget to anchor optimization work
+- Problem Class: measurement-gap closure before optimization
+- Root Cause Hypothesis: earlier milestones focused on correctness, control-surface convergence, and pilot-safety boundaries, so performance evidence never became a first-class artifact
+- Correct Layer: milestone-level performance measurement and regression discipline across runtime, control-plane, and operator entrypoints
+- Rejected Shortcut: tuning whichever path feels slow first without fixed samples, command entrypoints, or before / after evidence
+- Automatic Review Trigger: any change to runtime hot paths, control-plane projections, SQLite / file-scan access, benchmark helpers, or operator entrypoints under measurement
 - Escalation Gate: raise but continue
 
 ## Escalation Model
 
-- Continue Automatically: doc / code convergence that preserves the same Growware pilot direction and approval boundary
-- Raise But Continue: policy, deploy, or binding refinements that keep live-write approval intact but change activation evidence or operator steps
-- Require User Decision: any live rollout decision, approval-boundary relaxation, change of the primary feedback channel, or host-side self-heal that mutates user-visible history
+- Continue Automatically: benchmark-surface definition, measurement helpers, fixture prep, and evidence-backed optimization that preserve current product direction
+- Raise But Continue: changes that alter operator workflows, benchmark budgets, or validation cost while staying inside the approved performance milestone
+- Require User Decision: any live-rollout decision, approval-boundary relaxation, compatibility promise change, or performance tradeoff that meaningfully changes scope / cost / latency guarantees for users
 
 ## Slices
 
-- Slice: policy source-of-truth convergence
-  - Objective: make `docs/policy/*.md -> .policy/` the only live policy path the runtime depends on
-  - Dependencies: `scripts/runtime/growware_policy_sync.py`, `scripts/runtime/growware_project.py`, `scripts/runtime/growware_feedback_classifier.py`, `scripts/runtime/growware_preflight.py`, `scripts/runtime/growware_local_deploy.py`, `.growware/policies/*.json`, and policy docs
-  - Risks: policy drift survives because compatibility JSON still looks authoritative, or one runtime path bypasses `.policy/`
-  - Validation: policy sync, preflight, targeted Growware tests, and docs all point to the same source-of-truth rule
-  - Exit Condition: maintainers no longer need to reason about multiple live policy truths
+- Slice: benchmark surface definition
+  - Objective: define what must be measured, with which fixtures, and against which budgets before optimization starts
+  - Dependencies: roadmap / development plan, runtime hot-path inventory, operator entrypoints, and current validation stack
+  - Risks: the team optimizes isolated code paths that do not represent user-visible latency or operational cost
+  - Validation: one durable benchmark-surface document or script contract covers runtime, control-plane, and operator entrypoints
+  - Exit Condition: maintainers share one measurement vocabulary instead of ad-hoc local timing
 
-- Slice: pilot activation baseline
-  - Objective: prove one clean operator path for previewing or rehearsing Growware activation without unintended live writes
-  - Dependencies: `growware_openclaw_binding.py`, `growware_session_hygiene.py`, `growware_local_deploy.py`, runtime mirror, doctor, smoke, install docs, and `.growware/channels.json`
-  - Risks: binding preview, session hygiene, and local deploy each look valid in isolation but do not compose into one safe baseline
-  - Validation: policy sync, preflight, binding preview, mirror, doctor, smoke, and targeted tests all stay green on the same reviewed state
-  - Exit Condition: operators have one documented baseline command set for the pilot foundation
+- Slice: reproducible measurement entrypoints
+  - Objective: make baseline capture runnable through repeatable commands and controlled sample inputs
+  - Dependencies: benchmark surface, fixture data, runtime scripts, and any helper harnesses needed for profiling
+  - Risks: baseline numbers drift because commands, sample data, or environment assumptions are not controlled
+  - Validation: the same reviewed commands can be rerun locally to produce comparable outputs
+  - Exit Condition: benchmark and profile capture no longer depends on a specific maintainer remembering the setup
 
-- Slice: host-side audit positioning
-  - Objective: keep `openclaw_runtime_audit.py` useful as a host-side reality check without silently expanding it into an unapproved repair system
-  - Dependencies: `scripts/runtime/openclaw_runtime_audit.py`, `tests/test_openclaw_runtime_audit.py`, usage docs, and the runtime-audit proposal
-  - Risks: a read-only audit gets mistaken for a release gate, or repair ideas creep in without an explicit milestone and approval boundary
-  - Validation: audit docs, proposal docs, and roadmap all describe the same boundary; tests keep the current read-only model green
-  - Exit Condition: Milestone 2 explicitly records whether audit stays bootstrap-only or hands off to a later milestone
+- Slice: hotspot attribution and first optimization
+  - Objective: rank the first real bottlenecks and change only the measured paths that matter
+  - Dependencies: captured baseline artifacts, code ownership in hot paths, and runtime-safety validation
+  - Risks: optimization changes behavior without proving impact, or gains in one path create regressions elsewhere
+  - Validation: before / after evidence plus runtime-safety validation on the same reviewed state
+  - Exit Condition: at least one optimized path is measurably faster and protected by regression checks
+
+## Next Phase Preview
+
+- Planned Phase: `post-performance live pilot activation`
+- Why Next: after the repo has a stable performance baseline, the next justified expansion is rehearsal and activation on top of measured, regression-protected foundations
+- Draft Scope: `feishu6-chat` live activation rehearsal, operator evidence capture, and only then any broader rollout or ergonomics expansion
+- Draft Rule: do not reopen alternate policy truths or expand host-side repair scope while activation prep is underway
 
 ## Development Log Capture
 
 - Trigger Level: high
 - Auto-Capture When:
-  - the root-cause hypothesis changes
-  - a reusable mechanism replaces repeated local fixes
-  - a retrofit changes governance, architecture, or release policy
-  - a milestone is opened, split, or materially reclassified
+  - the benchmark surface or budget model changes
+  - a new measurement harness becomes a reusable repo capability
+  - an optimization changes architecture, operator workflow, or validation cost in a durable way
+  - the repo moves from baseline capture into optimization or activation rehearsal
 - Skip When:
   - the change is mechanical or formatting-only
   - no durable reasoning changed
-  - the work simply followed an already-approved path
+  - the work simply followed an already-approved measurement path
   - the change stayed local and introduced no durable tradeoff

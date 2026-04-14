@@ -29,7 +29,7 @@ You should already have:
 Stable remote install:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.1.0/scripts/install_remote.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.2.0/scripts/install_remote.sh)
 ```
 
 Latest main branch install:
@@ -41,7 +41,7 @@ OPENCLAW_TASK_SYSTEM_REF=main bash <(curl -fsSL https://raw.githubusercontent.co
 Pure OpenClaw install:
 
 ```bash
-openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.git#v0.1.0
+openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.git#v0.2.0
 ```
 
 Local source install:

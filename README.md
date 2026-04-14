@@ -62,7 +62,7 @@ See:
 
 ## Project Status
 
-The mainline roadmap and the first post-hardening closeout milestone are complete:
+The repo is now in a cleaner phase boundary:
 
 - Phase 0: complete
 - Phase 1: complete
@@ -72,17 +72,19 @@ The mainline roadmap and the first post-hardening closeout milestone are complet
 - Phase 5: complete
 - Phase 6 minimum closure: complete
 - Milestone 1: post-hardening closeout: complete
+- Milestone 2: Growware Project 1 pilot foundation: complete
+- Milestone 3: system performance testing and optimization: active
 
-There is no active closeout debt in the repo today.
+The current repo direction is not another ambiguous cleanup pass.
 
-Any future extension work should be named as a new roadmap candidate instead of lingering as generic follow-up.
+It is a measurement-first performance phase on top of the now-closed Growware foundation.
 
 ## Quick Start
 
 Stable remote install:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.1.0/scripts/install_remote.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.2.0/scripts/install_remote.sh)
 ```
 
 Latest main branch install:
@@ -94,7 +96,7 @@ OPENCLAW_TASK_SYSTEM_REF=main bash <(curl -fsSL https://raw.githubusercontent.co
 Pure OpenClaw install:
 
 ```bash
-openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.git#v0.1.0
+openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.git#v0.2.0
 ```
 
 ## Documentation Map

@@ -39,9 +39,6 @@ task-system runtime
 - [`.growware/contracts/feedback-event.v1.json`](../../../.growware/contracts/feedback-event.v1.json)
 - [`.growware/contracts/incident-record.v1.json`](../../../.growware/contracts/incident-record.v1.json)
 - [`.growware/ops/daemon-interface.v1.json`](../../../.growware/ops/daemon-interface.v1.json)
-- [`.growware/policies/feedback-intake.v1.json`](../../../.growware/policies/feedback-intake.v1.json)
-- [`.growware/policies/judge.v1.json`](../../../.growware/policies/judge.v1.json)
-- [`.growware/policies/deploy-gate.v1.json`](../../../.growware/policies/deploy-gate.v1.json)
 - [`docs/policy/README.zh-CN.md`](../../../docs/policy/README.zh-CN.md)
 - [`.policy/manifest.json`](../../../.policy/manifest.json)
 - [`.policy/index.json`](../../../.policy/index.json)
@@ -53,15 +50,15 @@ task-system runtime
 - `docs/policy/*.md`：给人 review 的 policy source
 - `.policy/`：Growware runtime 应优先消费的编译后机器执行层
 - `.growware/contracts/` 和 `.growware/ops/`：项目本地控制面与可执行 wiring
-- `.growware/policies/*.json`：迁移期间保留的兼容输入，还没有完全退役
+- 旧的 `.growware/policies/*.json` 已在 Milestone 2 完成后退役，不再属于 live control surface
 
 ## 当前已落地的 Growware baseline
 
-- `growware` agent 的 same-session classifier 已由项目本地 `.growware/policies/feedback-intake.v1.json` 驱动
+- `growware` agent 的 same-session classifier 已由编译后的 `.policy/rules/growware.feedback-intake.same-session.v1.json` 驱动
 - `feishu6-chat` 上的自然语言反馈，默认先进入 daemon-owned intake，再决定是并入当前任务还是排成新任务
 - Growware close-out 现在要求显式标记执行来源：`daemon-owned` 或 `terminal-takeover`
 - 对 `growware` agent 而言，完成态会额外通过 control-plane lane 回到 `feishu6`，不再只依赖正文输出
-- 运行时 intake 与 deploy 验证的目标读取层已经切到编译后的 `.policy/`；`.growware/policies/*.json` 仍保留为迁移兼容输入
+- 运行时 intake 与 deploy 验证现在只读取编译后的 `.policy/`
 
 ## Session Hygiene
 

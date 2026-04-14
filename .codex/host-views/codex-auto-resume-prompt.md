@@ -6,7 +6,7 @@
 
 - 项目名：`openclaw-task-system`
 - 工作区路径：`/Users/redcreen/Project/openclaw-task-system`
-- 当前阶段：`Milestone 2: Growware Project 1 pilot foundation`
+- 当前阶段：`Milestone 3: system performance testing and optimization`
 
 如果当前线程上下文和上面的项目信息不一致，优先以上面的工作区路径为准。
 
@@ -18,17 +18,18 @@
 
 ## 当前连续性
 
-- 当前 checkpoint：`close the policy-truth gap, validate the activation baseline, and decide the host-audit milestone boundary`
-- 下一动作：`Make compiled .policy/ the only live policy truth, then run the reviewed Growware validation baseline.`
+- 当前 checkpoint：`define the benchmark surface, standardize measurement entrypoints, and capture the first baseline before any optimization`
+- 下一动作：`Start with PL-1: define the first benchmark surface, sample fixtures, and budget draft.`
 - 下一动作来源：`status.next-3`
 
 收到这些恢复材料后，默认直接从“下一动作”切入，而不是重新开始一轮 resume 问答。
 
 ## 剩余执行任务
 
-- `EL-2`: converge policy ownership
-- `EL-3`: prove the activation baseline
-- `EL-4`: decide the host-audit milestone boundary
+- `PL-1`: define the benchmark surface and budgets
+- `PL-2`: standardize reproducible measurement entrypoints
+- `PL-3`: capture the first baseline and attribute hotspots
+- `PL-4`: land the first evidence-backed optimization and regression gate
 
 除非我明确说 `做完手上工作停止`，否则默认持续推进，不要停在“等下一句指令”。
 

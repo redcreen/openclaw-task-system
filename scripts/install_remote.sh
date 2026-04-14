@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_SLUG="${OPENCLAW_TASK_SYSTEM_REPO:-redcreen/openclaw-task-system}"
-REF="${OPENCLAW_TASK_SYSTEM_REF:-v0.1.0}"
+REF="${OPENCLAW_TASK_SYSTEM_REF:-v0.2.0}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 OPENCLAW_BIN="${OPENCLAW_BIN:-openclaw}"
 TMP_DIR="$(mktemp -d)"

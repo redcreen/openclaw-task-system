@@ -1,9 +1,9 @@
 # Worker Handoff
 
 ## Current Handoff Direction
-- Direction: `Milestone 2: Growware Project 1 pilot foundation`
+- Direction: `Milestone 3: system performance testing and optimization`
 - Status: `active`
-- Why Now: Growware 当前工作已经跨到 policy、deploy、audit 和 activation baseline，多轮 handoff 需要围绕同一条 milestone 恢复
+- Why Now: 当前工作已经切到 benchmark surface、measurement entrypoints 和 baseline evidence，多轮 handoff 需要围绕同一条性能主线恢复
 
 ## Worker Handoff Contract
 
@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | checkpoint 完成 | 当前 worker 已到当前检查点 | 评估剩余工作是否继续、切换或回流 |
 | 超时 / 长时间无输出 | worker 没有继续推进到下一检查点 | 由 PTL 接管并决定后续 |
-| 验证失败 | tests / gate / release readiness 失败 | 暂停当前 worker 推进并评估修复或升级 |
+| 验证失败 | tests / gate / benchmark baseline 失败 | 暂停当前 worker 推进并评估修复或升级 |
 | 显式交接 | 当前线程准备结束或切换上下文 | 生成 durable handoff 并决定下一位 owner |
 | 方向重排 | program-board 顺序或主线发生变化 | 将当前未完成工作回流并等待新排序 |
 
@@ -62,6 +62,6 @@
 | 显著成本 / 时间变化 | 必须升级给人类 |
 
 ## Next Handoff Checks
-1. 确认 worker 停下后的接续、回流和升级都能靠 Growware 当前 milestone 的 durable 真相完成。
-2. 继续观察哪些 handoff 场景会反复出现，再决定是否需要更强的调度层。
+1. 确认 worker 停下后的接续、回流和升级都能靠当前 benchmark 主线的 durable 真相完成。
+2. 继续观察哪些 baseline capture 场景会反复出现，再决定是否需要更强的调度层。
 3. 只在 disjoint write scope 和结果回收口都明确时，才考虑扩成多执行器调度。

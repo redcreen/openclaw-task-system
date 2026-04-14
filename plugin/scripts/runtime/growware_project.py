@@ -29,9 +29,6 @@ def required_growware_files(project_root: Path | None = None) -> list[Path]:
         root / "channels.json",
         root / "contracts" / "feedback-event.v1.json",
         root / "contracts" / "incident-record.v1.json",
-        root / "policies" / "feedback-intake.v1.json",
-        root / "policies" / "judge.v1.json",
-        root / "policies" / "deploy-gate.v1.json",
         root / "ops" / "daemon-interface.v1.json",
     ]
     for basename in POLICY_DOC_BASENAMES:

@@ -6,9 +6,10 @@
 
 The mainline roadmap is complete through Phase 6 minimum closure and `Milestone 1: post-hardening closeout`.
 
-A new named milestone is now active:
+The milestone state has now shifted to:
 
-- `Milestone 2: Growware Project 1 pilot foundation`
+- `Milestone 2: Growware Project 1 pilot foundation` complete
+- `Milestone 3: system performance testing and optimization` active
 
 Completed mainline milestones:
 
@@ -20,6 +21,7 @@ Completed mainline milestones:
 - Phase 5: channel rollout and acceptance
 - Phase 6 minimum closure: supervisor-first planning runtime
 - Milestone 1: post-hardening closeout
+- Milestone 2: Growware Project 1 pilot foundation
 
 For the full Chinese detail, see [roadmap.zh-CN.md](roadmap.zh-CN.md).
 
@@ -35,28 +37,24 @@ The mainline shipped these outcomes:
 - continuity, watchdog, and recovery visibility
 - install drift visibility in doctor, ops, and stable acceptance
 
-## Growware Pilot Snapshot
+## Milestone 2 Closeout
 
-Delivered so far:
+Milestone 2 is now closed with these durable outcomes:
 
-- `.growware/` is now the durable project-local control surface for Growware `Project 1`, with `feishu6-chat` as the primary feedback / approval / notification ingress
-- `docs/policy/*.md` is now the human policy source and `.policy/` is the compiled machine layer for Growware runtime decisions
-- `growware_feedback_classifier.py`, `growware_project.py`, `growware_preflight.py`, and `growware_local_deploy.py` now consume or enforce the compiled policy layer
-- `openclaw_runtime_audit.py` now provides a read-only host-side audit bootstrap for real `~/.openclaw` data
-
-Open edges before activation:
-
-- close the remaining source-of-truth gap between compiled `.policy/` and legacy `.growware/policies/*.json`
-- prove one clean activation baseline across policy sync, preflight, binding preview, runtime mirror, doctor / smoke, and session hygiene
-- decide whether the read-only host audit is sufficient for Milestone 2 or whether repair planning should become the next named milestone
+- `.growware/` is the durable project-local control surface for Growware `Project 1`, with `feishu6-chat` as the primary feedback / approval / notification ingress
+- `docs/policy/*.md` is the human policy source and `.policy/` is the compiled machine layer for Growware runtime decisions
+- `growware_feedback_classifier.py`, `growware_project.py`, `growware_preflight.py`, and `growware_local_deploy.py` are converged on the compiled policy layer
+- legacy `.growware/policies/*.json` has been retired from the live control surface and is no longer required by runtime or preflight
+- `openclaw_runtime_audit.py` remains a read-only host-side bootstrap instead of expanding into a repair or rollout gate
+- the reviewed activation baseline has been rerun successfully on the compiled `.policy/` path
 
 ## Current / Next / Later
 
 | Horizon | Focus | Exit Signal |
 | --- | --- | --- |
-| Current | close `Milestone 2: Growware Project 1 pilot foundation` by converging policy truth, pilot activation safety, and host-side audit positioning | compiled `.policy` is the only live intake / deploy truth, activation checks stay green, and operators have one documented baseline command set |
-| Next | activate the local feedback -> code -> verify -> deploy pilot on `feishu6-chat` only after the foundation gate is clean | binding preview, session hygiene, and local deploy can be rehearsed without unresolved drift or host-side blockers |
-| Later | consider conservative self-heal and broader planning / steering only after the pilot baseline is stable | new work does not reopen hidden ownership drift or bypass runtime truth |
+| Current | execute `Milestone 3: system performance testing and optimization` by establishing reproducible benchmark / profile baselines first | key runtime, control-plane, and operator entrypoints all have one measurement surface, sample set, and budget, so optimization work stops relying on intuition |
+| Next | return to live `feishu6-chat` pilot-activation preparation after the performance baseline is stable | activation rehearsal sits on measured, attributed, regression-protected ground instead of reopening foundation work |
+| Later | consider conservative self-heal, stronger planning / steering, and richer real-channel evidence | new work does not reopen policy-ownership drift or bypass runtime truth and approval boundaries |
 
 ## Milestones
 
@@ -67,13 +65,12 @@ Open edges before activation:
 | Phase 5 | complete | strengthen dashboard, queues, lanes, triage, and operator projections | main ops toolchain | user and operator views project the same truth |
 | Phase 6 minimum closure | complete | lock planning acceptance, future-first output, and same-session routing into a minimum shipped closure | planning acceptance toolchain | automation and semi-real acceptance stay green |
 | Milestone 1: post-hardening closeout | complete | close the remaining compound / future-first boundary work, deepen release-facing evidence, and finish operator-facing closeout | current mainline stability and release-facing validation entrypoints | boundary docs, acceptance depth, and operator / release-facing closeout are converged without reopening architecture debt |
-| Milestone 2: Growware Project 1 pilot foundation | active | turn Growware `Project 1` from a future candidate into a durable repo-owned baseline by shipping project-local policy truth, activation gates, and host-audit bootstrap | `.growware/`, `docs/policy/`, `.policy/`, Growware runtime scripts, binding preview, session hygiene, and validation entrypoints | project-local policy is the only live runtime input, activation safety is documented and green, and the host-audit bootstrap has a clear milestone boundary |
+| Milestone 2: Growware Project 1 pilot foundation | complete | turn Growware `Project 1` from a future candidate into a durable repo-owned baseline by shipping project-local policy truth, activation gates, and host-audit bootstrap | `.growware/`, `docs/policy/`, `.policy/`, Growware runtime scripts, binding preview, session hygiene, and validation entrypoints | project-local policy is the only live runtime input, activation safety is documented and green, and the host-audit bootstrap has a clear milestone boundary |
+| Milestone 3: system performance testing and optimization | active | build reproducible performance baselines for runtime, control-plane, and operator entrypoints, then optimize the measured hotspots | Milestone 2 closeout, stable baseline commands, reproducible sample data, and performance measurement helpers | benchmark and profile baselines exist, the main hotspots are attributed, optimizations are verified, and regression gates protect the improved paths |
 
 ## Future Candidate Areas
 
-`Milestone 2` is active now. Do not treat Growware pilot foundation as ambient follow-up.
-
-Potential later candidates after Milestone 2:
+Potential later candidates after Milestone 3:
 
 - live Growware pilot activation and real end-to-end evidence capture across `feishu6-chat`
 - conservative host-side repair planning / self-heal on top of `openclaw_runtime_audit.py`
@@ -89,7 +86,7 @@ The architecture hardening line remains closed with two explicit decisions:
 Reference:
 
 - [workstreams/architecture-hardening/README.md](workstreams/architecture-hardening/README.md)
-- [reference/openclaw-task-system/development-plan.md](reference/openclaw-task-system/development-plan.md#milestone-2-growware-project-1-pilot-foundation)
+- [reference/openclaw-task-system/development-plan.md](reference/openclaw-task-system/development-plan.md)
 - [reference/openclaw-task-system/growware-pilot.md](reference/openclaw-task-system/growware-pilot.md)
 - [reference/openclaw-task-system/runtime-audit-self-heal-proposal.md](reference/openclaw-task-system/runtime-audit-self-heal-proposal.md)
 

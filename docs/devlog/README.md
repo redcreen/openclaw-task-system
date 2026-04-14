@@ -22,6 +22,7 @@ This directory records durable implementation narratives: what went wrong, what 
 ## Entries
 
 - add date-based entries such as `2026-04-12-control-surface-convergence.md`
+- [Close Growware pilot foundation](2026-04-14-close-growware-pilot-foundation.md)
 - [Close runtime source of truth convergence](2026-04-12-close-runtime-source-of-truth-convergence.md)
 - [Expand planning anomaly acceptance](2026-04-12-expand-planning-anomaly-acceptance.md)
 - [Add channel acceptance samples](2026-04-12-add-channel-acceptance-samples.md)

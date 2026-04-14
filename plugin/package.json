@@ -1,6 +1,6 @@
 {
   "name": "@redcreen/openclaw-task-system",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Plugin-first task lifecycle management for OpenClaw long-running work",
   "type": "module",
   "main": "index.ts",

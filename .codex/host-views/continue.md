@@ -5,30 +5,30 @@
 | 项目 | 当前值 |
 | --- | --- |
 | 层级 | `中型` |
-| 当前判断 | 当前主线是 `Milestone 2: Growware Project 1 pilot foundation`，不是稳态维护。 |
-| 当前阶段 | 收口 Growware 的 policy truth、activation gate 和 host-audit bootstrap。 |
-| 当前工作域 | Growware 项目本地控制面与激活基线 |
-| 当前切片 | `growware pilot: policy truth + activation baseline` |
-| 当前执行线 | 先把 Growware foundation 变成可验证的 pilot baseline，再考虑 live rollout。 |
-| 当前结论 | `EL-1` 已完成；当前主线继续推进 `EL-2` 到 `EL-4`。 |
+| 当前判断 | 当前主线是 `Milestone 3: system performance testing and optimization`，不是继续收口 M2。 |
+| 当前阶段 | 先建立可复现性能基线，再讨论热点和优化。 |
+| 当前工作域 | runtime / control-plane / operator 性能基线 |
+| 当前切片 | `performance baseline: measurement surface + reproducible entrypoints` |
+| 当前执行线 | 先定义 benchmark surface、fixtures 与 budgets，再采集 baseline，最后才允许优化。 |
+| 当前结论 | `Milestone 2` 已完成；当前主线继续推进 `PL-1` 到 `PL-4`。 |
 | 架构信号 | `黄色` |
 | 升级 Gate | `提醒后继续` |
-| 当前主要风险 | `.policy/` 与 `.growware/policies/*.json` 之间仍有真相源裂缝。 |
+| 当前主要风险 | 还没有 durable benchmark surface、样本和预算；如果直接优化，很容易回到凭感觉改代码。 |
 | 完整看板 | `项目助手 进展` / `project assistant progress` |
 
 ## 接下来先做什么
 
 | 顺序 | 当前要做的事 |
 | --- | --- |
-| 1 | 关闭 `docs/policy/*.md -> .policy/` 与 `.growware/policies/*.json` 之间的 live truth drift。 |
-| 2 | 跑 Growware activation baseline：`growware_policy_sync`、`growware_preflight`、binding preview、runtime mirror、doctor / smoke 和定向 tests。 |
-| 3 | 明确 `openclaw_runtime_audit.py` 在当前 milestone 的边界，决定它是否进入下一条里程碑。 |
+| 1 | 定义第一轮 benchmark surface、fixtures 和预算。 |
+| 2 | 把测量入口收敛成可复现命令，避免 baseline 依赖某个维护者的本地习惯。 |
+| 3 | 在保持 Growware / runtime 安全验证栈全绿的前提下，采集第一轮 baseline 并做热点归因。 |
 
 ## 当前任务板
 
 | 任务 | 类型 | 状态 |
 | --- | --- | --- |
-| 把当前 Growware 实现提升成正式 milestone，并让 roadmap / plan / status 对齐。 | 阶段收口 | 已完成 |
-| 关闭 policy truth 裂缝。 | 边界收敛 | 进行中 |
-| 验证 Growware activation baseline。 | 激活前验证 | 待执行 |
-| 决定 host audit 的 milestone 边界。 | 路线裁剪 | 待决策 |
+| 关闭 Growware pilot foundation，并把 M2 写实为已完成。 | 阶段收口 | 已完成 |
+| 定义 benchmark surface 与预算。 | 基线定义 | 进行中 |
+| 建立可复现测量入口。 | 测量基础设施 | 待执行 |
+| 采集 baseline、归因热点并保护首轮优化。 | 优化前验证 | 待执行 |

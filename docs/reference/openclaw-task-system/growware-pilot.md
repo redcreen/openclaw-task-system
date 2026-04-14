@@ -39,9 +39,6 @@ task-system runtime
 - [`.growware/contracts/feedback-event.v1.json`](../../../.growware/contracts/feedback-event.v1.json)
 - [`.growware/contracts/incident-record.v1.json`](../../../.growware/contracts/incident-record.v1.json)
 - [`.growware/ops/daemon-interface.v1.json`](../../../.growware/ops/daemon-interface.v1.json)
-- [`.growware/policies/feedback-intake.v1.json`](../../../.growware/policies/feedback-intake.v1.json)
-- [`.growware/policies/judge.v1.json`](../../../.growware/policies/judge.v1.json)
-- [`.growware/policies/deploy-gate.v1.json`](../../../.growware/policies/deploy-gate.v1.json)
 - [`docs/policy/README.md`](../../../docs/policy/README.md)
 - [`.policy/manifest.json`](../../../.policy/manifest.json)
 - [`.policy/index.json`](../../../.policy/index.json)
@@ -53,7 +50,7 @@ The current contract is layered like this:
 - `docs/policy/*.md`: human-reviewed policy source
 - `.policy/`: compiled machine execution layer that Growware runtime should consume
 - `.growware/contracts/` and `.growware/ops/`: project-local control surface and executable wiring
-- `.growware/policies/*.json`: compatibility inputs retained while the repo finishes migrating away from legacy policy JSON
+- legacy `.growware/policies/*.json` has been retired after Milestone 2 and no longer belongs to the live control surface
 
 ## Current Baseline
 
@@ -61,6 +58,7 @@ The current contract is layered like this:
 - natural-language feedback on `feishu6-chat` first enters daemon-owned intake, then gets routed into the current task or a new task
 - Growware close-out now requires an explicit execution source: `daemon-owned` or `terminal-takeover`
 - for the `growware` agent, completion also flows back through the control-plane lane to `feishu6` instead of relying only on body text
+- runtime intake and deploy verification now read only the compiled `.policy/` layer
 
 ## Session Hygiene
 

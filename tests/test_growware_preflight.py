@@ -42,9 +42,6 @@ class GrowwarePreflightTests(unittest.TestCase):
             for relative in (
                 "contracts/feedback-event.v1.json",
                 "contracts/incident-record.v1.json",
-                "policies/feedback-intake.v1.json",
-                "policies/judge.v1.json",
-                "policies/deploy-gate.v1.json",
                 "ops/daemon-interface.v1.json",
             ):
                 _write_json(root / ".growware" / relative, {"ok": True})
@@ -77,9 +74,6 @@ class GrowwarePreflightTests(unittest.TestCase):
             for relative in (
                 "contracts/feedback-event.v1.json",
                 "contracts/incident-record.v1.json",
-                "policies/feedback-intake.v1.json",
-                "policies/judge.v1.json",
-                "policies/deploy-gate.v1.json",
                 "ops/daemon-interface.v1.json",
             ):
                 _write_json(root / ".growware" / relative, {"ok": True})

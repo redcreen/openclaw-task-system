@@ -1,9 +1,9 @@
 # Program Board
 
 ## Current Program Direction
-- Direction: `Milestone 2: Growware Project 1 pilot foundation`
+- Direction: `Milestone 3: system performance testing and optimization`
 - Status: `active`
-- Why Now: 把已经落地的 Growware policy / deploy / audit 基础收敛成一条明确执行线，而不是继续挂成 future candidate
+- Why Now: Growware foundation 已收口，当前最值得排成主线的是 benchmark baseline、热点归因和回归门禁
 
 ## Program Orchestration Contract
 
@@ -17,19 +17,19 @@
 
 | Workstream | Scope | State | Priority | Current Focus | Next Checkpoint |
 | --- | --- | --- | --- | --- | --- |
-| growware pilot foundation | policy truth / Growware scripts / binding boundary | active | P0 | 关闭 policy 真相与激活边界裂缝 | EL-2 和 EL-3 达成同一条基线 |
-| control truth and docs alignment | plan / status / roadmap / development plan / docs | active | P1 | 保持控制面、文档与当前里程碑同步 | 避免继续把 active work 写成 future candidate |
-| validation and activation gates | policy sync / preflight / mirror / doctor / smoke / targeted tests | active | P1 | 保持 Growware pilot baseline 可执行 | 下一轮验证收口 |
-| host audit and next-milestone routing | runtime audit / session hygiene / self-heal boundary | active | P2 | 决定 audit 是 bootstrap 还是下一里程碑入口 | EL-4 完成时复核 |
+| performance baseline foundation | benchmark surface / fixtures / budgets | active | P0 | 定义先测什么、如何测、预算是什么 | PL-1 完成 |
+| measurement entrypoints | benchmark helpers / repeatable commands / baseline capture | active | P0 | 让基线可以稳定复跑 | PL-2 完成 |
+| runtime-safety validation | Growware / runtime 安全验证栈 | active | P1 | 保持性能阶段不破坏已收口的 foundation | 基线采集前后都保持全绿 |
+| post-performance activation planning | live rehearsal / operator evidence / rollout prep | next | P2 | 只做候选，不抢占当前性能主线 | 性能基线稳定后再复核 |
 
 ## Sequencing Queue
 
 | Order | Workstream | Slice / Input | Executor | Status |
 | --- | --- | --- | --- | --- |
-| 1 | growware pilot foundation | policy truth + activation baseline | delivery worker | active |
-| 2 | control truth and docs alignment | 保持 roadmap / development plan / `.codex/*` 同步 | docs-and-release | active |
-| 3 | validation and activation gates | 运行 Growware / runtime 验证并把结果写回真相 | delivery worker | active |
-| 4 | host audit and next-milestone routing | 决定 audit 与 activation 工作如何分层 | PTL | next |
+| 1 | performance baseline foundation | benchmark surface + budgets | delivery worker | active |
+| 2 | measurement entrypoints | 可复现命令、fixtures 与 baseline harness | delivery worker | active |
+| 3 | runtime-safety validation | 保持 Growware / runtime 验证栈全绿 | docs-and-release | active |
+| 4 | post-performance activation planning | activation rehearsal 的恢复顺序与证据要求 | PTL | next |
 
 ## Executor Inputs
 
@@ -37,26 +37,26 @@
 | --- | --- | --- | --- |
 | PTL | `.codex/strategy.md` + `.codex/program-board.md` + `.codex/delivery-supervision.md` + `.codex/status.md` | 决定当前主线是否继续、重排或升级 | active |
 | delivery worker | active slice + execution tasks + validator outputs | 推进当前 checkpoint 并保持与 program-board 对齐 | active |
-| docs-and-release | README + roadmap + development-plan + gate outputs | 保持 durable docs、交接说明和门禁一致 | active |
+| docs-and-release | roadmap + development-plan + baseline evidence + gate outputs | 保持 durable docs、交接说明和门禁一致 | active |
 
 ## Parallel-Safe Boundaries
 
 | Boundary | Parallel-Safe? | Notes |
 | --- | --- | --- |
 | 读文件 / 快照 / 校验 / 测试 | yes | 安全的只读动作可以和主写入线并行 |
-| docs alignment vs control truth | yes | 文档更新可以跟随 control truth，但 `.codex/plan.md` / `.codex/status.md` 仍保持唯一真相源 |
-| 同一批文件的双写入 | no | 共享写入面必须串行，不要并行改同一套控制面或主代码边界 |
+| benchmark 设计 vs 文档对齐 | yes | 文档可以跟着 benchmark 设计更新，但 `.codex/plan.md` / `.codex/status.md` 仍保持唯一真相源 |
+| 同一批 benchmark helper 的双写入 | no | 共享写入面必须串行，不要并行改同一组测量入口 |
 | 战略变化 vs 业务方向变化 | no | 一旦跨到业务方向、兼容性或外部定位，就必须停下来给人类审批 |
 
 ## Supporting Backlog Routing
 
 | Topic | Current Position | Re-entry Rule | Notes |
 | --- | --- | --- | --- |
-| maintainer-facing polish | supporting backlog | 只有明确降低接手成本时，才允许回流主线 | 保持在 backlog |
+| live pilot activation | supporting backlog | 只有 benchmark baseline 和回归门禁成形后，才允许回流主线 | 暂不抢占 M3 |
+| host-side self-heal | supporting backlog | 只有 audit bootstrap 明确要升级成产品能力时，才回流 | 保持候选 |
 | doc-only tidy-up | supporting backlog | 只有不会干扰当前主线且能降低恢复成本时，才并入下个 checkpoint | 按 sidecar 处理 |
-| post-foundation activation | supporting backlog | 只有当前 foundation gate 收干净后，才升级成新的正式主线 | 暂不抢占当前 milestone |
 
 ## Next Orchestration Checks
-1. 确认当前 active slice、执行线和 supporting backlog 都围绕同一个 Growware milestone 排序。
-2. 判断 activation baseline 里的哪些步骤必须串行，哪些 sidecar 工作还能并入同一个 checkpoint。
-3. 如果 runtime audit 或 live activation 需要更强编排，再整理成后续多执行器候选。
+1. 确认 benchmark surface 已经覆盖 runtime、control-plane 和 operator 入口，而不是只覆盖单一模块。
+2. 判断哪些测量入口必须先落脚本，哪些还能先用现有命令收集 baseline。
+3. 如果性能验证成本开始明显上升，再决定是否拆出 fast / deep 两层基线。

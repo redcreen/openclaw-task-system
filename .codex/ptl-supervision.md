@@ -1,9 +1,9 @@
 # PTL Supervision
 
 ## Current PTL Direction
-- Direction: `Milestone 2: Growware Project 1 pilot foundation`
+- Direction: `Milestone 3: system performance testing and optimization`
 - Status: `active`
-- Why Now: Growware pilot 已经进入真实实现，PTL 必须围绕 policy truth、activation gate 和 host-audit 边界持续巡检
+- Why Now: Growware foundation 已经完成，PTL 现在需要围绕 benchmark surface、baseline 证据和优化边界持续巡检
 
 ## PTL Supervision Contract
 
@@ -19,7 +19,7 @@
 | --- | --- | --- | --- |
 | 周期巡检 | 到达下一次 checkpoint 节点 | 读取 strategy / program-board / delivery-supervision / status | 确认继续还是重排 |
 | worker 停下 | 当前 worker 正常结束、超时、失败或显式交接 | 接管剩余工作判断 | 决定继续 / 回流 / 升级 |
-| 验证变化 | gate、tests、release readiness 或 architecture signal 变化 | 重新判断升级边界 | 决定是否继续当前线 |
+| 验证变化 | gate、tests、benchmark baseline 或回归检查变化 | 重新判断升级边界 | 决定是否继续当前线 |
 | 计划变化 | active slice 完成、主线切换或 supporting backlog 回流 | 重读 program board | 决定下一条线 |
 | 用户裁决 | 人类修改业务方向、优先级或重大取舍 | 更新监督基线 | 重新生成下一轮监督判断 |
 
@@ -29,7 +29,7 @@
 | --- | --- | --- |
 | PTL | strategy + program-board + delivery-supervision + status | 持续巡检项目、判断继续/重排/升级、把监督结论写回 durable 真相 |
 | delivery worker | active slice + execution tasks + validator outputs | 推进当前写入线并在 checkpoint 后把结果交回监督环 |
-| docs-and-release | README + roadmap + development-plan + gate outputs | 保持维护者文档、交接和门禁与 PTL 判断一致 |
+| docs-and-release | roadmap + development-plan + gate outputs | 保持维护者文档、交接和门禁与 PTL 判断一致 |
 
 ## Continue / Resequence / Escalate Matrix
 
@@ -50,6 +50,6 @@
 | 业务裁决越权防护 | green | 一旦跨到 live rollout、审批边界或兼容性承诺，PTL 只升级不代替决策 |
 
 ## Next PTL Checks
-1. 确认 worker 停下后，PTL 能从 durable 真相恢复 Growware 当前切片，而不是退回聊天记忆。
-2. 继续观察 `.policy/`、binding preview 和 host-audit 边界是否还暴露新的 durable 缺口，需要回写到监督契约。
-3. 如果真实仓库反复出现单 Codex 编排瓶颈，再整理成后续多执行器候选。
+1. 确认 worker 停下后，PTL 能从 durable 真相恢复当前 benchmark 切片，而不是退回聊天记忆。
+2. 继续观察 benchmark surface、budgets 和第一轮 hotspot attribution 是否还暴露新的 durable 缺口，需要回写到监督契约。
+3. 如果性能阶段反复出现单执行器瓶颈，再整理成后续多执行器候选。

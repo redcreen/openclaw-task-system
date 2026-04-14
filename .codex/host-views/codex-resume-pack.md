@@ -2,13 +2,13 @@
 
 - Workspace: `/Users/redcreen/Project/openclaw-task-system`
 - Ready to continue: `yes`
-- Current stage: `Milestone 2: Growware Project 1 pilot foundation`
-- Current slice: `growware pilot: policy truth + activation baseline`
-- Current checkpoint: `close the policy-truth gap, validate the activation baseline, and decide the host-audit milestone boundary`
-- Next action: `Make compiled .policy/ the only live policy truth, then run the reviewed Growware validation baseline.`
+- Current stage: `Milestone 3: system performance testing and optimization`
+- Current slice: `performance baseline: measurement surface + reproducible entrypoints`
+- Current checkpoint: `define the benchmark surface, standardize measurement entrypoints, and capture the first baseline before any optimization`
+- Next action: `Start with PL-1: define the first benchmark surface, sample fixtures, and budget draft.`
 - Next action source: `status.next-3`
 - Queue: `0 waiting · 0 running · 0 done`
-- Recent session: `not refreshed in this review pass`
+- Recent session: `refreshed after Milestone 2 closeout`
 
 ## Continue Contract
 
@@ -18,16 +18,17 @@ Do not restart repo-wide discovery unless the durable control surface conflicts 
 
 ## Execution Continuity
 
-- Current checkpoint: `close the policy-truth gap, validate the activation baseline, and decide the host-audit milestone boundary`
-- Next action: `Make compiled .policy/ the only live policy truth, then run the reviewed Growware validation baseline.`
+- Current checkpoint: `define the benchmark surface, standardize measurement entrypoints, and capture the first baseline before any optimization`
+- Next action: `Start with PL-1: define the first benchmark surface, sample fixtures, and budget draft.`
 
 Treat that checkpoint as already-established truth and move straight into the next action.
 
 ## Remaining Execution Tasks
 
-- `EL-2`: converge policy ownership
-- `EL-3`: prove the activation baseline
-- `EL-4`: decide the host-audit milestone boundary
+- `PL-1`: define the benchmark surface and budgets
+- `PL-2`: standardize reproducible measurement entrypoints
+- `PL-3`: capture the first baseline and attribute hotspots
+- `PL-4`: land the first evidence-backed optimization and regression gate
 
 Unless I explicitly say `做完手上工作停止`, keep going by default.
 
@@ -43,6 +44,6 @@ Unless I explicitly say `做完手上工作停止`, keep going by default.
 ## Suggested First Move
 
 1. Read `continue.md` and `.codex/status.md`.
-2. Continue from checkpoint: `close the policy-truth gap, validate the activation baseline, and decide the host-audit milestone boundary`.
-3. Start with next action: `Make compiled .policy/ the only live policy truth, then run the reviewed Growware validation baseline.`
+2. Continue from checkpoint: `define the benchmark surface, standardize measurement entrypoints, and capture the first baseline before any optimization`.
+3. Start with next action: `Start with PL-1: define the first benchmark surface, sample fixtures, and budget draft.`
 4. Continue implementation instead of asking for another manual resume prompt.

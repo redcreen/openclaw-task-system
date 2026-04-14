@@ -62,7 +62,7 @@ same-session routing 现在已经是正式交付能力：
 
 ## 当前状态
 
-正式主线 roadmap 以及第一条 post-hardening 收口里程碑都已完成：
+仓库现在已经进入一个更干净的阶段边界：
 
 - Phase 0：完成
 - Phase 1：完成
@@ -72,17 +72,19 @@ same-session routing 现在已经是正式交付能力：
 - Phase 5：完成
 - Phase 6 最小闭环：完成
 - Milestone 1：post-hardening 收口：完成
+- Milestone 2：Growware Project 1 pilot foundation：完成
+- Milestone 3：系统性能测试与优化：进行中
 
-仓库当前没有“还没收口的 closeout 欠账”。
+当前主线不是继续模糊收尾。
 
-如果后面要继续做扩展能力，应该先把它命名成新的 roadmap candidate，而不是继续挂成泛化 follow-up。
+而是在已经收口的 Growware foundation 之上，进入“先测量、后优化”的性能阶段。
 
 ## 快速开始
 
 稳定版远程安装：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.1.0/scripts/install_remote.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/redcreen/openclaw-task-system/v0.2.0/scripts/install_remote.sh)
 ```
 
 主干最新版安装：
@@ -94,7 +96,7 @@ OPENCLAW_TASK_SYSTEM_REF=main bash <(curl -fsSL https://raw.githubusercontent.co
 纯 OpenClaw 安装：
 
 ```bash
-openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.git#v0.1.0
+openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.git#v0.2.0
 ```
 
 ## 文档地图

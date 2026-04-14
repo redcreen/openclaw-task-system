@@ -6,9 +6,10 @@
 
 主线 roadmap 已经完成到 Phase 6 最小闭环和 `Milestone 1：post-hardening 收口`。
 
-现在已经正式打开新的命名里程碑：
+当前里程碑状态已经切换为：
 
-- `Milestone 2：Growware Project 1 pilot foundation`
+- `Milestone 2：Growware Project 1 pilot foundation` 已完成
+- `Milestone 3：系统性能测试与优化` 已激活
 
 已完成的主线里程碑：
 
@@ -20,6 +21,7 @@
 - Phase 5：channel rollout 与 acceptance
 - Phase 6 最小闭环：supervisor-first planning runtime
 - Milestone 1：post-hardening 收口
+- Milestone 2：Growware Project 1 pilot foundation
 
 ## 主线产出
 
@@ -33,28 +35,24 @@
 - continuity、watchdog 与 recovery visibility
 - doctor、ops 与 stable acceptance 里的 install drift 可见性
 
-## Growware Pilot 阶段快照
+## Milestone 2 收口结果
 
-这一阶段已经落地：
+Milestone 2 已经正式收口，当前结论是：
 
 - `.growware/` 已经成为 Growware `Project 1` 的项目本地控制面，`feishu6-chat` 是主反馈 / 审批 / 通知入口
 - `docs/policy/*.md` 已经成为人类 policy source，`.policy/` 已经成为 Growware 运行时决策消费的编译机器层
-- `growware_feedback_classifier.py`、`growware_project.py`、`growware_preflight.py` 和 `growware_local_deploy.py` 已经开始消费或强制校验编译后的 policy layer
-- `openclaw_runtime_audit.py` 已经提供一个基于真实 `~/.openclaw` 数据的只读宿主侧体检 bootstrap
-
-在进入激活前还要收口的边界：
-
-- 关掉编译后的 `.policy/` 与遗留 `.growware/policies/*.json` 之间剩余的真相源裂缝
-- 用一条干净基线跑通 policy sync、preflight、binding preview、runtime mirror、doctor / smoke 与 session hygiene
-- 决定只读 host audit 是否足以作为 Milestone 2 的组成部分，还是应该升成下一个命名里程碑
+- `growware_feedback_classifier.py`、`growware_project.py`、`growware_preflight.py` 和 `growware_local_deploy.py` 已经收敛到编译后的 policy layer
+- 遗留 `.growware/policies/*.json` 已从 live control surface 退役，不再作为 runtime / preflight 的真相输入
+- `openclaw_runtime_audit.py` 保持在只读宿主侧体检 bootstrap 边界内，没有被升级成 repair 或 rollout gate
+- reviewed activation baseline 已经在编译后的 `.policy/` 路径上复核通过
 
 ## 当前 / 下一步 / 更后面
 
 | 时间层级 | 重点 | 退出信号 |
 | --- | --- | --- |
-| 当前 | 收口 `Milestone 2：Growware Project 1 pilot foundation`，把 policy 真相、pilot 激活安全性和 host audit 定位收敛起来 | 编译后的 `.policy/` 成为唯一 live intake / deploy 真相，激活检查持续全绿，运维侧也有一套统一的基线命令入口 |
-| 下一步 | 只有在 foundation gate 干净后，才激活 `feishu6-chat` 上的本地 feedback -> code -> verify -> deploy pilot | binding preview、session hygiene 和 local deploy 都能在没有未解漂移或宿主阻塞的前提下演练 |
-| 更后面 | 只有在 pilot baseline 稳定后，才考虑保守自修复和更强 planning / steering | 新工作不会重新打开隐藏 ownership drift，也不会绕过 runtime truth |
+| 当前 | 执行 `Milestone 3：系统性能测试与优化`，先建立可复现 benchmark / profile 基线 | 关键 runtime、control-plane 与 operator 入口都有统一测量入口、样本和预算，优化工作不再依赖感觉 |
+| 下一步 | 在性能基线稳定后，恢复 `feishu6-chat` 的 live pilot activation 准备线 | 激活 rehearsal 建立在已测量、已归因、已设回归门禁的基础上，而不是在未测量状态继续扩线 |
+| 更后面 | 再考虑保守 self-heal、更强 planning / steering 与更高保真的 real-channel evidence | 新工作不会重新打开 policy ownership drift，也不会绕过 runtime truth 和审批边界 |
 
 ## 里程碑
 
@@ -65,13 +63,12 @@
 | Phase 5 | 已完成 | 强化 dashboard、queues、lanes、triage 与 operator 投影 | main ops 工具链 | 用户视角与 operator 视角使用同一套真相 |
 | Phase 6 最小闭环 | 已完成 | 固定 planning acceptance、future-first output 与 same-session routing 的最小发货闭环 | planning acceptance 工具链 | 自动化与半真实 acceptance 持续全绿 |
 | Milestone 1：post-hardening 收口 | 已完成 | 收掉剩余 compound / future-first 边界、补 release-facing evidence，并完成 operator-facing 收尾 | 主线稳定与 release-facing 验证入口 | 边界文档、acceptance 深度与 operator / release-facing 收尾已经收敛，且没有重新打开架构债务 |
-| Milestone 2：Growware Project 1 pilot foundation | 进行中 | 把 Growware `Project 1` 从未来候选变成仓库内可维护的正式基线，收敛项目本地 policy 真相、激活 gate 与 host-audit bootstrap | `.growware/`、`docs/policy/`、`.policy/`、Growware runtime scripts、binding preview、session hygiene 与验证入口 | 项目本地 policy 成为唯一 live runtime input，激活安全边界文档化且全绿，host-audit bootstrap 也有明确的 milestone 边界 |
+| Milestone 2：Growware Project 1 pilot foundation | 已完成 | 把 Growware `Project 1` 从未来候选变成仓库内可维护的正式基线，收敛项目本地 policy 真相、激活 gate 与 host-audit bootstrap | `.growware/`、`docs/policy/`、`.policy/`、Growware runtime scripts、binding preview、session hygiene 与验证入口 | 编译后的 `.policy` 成为唯一 live runtime input，激活安全边界文档化且全绿，host-audit bootstrap 也有明确边界 |
+| Milestone 3：系统性能测试与优化 | 进行中 | 为 runtime、control-plane 与 operator 入口建立可复现性能基线，识别热点并做有证据的优化 | Milestone 2 收口、稳定的基线命令、可复现样本数据和性能测量入口 | 已经有 benchmark / profile 基线、主要热点归因、优化结果与回归门禁，且没有破坏 runtime truth 与控制面边界 |
 
 ## 后续候选方向
 
-`Milestone 2` 现在已经是 active work，不应该继续当成“顺手补一下”的候选。
-
-Milestone 2 之后的潜在候选包括：
+Milestone 3 之后的潜在候选包括：
 
 - Growware pilot 的真实激活，以及围绕 `feishu6-chat` 的端到端证据捕获
 - 基于 `openclaw_runtime_audit.py` 的保守 repair planning / self-heal
@@ -87,7 +84,7 @@ Milestone 2 之后的潜在候选包括：
 参考入口：
 
 - [workstreams/architecture-hardening/README.zh-CN.md](workstreams/architecture-hardening/README.zh-CN.md)
-- [reference/openclaw-task-system/development-plan.zh-CN.md](reference/openclaw-task-system/development-plan.zh-CN.md#milestone-2-growware-project-1-pilot-foundation)
+- [reference/openclaw-task-system/development-plan.zh-CN.md](reference/openclaw-task-system/development-plan.zh-CN.md)
 - [reference/openclaw-task-system/growware-pilot.zh-CN.md](reference/openclaw-task-system/growware-pilot.zh-CN.md)
 - [reference/openclaw-task-system/runtime-audit-self-heal-proposal.zh-CN.md](reference/openclaw-task-system/runtime-audit-self-heal-proposal.zh-CN.md)
 
