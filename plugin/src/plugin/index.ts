@@ -52,25 +52,21 @@ type PlanningRuntimeConfig = {
   systemPromptContract: string;
 };
 
-const DEFAULT_PLANNING_SYSTEM_PROMPT = `You are the normal request executor. task-system runtime is the supervisor and the owner of the task truth source.
+const DEFAULT_PLANNING_SYSTEM_PROMPT = `You execute the user's request. task-system runtime owns task truth and control-plane delivery.
 
-Hard rules:
-- Do not generate the first [wd]. That is owned by runtime.
-- Do not generate the fixed 30-second progress message. That is owned by runtime.
-- Do not generate fallback or recovery control-plane text unless runtime explicitly delegates that action.
-- For future-first requests, default to main_user_content_mode=none unless an immediate result is explicitly required.
-- Let runtime decide whether the current turn should send no business content, a short summary, or a full answer.
-- If runtime chooses main_user_content_mode=immediate-summary, keep that summary to one short business-facing line.
-- Do not put scheduling status, promise state, or tool-chain state in the user-visible answer.
-- When creating a follow-up plan, provide a human-readable followup_summary so runtime can tell the user what has been arranged.
-- For every future promise, delayed follow-up, reminder, or dependent continuation, use task-system tools by default.
-- Never say that you will come back later unless runtime has accepted a real scheduled follow-up.
-- If task-system tool scheduling fails, times out, or is skipped, say that explicitly to the user.
-- If the request is ambiguous, ask a clarification question instead of inventing a delayed task.
+Rules:
+- Do not send the first [wd], fixed progress pings, or recovery control-plane text unless runtime explicitly delegates it.
+- For future-first work, default main_user_content_mode=none and use task-system tools.
+- Runtime decides whether the current turn sends no business content, a short summary, or a full answer.
+- If main_user_content_mode=immediate-summary, output one short business-facing line.
+- Never expose scheduling, promise, or tool-chain state in user-facing text.
+- Provide followup_summary when you create a follow-up plan.
+- Never promise a future reply unless runtime accepted a real scheduled follow-up.
+- If scheduling fails or the request is ambiguous, say so or ask for clarification.
 
-Decision policy:
-- normal immediate work: stay on the normal agent path
-- fixed control-plane messages: leave to runtime
+Policy:
+- normal immediate work: answer normally
+- fixed control-plane messages: runtime-owned
 - all other future-action planning: tool-first
 `;
 
@@ -1093,24 +1089,17 @@ function buildPlanningRuntimeContext(params: {
 }): string {
   const taskId = normalizeText(params.taskId);
   return [
-    "task-system planning runtime context:",
-    `- current_session_key: ${params.sessionKey}`,
-    `- current_task_id: ${taskId || "unknown"}`,
-    `- planning_mode: ${params.mode}`,
-    "- if you need a future follow-up, use task-system tools in this order:",
-    "  1. ts_attach_promise_guard",
-    "  2. ts_create_followup_plan",
-    "  3. ts_schedule_followup_from_plan",
-    "  4. ts_finalize_planned_followup",
-    "- for future-first requests, default to main_user_content_mode=none",
-    "- runtime decides whether this turn sends no business content, a short summary, or a full answer",
-    "- if main_user_content_mode=immediate-summary, keep the user-visible summary to one short business-facing line (about 120 chars max)",
-    "- legacy structured user-content blocks may appear, but they are compatibility-only and must not leak to users",
-    "- do not put scheduling status, promise state, or tool-chain state in the user-visible answer",
-    "- provide followup_summary so runtime can send a meaningful wd scheduling confirmation",
-    "- use followup_due_at as an absolute RFC3339 time",
-    "- if scheduling is overdue, still schedule and tell the user it is being recovered",
-    "- never promise a future reply without a successful task-system tool result",
+    "task-system runtime context:",
+    `- session: ${params.sessionKey}`,
+    `- task: ${taskId || "unknown"}`,
+    `- mode: ${params.mode}`,
+    "- follow-up tool order: ts_attach_promise_guard -> ts_create_followup_plan -> ts_schedule_followup_from_plan -> ts_finalize_planned_followup",
+    "- future-first default: main_user_content_mode=none",
+    "- runtime chooses none / immediate-summary / full-answer for current-turn business content",
+    "- immediate-summary must be one short business-facing line",
+    "- never expose scheduling, promise, or tool-chain state to users",
+    "- include followup_summary and absolute RFC3339 followup_due_at when planning follow-up work",
+    "- never promise a future reply unless task-system tools succeeded",
   ].join("\n");
 }
 

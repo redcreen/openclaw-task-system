@@ -19,15 +19,15 @@
 | 主线进度 | 主线已经完成到 `Milestone 3`；当前工作先切到“回复时延与上下文负载治理”专题，再决定何时恢复 activation 准备 |
 | 当前阶段 | `回复时延与上下文负载治理` |
 | 当前目标 | 把已测得的 Telegram 回复慢问题冻结成 durable repo truth，补可重复跑的 session audit，并在恢复 activation 准备前先收敛最大的上下文负担 |
-| 明确下一步动作 | `TG-1` 冻结 slowdown trigger，并增加可复用的 session latency audit 命令 |
+| 明确下一步动作 | 在 `planning prompt` 和 `wrapper` 第一轮闭环之后继续推进 `TG-2` |
 | 下一候选动作 | 在上下文预算与恢复条件显式后，恢复有界的 `feishu6-chat` activation 准备 |
 
 ## 专题治理进度
 
 | 顺序 | 任务 | 状态 |
 | --- | --- | --- |
-| 1 | TG-1 冻结 slowdown trigger，并增加 `session_latency_audit.py` 用于回合耗时与上下文负载取证 | 进行中 |
-| 2 | TG-2 给主要上下文贡献者排优先级并收敛：tool schema、system prompt、per-turn wrapper、startup transcript carryover | 已排队 |
+| 1 | TG-1 冻结 slowdown trigger，并增加 `session_latency_audit.py` 用于回合耗时与上下文负载取证 | 已完成 |
+| 2 | TG-2 给主要上下文贡献者排优先级并收敛：tool schema、system prompt、per-turn wrapper、startup transcript carryover | 进行中 |
 | 3 | TG-3 定义 activation 恢复条件，以及证明 slowdown 不再是主线 blocker 的证据包 | 已排队 |
 
 ## 当前定位
@@ -52,7 +52,7 @@ Milestone 3 现在也已经收口，因为仓库已经具备可复现 benchmark 
 
 | 下一步 | 为什么做 |
 | --- | --- |
-| `TG-1` 冻结 slowdown trigger，并增加可复用的 session latency audit 命令 | runtime 热点里程碑已经收口，但宿主真实会话仍有明显回复慢问题；现在最缺的不是继续猜，而是一条可重复跑的取证入口。 |
+| 在第一轮 prompt / wrapper 减负后继续推进 `TG-2` | audit 入口已经落地，接下来最确定、最 repo-owned 的动作是继续压 prompt/context 负担，同时不破坏 planning contract，也不掩盖 startup carryover 风险。 |
 
 ## 里程碑总览
 
@@ -183,6 +183,16 @@ Milestone 3 现在已经满足下面四条收口信号：
 - per-turn wrapper tax：短问题目前会被包装成 `~1.5k` 字符的 payload
 - startup transcript carryover：启动轮读文件结果继续压在后续业务轮次上
 - transcript growth discipline：越聊越长的历史仍在持续放大后续轮次成本
+
+### 第一轮小闭环
+
+`TG-2` 的第一轮小闭环已经落地：
+
+- 默认 planning system prompt 从 `1531` chars 缩到 `954` chars
+- 默认 planning runtime wrapper 从 `1168` chars 缩到 `696` chars
+- `plugin/tests/tool-planning-flow.test.mjs` 与 `tests/test_task_config.py` 已经加上紧凑上限，防止这条线静默反弹
+
+这一刀刻意没有先动 tool schema。它优先削掉每一轮 planning 都会支付的 repo-owned 固定成本，同时保留现有 planning contract。
 
 ### Activation 恢复条件
 

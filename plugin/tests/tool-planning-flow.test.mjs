@@ -52,11 +52,13 @@ test("before_prompt_build injects planning contract and runtime context", async 
       },
     );
 
-    assert.match(result?.appendSystemContext || "", /Do not generate the first \[wd\]\./);
-    assert.match(result?.prependContext || "", /current_task_id: task-123/);
+    assert.match(result?.appendSystemContext || "", /Do not send the first \[wd\]/);
+    assert.match(result?.prependContext || "", /task: task-123/);
     assert.match(result?.prependContext || "", /ts_create_followup_plan/);
-    assert.match(result?.prependContext || "", /runtime decides whether this turn sends no business content/);
+    assert.match(result?.prependContext || "", /runtime chooses none \/ immediate-summary \/ full-answer/);
     assert.doesNotMatch(result?.prependContext || "", /<task_user_content>/);
+    assert.ok((result?.prependContext || "").length < 800);
+    assert.ok((result?.appendSystemContext || "").length < 1200);
 
     const debugEvents = await readDebugEvents(runtimeRoot);
     const injected = debugEvents.find((entry) => entry.event === "before_prompt_build:planning-contract-injected");
@@ -96,7 +98,7 @@ test("before_prompt_build falls back to resolve-active when in-memory task bindi
       },
     );
 
-    assert.match(result?.prependContext || "", /current_task_id: task-from-truth-source/);
+    assert.match(result?.prependContext || "", /task: task-from-truth-source/);
     const commands = await readHookCommands(callsPath);
     assert.ok(commands.includes("resolve-active"));
     const debugEvents = await readDebugEvents(runtimeRoot);
@@ -1032,7 +1034,7 @@ test("new session transcript stays aligned with the plain-text mode-first contra
 
     const flattenedTranscript = JSON.stringify(transcriptEntries);
     assert.doesNotMatch(flattenedTranscript, /<task_user_content>/);
-    assert.match(flattenedTranscript, /runtime decides whether this turn sends no business content/);
+    assert.match(flattenedTranscript, /runtime chooses none \/ immediate-summary \/ full-answer/);
     assert.match(flattenedTranscript, /\[\[reply_to_current\]\] 查完了。\s*杭州现在 28°C。/);
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);

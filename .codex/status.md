@@ -14,14 +14,14 @@ Milestone 2 and Milestone 3 stay complete and should not be reopened as partial-
 
 ## Active Slice
 
-`session-latency evidence frozen + prompt-surface governance bootstrap`
+`prompt-surface governance first cut landed`
 
 ## Current Execution Line
 
 - Objective: turn the measured Telegram slowdown into durable repo truth, add repeatable session-level audits, and bound the biggest context contributors before activation prep resumes
 - Plan Link: `docs/reference/openclaw-task-system/development-plan.md#reply-latency-and-context-weight-governance`
 - Runway: keep `performance_baseline.py` green, use `session_latency_audit.py` for host-observed cases, and avoid mixing provider variance with repo-owned context bloat
-- Progress: `1/3` tasks complete
+- Progress: `TG-1 closed; TG-2 is in progress with the planning-prompt and wrapper slice complete`
 - Stop Conditions: docs disagree on the active topic, session-level evidence is not reproducible, or activation prep quietly returns without explicit resume criteria
 
 ## Execution Tasks
@@ -70,11 +70,13 @@ Milestone 2 and Milestone 3 stay complete and should not be reopened as partial-
 - the repo now has a dedicated session-level latency audit entrypoint in `scripts/runtime/session_latency_audit.py`
 - `tests/test_session_latency_audit.py` protects turn timing, static prompt summarization, and session metadata lookup
 - the repo's active mainline is now reply-latency and context-weight governance rather than immediate activation preparation
+- the first TG-2 closed loop shrank the default planning system prompt from `1531` to `954` chars and the per-turn planning wrapper from `1168` to `696` chars without changing the planning contract
+- `plugin/tests/tool-planning-flow.test.mjs` and `tests/test_task_config.py` now enforce compact prompt and wrapper ceilings so this slice cannot silently drift back
 
 ## In Progress
 
-- freezing the current Telegram slowdown into durable docs, control-surface truth, and a reusable audit command
-- ranking which context contributors are worth cutting first without weakening required safety or memory behavior
+- continuing TG-2 after the first prompt/wrapper reduction slice, with tool schema and startup carryover as the next largest repo-owned cuts
+- ranking which remaining context contributors are worth cutting next without weakening required safety or memory behavior
 - defining what evidence allows activation preparation to return as the next bounded phase
 
 ## Blockers / Open Decisions
@@ -85,8 +87,8 @@ Milestone 2 and Milestone 3 stay complete and should not be reopened as partial-
 
 ## Next 3 Actions
 
-1. Publish the governance topic and session-audit command into development-plan, reference docs, and devlog.
-2. Use the new audit output to freeze the optimization queue for tool schema surface, system prompt weight, wrappers, and startup carryover.
+1. Continue TG-2 on the remaining top contributors: tool schema surface and startup transcript carryover.
+2. Re-run `session_latency_audit.py` after each prompt-surface cut to keep attribution and governance docs current.
 3. Define the activation-resume gate so the repo knows when to leave this topic and return to bounded activation prep.
 
 ## Development Log Capture

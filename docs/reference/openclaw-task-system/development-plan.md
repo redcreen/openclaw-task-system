@@ -19,15 +19,15 @@ Use it when maintainers need one durable place to answer:
 | Mainline Progress | Mainline is complete through `Milestone 3`; the active work has moved into reply-latency and context-weight governance before activation prep resumes |
 | Current Phase | `reply-latency and context-weight governance` |
 | Current Objective | turn the measured Telegram slowdown into durable repo truth, add repeatable session-latency audits, and bound the biggest context contributors before activation prep returns |
-| Clear Next Move | `TG-1` freeze the slowdown trigger and add a reusable session-latency audit command |
+| Clear Next Move | continue `TG-2` after the first closed loop on planning prompt and wrapper weight |
 | Next Candidate Move | resume bounded `feishu6-chat` activation preparation after context budgets and resume criteria are explicit |
 
 ## Topic Governance Progress
 
 | Order | Task | Status |
 | --- | --- | --- |
-| 1 | TG-1 freeze the slowdown trigger and add `session_latency_audit.py` for turn timing and context-weight evidence | in progress |
-| 2 | TG-2 rank and reduce the top context contributors: tool schema surface, system prompt weight, per-turn wrapper, and startup transcript carryover | queued |
+| 1 | TG-1 freeze the slowdown trigger and add `session_latency_audit.py` for turn timing and context-weight evidence | complete |
+| 2 | TG-2 rank and reduce the top context contributors: tool schema surface, system prompt weight, per-turn wrapper, and startup transcript carryover | in progress |
 | 3 | TG-3 define the activation-resume criteria and the evidence package that proves the slowdown is no longer a mainline blocker | queued |
 
 ## Current Position
@@ -52,7 +52,7 @@ Milestone 3 is now also closed because the repo has a reproducible benchmark con
 
 | Next Move | Why |
 | --- | --- |
-| `TG-1` freeze the slowdown trigger and add a reusable session-latency audit command | The repo has already closed the task-runtime hotspot milestone, but host-observed sessions still show user-visible reply slowness without a durable, rerunnable audit entrypoint. |
+| continue `TG-2` after the first prompt and wrapper reduction slice | The audit is already durable. The next highest-confidence repo-owned cut is to keep shrinking prompt/context weight without weakening the planning contract or hiding startup carryover risk. |
 
 ## Milestone Overview
 
@@ -183,6 +183,16 @@ This topic has four rules:
 - per-turn wrapper tax: short user requests currently arrive as `~1.5k`-char payloads
 - startup transcript carryover: startup file reads spill into later turns and raise the cost of the first business question
 - transcript growth discipline: later turns continue paying for earlier injected material
+
+### First Closed Loop
+
+The first closed loop of `TG-2` is already in place:
+
+- the default planning system prompt was reduced from `1531` to `954` chars
+- the default planning runtime wrapper was reduced from `1168` to `696` chars
+- the compact contract is now protected in `plugin/tests/tool-planning-flow.test.mjs` and `tests/test_task_config.py`
+
+This slice intentionally avoided tool-schema surgery. It cuts repo-owned context that is paid on every planning turn while preserving the current task planning contract.
 
 ### Activation Resume Criteria
 

@@ -72,11 +72,12 @@ class TaskConfigTests(unittest.TestCase):
         planning = config.agent_config("main").planning
         self.assertTrue(planning.enabled)
         self.assertEqual(planning.mode, "tool-first-after-first-ack")
-        self.assertIn("Do not generate the first [wd].", planning.system_prompt_contract)
+        self.assertIn("Do not send the first [wd]", planning.system_prompt_contract)
         self.assertIn("main_user_content_mode=none", planning.system_prompt_contract)
         self.assertIn("followup_summary", planning.system_prompt_contract)
         self.assertIn("all other future-action planning: tool-first", planning.system_prompt_contract)
         self.assertNotIn("<task_user_content>", planning.system_prompt_contract)
+        self.assertLess(len(planning.system_prompt_contract), 1200)
 
     def test_planning_prompt_contract_can_be_overridden_by_user_config(self) -> None:
         self.write_config(

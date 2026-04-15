@@ -79,6 +79,22 @@ python3 scripts/runtime/session_latency_audit.py --session-key 'agent:main:teleg
 - 什么证据足以证明 slowdown 已经被约束住
 - 恢复有界 activation 准备时，哪些 guardrail 必须继续保持全绿
 
+## 第一轮小闭环
+
+`TG-2` 的第一轮小闭环已经完成。
+
+这一轮先打默认 planning contract，因为这部分成本由仓库拥有，而且每一轮 planning 都会重复支付：
+
+- 默认 planning system prompt：`1531` -> `954` chars
+- 默认 planning runtime wrapper：`1168` -> `696` chars
+
+这次刻意没有先动 tool schema。相比之下，planning prompt 和 wrapper 是更高确定性的减负点，可以先压掉重复成本，同时不改 capability exposure，也不掩盖 startup carryover 语义。
+
+这条紧凑 contract 现在受下面两组测试保护：
+
+- `plugin/tests/tool-planning-flow.test.mjs`
+- `tests/test_task_config.py`
+
 ## 恢复条件
 
 只有当下面几条同时成立时，activation 准备才允许回到主线：

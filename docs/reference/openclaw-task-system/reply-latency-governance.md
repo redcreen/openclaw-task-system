@@ -79,6 +79,22 @@ This means the dominant user-visible slowdown is not the repo's hot-path task li
 - what evidence proves the slowdown is bounded
 - what must stay green while returning to bounded activation preparation
 
+## First Closed Loop
+
+The first closed loop under `TG-2` is now done.
+
+It targeted the default planning contract because that cost is repo-owned and paid on every planning turn:
+
+- default planning system prompt: `1531` -> `954` chars
+- default planning runtime wrapper: `1168` -> `696` chars
+
+This slice deliberately did not start with tool-schema pruning. The planning prompt and wrapper were the highest-confidence cuts that could reduce repeated cost without changing capability exposure or startup carryover semantics.
+
+The compact contract is now guarded in:
+
+- `plugin/tests/tool-planning-flow.test.mjs`
+- `tests/test_task_config.py`
+
 ## Resume Criteria
 
 Activation preparation may return as the active mainline only after:

@@ -11,7 +11,7 @@ Milestone 2 and Milestone 3 remain closed: compiled `.policy/` is the only live 
 - Objective: turn one measured Telegram slowdown into a durable governance topic, add repeatable latency/context audits, and only resume activation prep after the highest-cost prompt paths have an explicit reduction plan
 - Plan Link: `docs/reference/openclaw-task-system/development-plan.md#reply-latency-and-context-weight-governance`
 - Runway: keep `performance_baseline.py` as the repo-local guardrail, use session-level audits for host-observed slowdown evidence, and isolate prompt/context slimming work from host-only provider variance
-- Progress: `1/3`
+- Progress: `TG-1 complete; TG-2 first closed loop landed`
 - Stop Conditions: the topic loses measured evidence, the proposed reductions change business or compatibility promises without review, or the team resumes activation prep before static / transcript cost is bounded
 - Validation: `python3 scripts/runtime/performance_baseline.py --profile-scenario hooks-cycle --profile-scenario same-session-routing-classifier --profile-scenario system-overview --profile-top 8 --enforce-budgets --json`, `python3 scripts/runtime/session_latency_audit.py --session-key 'agent:main:telegram:direct:8705812936' --json`, `python3 scripts/runtime/growware_preflight.py --json`, targeted tests for changed files, `bash scripts/run_tests.sh`, `python3 scripts/runtime/runtime_mirror.py --write`, `python3 scripts/runtime/plugin_doctor.py --json`, and `python3 scripts/runtime/plugin_smoke.py --json`
 
@@ -51,7 +51,7 @@ Milestone 2 and Milestone 3 remain closed: compiled `.policy/` is the only live 
   - Objective: rank and reduce the largest static contributors without deleting required capability blindly
   - Dependencies: system prompt report, tool schema inventory, skill exposure, and workspace bootstrap contract
   - Risks: reducing the wrong context may save tokens while breaking agent behavior or safety boundaries
-  - Validation: each proposed cut cites measured prompt weight and its expected latency impact
+  - Validation: each proposed cut cites measured prompt weight and its expected latency impact; the first closed loop already reduced the default planning prompt from `1531` to `954` chars and the per-turn runtime wrapper from `1168` to `696` chars
   - Exit Condition: the top static contributors have an explicit keep / shrink / remove decision
 
 - Slice: startup and transcript discipline
