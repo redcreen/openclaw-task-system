@@ -10,6 +10,7 @@
 
 建议先看这几份：
 
+- [roadmap.zh-CN.md](roadmap.zh-CN.md) 和 [reference/openclaw-task-system/development-plan.zh-CN.md](reference/openclaw-task-system/development-plan.zh-CN.md)：人类查看总体进展、分项进展和明确下一步动作的主入口
 - [../README.zh-CN.md](../README.zh-CN.md)：项目总览与已交付能力地图
 - [roadmap.zh-CN.md](roadmap.zh-CN.md)：正式主线与已交付边界
 - [architecture.zh-CN.md](architecture.zh-CN.md)：运行时模型与 truth-source contract
@@ -19,6 +20,7 @@
 
 | 目标 | 阅读这里 |
 | --- | --- |
+| 查看总体进展、分项进展和下一条 live activation 动作 | 先看 [roadmap.zh-CN.md](roadmap.zh-CN.md)，再看 [reference/openclaw-task-system/development-plan.zh-CN.md](reference/openclaw-task-system/development-plan.zh-CN.md) |
 | 先理解项目今天到底交付了什么 | [../README.zh-CN.md](../README.zh-CN.md) |
 | 理解运行时分层与 contract | [architecture.zh-CN.md](architecture.zh-CN.md) |
 | 区分主线完成项与扩展方向 | [roadmap.zh-CN.md](roadmap.zh-CN.md) |

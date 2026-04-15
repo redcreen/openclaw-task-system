@@ -10,6 +10,7 @@ Use the canonical stack below first. Everything else in `docs/` should either de
 
 Start with these documents:
 
+- [roadmap.md](roadmap.md) and [reference/openclaw-task-system/development-plan.md](reference/openclaw-task-system/development-plan.md): human planning entry for overall progress, sub-item progress, and the clear next action
 - [../README.md](../README.md): project overview and shipped capability map
 - [roadmap.md](roadmap.md): main delivery line and shipped boundaries
 - [architecture.md](architecture.md): runtime model and truth-source contracts
@@ -19,6 +20,7 @@ Start with these documents:
 
 | Goal | Read This |
 | --- | --- |
+| Check overall progress, sub-item progress, and the next live activation action | [roadmap.md](roadmap.md) then [reference/openclaw-task-system/development-plan.md](reference/openclaw-task-system/development-plan.md) |
 | Understand what the project ships today | [../README.md](../README.md) |
 | Understand runtime layers and contracts | [architecture.md](architecture.md) |
 | See what is complete vs extension work | [roadmap.md](roadmap.md) |

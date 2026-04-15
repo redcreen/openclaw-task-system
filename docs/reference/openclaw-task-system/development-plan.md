@@ -4,13 +4,31 @@
 
 ## Purpose
 
-This plan bridges the roadmap and `.codex/plan.md`.
+This plan is the human-facing execution layer under the roadmap.
 
 Use it when maintainers need one durable place to answer:
 
 - what the last completed milestone closed
 - why the current active phase is this line
 - what still must be true before the next live activation step begins
+
+## Overall Progress
+
+| Item | Current Value |
+| --- | --- |
+| Mainline Progress | Mainline is complete through `Milestone 3`; the active work has moved into bounded activation preparation |
+| Current Phase | `post-performance live pilot activation preparation` |
+| Current Objective | reopen live pilot activation preparation on top of the closed performance baseline instead of leaving Milestone 3 as an open-ended tuning bucket |
+| Clear Next Move | `AP-1` define activation rehearsal entry criteria and the required operator evidence package |
+| Next Candidate Move | run one bounded `feishu6-chat` live activation rehearsal after entry criteria, install-sync intent, and rollback boundaries are explicit |
+
+## Activation Preparation Task Progress
+
+| Order | Task | Status |
+| --- | --- | --- |
+| 1 | AP-1 define activation rehearsal entry criteria and the required operator evidence package on top of the closed benchmark baseline | next |
+| 2 | AP-2 decide whether the installed-runtime drift should be cleared with an explicit `growware_local_deploy.py --json` before the first bounded rehearsal | queued |
+| 3 | AP-3 define the first live activation checkpoint, rollback boundary, and the carry-forward rule for newly observed measured regressions | queued |
 
 ## Current Position
 
@@ -24,11 +42,17 @@ The repo has completed:
 
 The active project-level phase is now:
 
-- `Milestone 3: system performance testing and optimization`
+- `post-performance live pilot activation preparation`
 
 Milestone 2 is closed because the Growware pilot control surface, policy compilation layer, validation entrypoints, binding preview, and read-only host-audit bootstrap are now durable repo truth, and legacy `.growware/policies/*.json` is retired from live runtime / preflight dependency.
 
-Milestone 3 should not reopen foundation semantics. Its job is to establish reproducible, attributable, regression-safe performance baselines before live activation, operator ergonomics, or self-heal discussions expand further.
+Milestone 3 is now also closed because the repo has a reproducible benchmark contract, reviewed hotspot attribution, measured optimizations, and regression gates for the improved paths.
+
+## Current Next Step
+
+| Next Move | Why |
+| --- | --- |
+| `AP-1` define activation rehearsal entry criteria and the required operator evidence package | The repo has already closed the performance milestone; the next failure mode is entering rehearsal without explicit entry criteria and evidence expectations. |
 
 ## Milestone Overview
 
@@ -36,7 +60,7 @@ Milestone 3 should not reopen foundation semantics. Its job is to establish repr
 | --- | --- | --- | --- | --- |
 | Milestone 1: post-hardening closeout | complete | close the remaining compound / future-first boundary work, deepen release-facing evidence, and leave the repo in a clean post-hardening state | `bash scripts/run_tests.sh`, `python3 scripts/runtime/release_gate.py --json`, planning / channel / main-ops acceptance helpers, docs consistency checks | boundary docs, acceptance depth, and operator / release-facing closeout are converged without reopening architecture debt |
 | Milestone 2: Growware Project 1 pilot foundation | complete | turn Growware `Project 1` from a candidate into a durable repo-owned baseline with project-local policy truth, activation gates, and host-audit bootstrap | Growware policy sync / preflight / binding preview, targeted Growware tests, `bash scripts/run_tests.sh`, runtime mirror, doctor / smoke, and docs alignment | compiled `.policy` is the only live runtime input, activation safety is documented and green, and host-audit scope is explicitly bounded |
-| Milestone 3: system performance testing and optimization | active | establish reproducible performance baselines first, then optimize the measured hotspots | current runtime safety validation stack, performance entrypoints, baseline sample data, and benchmark / profile artifacts | benchmark and profile baselines exist, hotspots are attributed, optimizations are verified, and regression gates protect the improved paths |
+| Milestone 3: system performance testing and optimization | complete | establish reproducible performance baselines first, then optimize the measured hotspots | current runtime safety validation stack, performance entrypoints, baseline sample data, and benchmark / profile artifacts | benchmark and profile baselines exist, hotspots are attributed, optimizations are verified, and regression gates protect the improved paths |
 
 ## Milestone 2: Growware Project 1 Pilot Foundation
 
@@ -80,56 +104,77 @@ Milestone 2 is complete because all four closeout signals are now true:
 
 ## Milestone 3: System Performance Testing And Optimization
 
-### Active Rules
+### 1. Benchmark Contract
 
-This active phase has three rules:
+Completed:
 
-1. measure first and optimize second; no intuition-driven tuning without a baseline
-2. standardize sample data and command entrypoints before debating hotspots
-3. do not break the runtime truth, activation boundary, or validation stack that Milestone 2 just closed
+- `scripts/runtime/performance_baseline.py` now defines one reproducible repo-local benchmark / profile contract for runtime, same-session routing, control-plane projection, and operator entrypoints
+- `docs/reference/openclaw-task-system/performance-baseline*.md` fix the reviewed fixtures, budgets, commands, and profile vocabulary in durable repo truth
+- the first benchmark surface stays repo-local by design, so host-install drift is visible but not mixed into the baseline itself
+
+### 2. Measured Hotspot Reductions
+
+Completed:
+
+- `task_status.py` moved the reviewed `system-overview` fixture from roughly `484ms` median to about `18ms`
+- `task_state.py`, `openclaw_bridge.py`, and `main_task_adapter.py` collapsed repeated registration rescans to one inflight snapshot / shared store on the hot path
+- `openclaw_hooks.py` now runs the repo-owned Growware same-session classifier in-process, moving the reviewed classifier path from about `90.0957ms` median / `132.2014ms` p95 to about `24.9839ms` / `38.5312ms`
+
+### 3. Regression Protection And Validation
+
+Completed:
+
+- `tests/test_task_status.py`, `tests/test_task_state.py`, `tests/test_openclaw_bridge.py`, `tests/test_main_task_adapter.py`, `tests/test_openclaw_hooks.py`, and `tests/test_performance_baseline.py` now protect the measured paths structurally
+- the reviewed repo-local validation baseline has been rerun across benchmark, preflight, binding preview, runtime mirror, the full testsuite, doctor, and smoke
+- installed-runtime drift remains visible in `plugin_doctor.py` instead of being hidden inside a repo-local performance milestone
+
+### 4. Closeout Result
+
+Milestone 3 is complete because all four closeout signals are now true:
+
+1. a reproducible benchmark / profile contract exists in durable repo truth
+2. the main hotspots are attributed with reviewed before / after evidence
+3. the improved paths are protected by benchmark budgets and structural regression checks
+4. the repo kept runtime truth, activation boundaries, and the existing validation stack green while landing the measured cuts
+
+## Post-Performance Live Pilot Activation Preparation
+
+### Entry Rules
+
+This next active phase has three rules:
+
+1. keep `performance_baseline.py` as an ongoing guardrail; do not reopen broad tuning without a measured regression
+2. decide explicitly whether installed-runtime drift should be cleared through a deliberate local deploy before the first bounded rehearsal
+3. keep activation rehearsal scoped to approved `feishu6-chat` evidence capture, rollback boundaries, and current runtime truth
 
 ### Immediate Execution Line
 
-The current line breaks into four steps:
+The next line breaks into three steps:
 
-1. define the benchmark surface and budgets
-   - cover runtime register / resolve-active / progress / finalize
-   - cover same-session routing and classifier invocation
-   - cover control-plane enqueue / delivery / queue projection
-   - cover operator entrypoints such as `main_ops.py`, `plugin_doctor.py`, `plugin_smoke.py`, and `growware_preflight.py`
+1. define activation entry criteria and the operator evidence package
+   - decide which repo-local and host-visible signals must be captured before or during rehearsal
+   - keep the activation story tied to the reviewed benchmark and validation baseline
 
-2. build reproducible measurement entrypoints
-   - fix sample data, environment assumptions, and command entrypoints
-   - avoid baselines that depend on accidental host state
+2. decide the install-sync path
+   - determine whether the current installed-runtime drift should be cleared before the first rehearsal
+   - keep any `growware_local_deploy.py --json` use explicit instead of implying it from repo-only work
 
-3. capture the first baseline and attribute hotspots
-   - produce benchmark / profile output
-   - rank the main hotspots by impact and scope
+3. stage the first bounded rehearsal
+   - define rollback criteria, evidence capture, and the rule for when a newly observed slowdown re-enters the performance line
 
-4. land the first evidence-backed optimization and regression gate
-   - every optimization must include before / after comparison
-   - at least the critical paths should enter a scripted regression check
+### Recommended Entry Criteria
 
-### Recommended Scope
-
-- runtime register / resolve-active / progress / finalize paths
-- same-session routing and classifier invocation paths
-- control-plane enqueue / delivery / queue projection
-- task store, SQLite, file scans, and log-read hotspots
-- operator entrypoints such as `main_ops.py`, `plugin_doctor.py`, `plugin_smoke.py`, and `growware_preflight.py`
-
-### Recommended Exit Condition
-
-- at least one reproducible benchmark / profile baseline exists
-- the main hotspots are attributed instead of only observing “it feels slow”
-- every optimization has before / after evidence
-- performance regression checks are wired into a scripted gate or stable validation entrypoint
+- the reviewed repo-local performance baseline stays green
+- the Milestone 2 runtime-safety validation stack remains green
+- activation evidence, rollback boundaries, and install-sync intent are recorded before any live rehearsal
+- carry-forward performance hotspots stay backlog candidates unless activation evidence turns them into a measured blocker
 
 ## Validation Stack
 
-Keep the Milestone 2 runtime-safety baseline green while opening Milestone 3:
+Keep the repo-local performance baseline and the Growware runtime-safety baseline green while entering activation preparation:
 
 ```bash
+python3 scripts/runtime/performance_baseline.py --profile-scenario hooks-cycle --profile-scenario same-session-routing-classifier --profile-scenario system-overview --profile-top 8 --enforce-budgets --json
 python3 scripts/runtime/growware_policy_sync.py --write --json
 python3 scripts/runtime/growware_preflight.py --json
 python3 scripts/runtime/growware_openclaw_binding.py --json
@@ -140,4 +185,4 @@ python3 scripts/runtime/plugin_doctor.py --json
 python3 scripts/runtime/plugin_smoke.py --json
 ```
 
-Use `python3 scripts/runtime/growware_local_deploy.py --json` only when the current change is meant to be locally deployed into OpenClaw, not for repo-only performance-baseline work.
+Use `python3 scripts/runtime/growware_local_deploy.py --json` only when the current change is deliberately meant to refresh the installed OpenClaw runtime before rehearsal.

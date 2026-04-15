@@ -9,7 +9,20 @@
 当前里程碑状态已经切换为：
 
 - `Milestone 2：Growware Project 1 pilot foundation` 已完成
-- `Milestone 3：系统性能测试与优化` 已激活
+- `Milestone 3：系统性能测试与优化` 已完成
+- `性能基线收口后的 live pilot activation 准备` 已激活
+
+## 总体进展
+
+| 项目 | 当前值 |
+| --- | --- |
+| 主线进度 | 主线已经完成到 `Milestone 3`；仓库当前进入有界 activation 准备，而不是继续无限期做性能调优 |
+| 当前阶段 | `性能基线收口后的 live pilot activation 准备` |
+| 当前目标 | 在已收口的性能基线上重新打开 live pilot activation 准备，而不是让 Milestone 3 继续停留在 open-ended tuning bucket |
+| 明确下一步动作 | `AP-1` 定义 activation rehearsal 入口条件与必须采集的 operator evidence 包 |
+| 下一候选动作 | 在入口条件、install-sync 意图和 rollback 边界都显式后，运行一轮有界的 `feishu6-chat` live activation rehearsal |
+
+查看详细执行计划：[reference/openclaw-task-system/development-plan.zh-CN.md](reference/openclaw-task-system/development-plan.zh-CN.md)
 
 已完成的主线里程碑：
 
@@ -22,6 +35,7 @@
 - Phase 6 最小闭环：supervisor-first planning runtime
 - Milestone 1：post-hardening 收口
 - Milestone 2：Growware Project 1 pilot foundation
+- Milestone 3：系统性能测试与优化
 
 ## 主线产出
 
@@ -46,12 +60,22 @@ Milestone 2 已经正式收口，当前结论是：
 - `openclaw_runtime_audit.py` 保持在只读宿主侧体检 bootstrap 边界内，没有被升级成 repair 或 rollout gate
 - reviewed activation baseline 已经在编译后的 `.policy/` 路径上复核通过
 
+## Milestone 3 收口结果
+
+Milestone 3 已经正式收口，当前结论是：
+
+- `scripts/runtime/performance_baseline.py` 已经把 runtime、control-plane 和 operator surface 收敛成可复现的 repo-local benchmark / profile 合同
+- `docs/reference/openclaw-task-system/performance-baseline*.md` 已经固定 fixtures、预算、热点归因和优化证据，不再让性能工作散落在临时命令输出里
+- reviewed 热点优化已经沉淀成仓库真相：`system-overview` 从约 `484ms` median 降到约 `18ms`，注册路径重扫被压到单次 inflight snapshot，repo 自带 same-session classifier 从约 `90ms` / `132ms` 收到约 `25ms` / `39ms`
+- 结构性回归测试和 benchmark budget 已经保护这些改进路径，而且没有重新打开 runtime truth 或控制面漂移
+- `plugin_doctor.py` 里的 installed-runtime drift 仍然保持可见，但它被留在 activation 准备阶段单独决策，而不是被混进 repo-local 性能里程碑里当隐形 blocker
+
 ## 当前 / 下一步 / 更后面
 
 | 时间层级 | 重点 | 退出信号 |
 | --- | --- | --- |
-| 当前 | 执行 `Milestone 3：系统性能测试与优化`，先建立可复现 benchmark / profile 基线 | 关键 runtime、control-plane 与 operator 入口都有统一测量入口、样本和预算，优化工作不再依赖感觉 |
-| 下一步 | 在性能基线稳定后，恢复 `feishu6-chat` 的 live pilot activation 准备线 | 激活 rehearsal 建立在已测量、已归因、已设回归门禁的基础上，而不是在未测量状态继续扩线 |
+| 当前 | 执行 `性能基线收口后的 live pilot activation 准备` | 在任何有界 rehearsal 之前，把激活入口条件、operator evidence 预期和 install-sync 决策写成显式真相 |
+| 下一步 | 运行有界的 `feishu6-chat` live activation rehearsal | rehearsal evidence 建立在 repo-local 验证全绿和明确 rollback 边界之上 |
 | 更后面 | 再考虑保守 self-heal、更强 planning / steering 与更高保真的 real-channel evidence | 新工作不会重新打开 policy ownership drift，也不会绕过 runtime truth 和审批边界 |
 
 ## 里程碑
@@ -64,11 +88,11 @@ Milestone 2 已经正式收口，当前结论是：
 | Phase 6 最小闭环 | 已完成 | 固定 planning acceptance、future-first output 与 same-session routing 的最小发货闭环 | planning acceptance 工具链 | 自动化与半真实 acceptance 持续全绿 |
 | Milestone 1：post-hardening 收口 | 已完成 | 收掉剩余 compound / future-first 边界、补 release-facing evidence，并完成 operator-facing 收尾 | 主线稳定与 release-facing 验证入口 | 边界文档、acceptance 深度与 operator / release-facing 收尾已经收敛，且没有重新打开架构债务 |
 | Milestone 2：Growware Project 1 pilot foundation | 已完成 | 把 Growware `Project 1` 从未来候选变成仓库内可维护的正式基线，收敛项目本地 policy 真相、激活 gate 与 host-audit bootstrap | `.growware/`、`docs/policy/`、`.policy/`、Growware runtime scripts、binding preview、session hygiene 与验证入口 | 编译后的 `.policy` 成为唯一 live runtime input，激活安全边界文档化且全绿，host-audit bootstrap 也有明确边界 |
-| Milestone 3：系统性能测试与优化 | 进行中 | 为 runtime、control-plane 与 operator 入口建立可复现性能基线，识别热点并做有证据的优化 | Milestone 2 收口、稳定的基线命令、可复现样本数据和性能测量入口 | 已经有 benchmark / profile 基线、主要热点归因、优化结果与回归门禁，且没有破坏 runtime truth 与控制面边界 |
+| Milestone 3：系统性能测试与优化 | 已完成 | 为 runtime、control-plane 与 operator 入口建立可复现性能基线，识别热点并做有证据的优化 | Milestone 2 收口、稳定的基线命令、可复现样本数据和性能测量入口 | 已经有 benchmark / profile 基线、主要热点归因、优化结果与回归门禁，且没有破坏 runtime truth 与控制面边界 |
 
 ## 后续候选方向
 
-Milestone 3 之后的潜在候选包括：
+当前 activation 准备线之后的潜在候选包括：
 
 - Growware pilot 的真实激活，以及围绕 `feishu6-chat` 的端到端证据捕获
 - 基于 `openclaw_runtime_audit.py` 的保守 repair planning / self-heal
