@@ -51,6 +51,22 @@ _PLAIN_CONTROL_COMMANDS = {
     "停止",
 }
 
+_STATUS_PROBE_SIGNALS = (
+    "done yet",
+    "fixed yet",
+    "any progress",
+    "how's it going",
+    "都急了么",
+    "都急了吗",
+    "解决了么",
+    "解决了吗",
+    "好了吗",
+    "进展呢",
+    "有进展吗",
+    "处理完了吗",
+    "弄完了吗",
+)
+
 _COLLECT_MORE_SIGNALS = (
     "don't start yet",
     "do not start yet",
@@ -95,6 +111,25 @@ _REFINEMENT_SIGNALS = (
     "补充",
     "增加",
     "更",
+)
+
+_EXPLICIT_SAME_TASK_FOLLOWUP_SIGNALS = (
+    "record it",
+    "log it",
+    "save it",
+    "need to record",
+    "需要记录",
+    "要记录",
+    "直接记录",
+    "记一下",
+    "记上",
+    "补全",
+    "补记",
+    "写进去",
+    "写入记录",
+    "入档",
+    "按今天记录",
+    "继续记录",
 )
 
 _TASK_VERBS = (
@@ -225,9 +260,22 @@ def _is_collect_more_request(text: str) -> bool:
     return any(signal in normalized for signal in _COLLECT_MORE_SIGNALS)
 
 
+def _looks_like_status_probe(text: str) -> bool:
+    normalized = _normalized(text)
+    compact = normalized.replace(" ", "")
+    if not compact or len(compact) > 24:
+        return False
+    return any(signal in normalized for signal in _STATUS_PROBE_SIGNALS)
+
+
 def _looks_like_refinement(text: str) -> bool:
     normalized = _normalized(text)
     return any(signal in normalized for signal in _REFINEMENT_SIGNALS)
+
+
+def _looks_like_explicit_same_task_followup(text: str) -> bool:
+    normalized = _normalized(text)
+    return any(signal in normalized for signal in _EXPLICIT_SAME_TASK_FOLLOWUP_SIGNALS)
 
 
 def _looks_like_task_request(text: str) -> bool:
@@ -415,6 +463,12 @@ def build_same_session_routing_decision(
         execution_decision = DECISION_HANDLE_AS_CONTROL_PLANE
         reason_code = "same-session-control-plane-rule"
         reason_text = "A deterministic same-session control-plane rule matched this short management instruction."
+    elif same_session_followup and _looks_like_status_probe(user_request):
+        routing_status = ROUTING_STATUS_DECIDED
+        classification = CLASSIFICATION_CONTROL_PLANE
+        execution_decision = DECISION_HANDLE_AS_CONTROL_PLANE
+        reason_code = "same-session-status-probe-rule"
+        reason_text = "A deterministic same-session status-probe rule matched this short follow-up, so runtime keeps it on the control-plane path."
     elif collecting_state and classification_reason != "control-command":
         routing_status = ROUTING_STATUS_DECIDED
         classification = CLASSIFICATION_COLLECT_MORE
@@ -449,6 +503,14 @@ def build_same_session_routing_decision(
         execution_decision = DECISION_QUEUE_AS_NEW_TASK
         reason_code = "same-session-obvious-independent-request"
         reason_text = "A deterministic rule matched an obvious independent follow-up request, so runtime keeps it as a separate queued task."
+    elif active_summary and _looks_like_explicit_same_task_followup(user_request):
+        classification = CLASSIFICATION_STEERING
+        execution_decision, reason_code, reason_text = _execution_decision_for_steering(existing_task_for_trace)
+        if execution_decision is not None:
+            routing_status = ROUTING_STATUS_DECIDED
+            reason_code = "same-session-explicit-followup-rule"
+            reason_text = "A deterministic same-session follow-up rule matched an explicit request to keep pushing the current task forward."
+            decision_source = "rule"
     elif classification_reason == "resume-blocked-task":
         reason_code = "phase2-resume-existing-task-recorded"
         reason_text = (

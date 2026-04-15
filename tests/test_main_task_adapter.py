@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from runtime_loader import load_runtime_module, task_state_module
 
@@ -73,6 +74,32 @@ class MainTaskAdapterTests(unittest.TestCase):
         task = main_task_adapter.register_main_task(context, paths=self.paths)
         self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
         self.assertEqual(task.agent_id, "main")
+
+    def test_update_paths_reuse_provided_store(self) -> None:
+        store = task_state_module.TaskStore(paths=self.paths)
+        task = main_task_adapter.register_main_task(
+            self.build_context("帮我整理配置并验证一下", estimated_steps=3),
+            paths=self.paths,
+            store=store,
+        )
+
+        with patch.object(main_task_adapter, "TaskStore", side_effect=AssertionError("unexpected store construction")):
+            updated = main_task_adapter.sync_main_progress(
+                task.task_id,
+                progress_note="checked files",
+                paths=self.paths,
+                store=store,
+            )
+            finished = main_task_adapter.finish_main_task(
+                task.task_id,
+                result_summary="done",
+                paths=self.paths,
+                store=store,
+            )
+
+        self.assertEqual(updated.meta["last_progress_note"], "checked files")
+        self.assertEqual(finished.status, task_state_module.STATUS_DONE)
+        self.assertEqual(finished.meta["result_summary"], "done")
 
     def test_second_task_is_queued_until_first_finishes(self) -> None:
         first = main_task_adapter.register_main_task(

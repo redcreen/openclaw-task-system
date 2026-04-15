@@ -16,19 +16,19 @@ Use it when maintainers need one durable place to answer:
 
 | Item | Current Value |
 | --- | --- |
-| Mainline Progress | Mainline is complete through `Milestone 3`; the active work has moved into bounded activation preparation |
-| Current Phase | `post-performance live pilot activation preparation` |
-| Current Objective | reopen live pilot activation preparation on top of the closed performance baseline instead of leaving Milestone 3 as an open-ended tuning bucket |
-| Clear Next Move | `AP-1` define activation rehearsal entry criteria and the required operator evidence package |
-| Next Candidate Move | run one bounded `feishu6-chat` live activation rehearsal after entry criteria, install-sync intent, and rollback boundaries are explicit |
+| Mainline Progress | Mainline is complete through `Milestone 3`; the active work has moved into reply-latency and context-weight governance before activation prep resumes |
+| Current Phase | `reply-latency and context-weight governance` |
+| Current Objective | turn the measured Telegram slowdown into durable repo truth, add repeatable session-latency audits, and bound the biggest context contributors before activation prep returns |
+| Clear Next Move | `TG-1` freeze the slowdown trigger and add a reusable session-latency audit command |
+| Next Candidate Move | resume bounded `feishu6-chat` activation preparation after context budgets and resume criteria are explicit |
 
-## Activation Preparation Task Progress
+## Topic Governance Progress
 
 | Order | Task | Status |
 | --- | --- | --- |
-| 1 | AP-1 define activation rehearsal entry criteria and the required operator evidence package on top of the closed benchmark baseline | next |
-| 2 | AP-2 decide whether the installed-runtime drift should be cleared with an explicit `growware_local_deploy.py --json` before the first bounded rehearsal | queued |
-| 3 | AP-3 define the first live activation checkpoint, rollback boundary, and the carry-forward rule for newly observed measured regressions | queued |
+| 1 | TG-1 freeze the slowdown trigger and add `session_latency_audit.py` for turn timing and context-weight evidence | in progress |
+| 2 | TG-2 rank and reduce the top context contributors: tool schema surface, system prompt weight, per-turn wrapper, and startup transcript carryover | queued |
+| 3 | TG-3 define the activation-resume criteria and the evidence package that proves the slowdown is no longer a mainline blocker | queued |
 
 ## Current Position
 
@@ -42,7 +42,7 @@ The repo has completed:
 
 The active project-level phase is now:
 
-- `post-performance live pilot activation preparation`
+- `reply-latency and context-weight governance`
 
 Milestone 2 is closed because the Growware pilot control surface, policy compilation layer, validation entrypoints, binding preview, and read-only host-audit bootstrap are now durable repo truth, and legacy `.growware/policies/*.json` is retired from live runtime / preflight dependency.
 
@@ -52,7 +52,7 @@ Milestone 3 is now also closed because the repo has a reproducible benchmark con
 
 | Next Move | Why |
 | --- | --- |
-| `AP-1` define activation rehearsal entry criteria and the required operator evidence package | The repo has already closed the performance milestone; the next failure mode is entering rehearsal without explicit entry criteria and evidence expectations. |
+| `TG-1` freeze the slowdown trigger and add a reusable session-latency audit command | The repo has already closed the task-runtime hotspot milestone, but host-observed sessions still show user-visible reply slowness without a durable, rerunnable audit entrypoint. |
 
 ## Milestone Overview
 
@@ -137,11 +137,69 @@ Milestone 3 is complete because all four closeout signals are now true:
 3. the improved paths are protected by benchmark budgets and structural regression checks
 4. the repo kept runtime truth, activation boundaries, and the existing validation stack green while landing the measured cuts
 
-## Post-Performance Live Pilot Activation Preparation
+## Reply-Latency And Context-Weight Governance
+
+### Trigger Evidence
+
+This topic exists because a real Telegram session after `2026-04-15 23:44` showed user-visible reply latency even though the repo-local performance baseline remained green.
+
+The measured trigger is:
+
+- turn durations of roughly `16s-50s`
+- dominant latency share in LLM segments rather than task-system hook time
+- static context of about `140,465 chars`
+- user payload wrappers of about `1.5k chars` per turn
+- startup and transcript growth that keep adding cost to later turns
+
+### Immediate Execution Line
+
+The governance topic breaks into three steps:
+
+1. freeze the evidence
+   - add one reusable command that audits a real session's turn timing, LLM/tool shares, transcript growth, and static prompt composition
+   - stop relying on manual one-off log dissection
+
+2. rank the largest context contributors
+   - separate tool schema surface, system prompt weight, workspace bootstrap, per-turn wrappers, and transcript carryover
+   - decide which contributors must stay, which can shrink, and which should move out of later turns
+
+3. define the activation resume gate
+   - record what evidence proves the user-visible slowdown is no longer a mainline blocker
+   - only then return to bounded activation preparation
+
+### Governance Rules
+
+This topic has four rules:
+
+1. keep `performance_baseline.py` green; repo-local hotspot work stays closed unless a measured regression reopens it
+2. use `session_latency_audit.py` for host-observed session slowdowns instead of arguing from anecdotes
+3. do not cut prompt/context blindly; every reduction must cite what cost it removes and what behavior risk it introduces
+4. do not resume activation prep until reply-latency evidence, resume criteria, and rollback expectations are explicit
+
+### First Optimization Queue
+
+- tool schema surface: currently the largest static contributor in the measured Telegram session
+- system prompt weight: the second-largest static contributor and the biggest repo-owned non-tool block
+- per-turn wrapper tax: short user requests currently arrive as `~1.5k`-char payloads
+- startup transcript carryover: startup file reads spill into later turns and raise the cost of the first business question
+- transcript growth discipline: later turns continue paying for earlier injected material
+
+### Activation Resume Criteria
+
+Activation preparation may return as the mainline only after all of the following are true:
+
+- the slowdown trigger can be rerun through a reviewed audit command
+- the top prompt/context contributors have explicit keep / shrink / remove decisions
+- the chosen cuts keep runtime safety and required agent capability intact
+- the repo records what evidence is sufficient to treat reply latency as bounded rather than open-ended
+
+## Bounded Live Pilot Activation Preparation
 
 ### Entry Rules
 
-This next active phase has three rules:
+This next phase is no longer active. It returns only after the governance topic closes its trigger conditions.
+
+When it resumes, it must still obey three rules:
 
 1. keep `performance_baseline.py` as an ongoing guardrail; do not reopen broad tuning without a measured regression
 2. decide explicitly whether installed-runtime drift should be cleared through a deliberate local deploy before the first bounded rehearsal
@@ -171,14 +229,15 @@ The next line breaks into three steps:
 
 ## Validation Stack
 
-Keep the repo-local performance baseline and the Growware runtime-safety baseline green while entering activation preparation:
+Keep the repo-local performance baseline and the Growware runtime-safety baseline green while running the governance topic and later entering activation preparation:
 
 ```bash
 python3 scripts/runtime/performance_baseline.py --profile-scenario hooks-cycle --profile-scenario same-session-routing-classifier --profile-scenario system-overview --profile-top 8 --enforce-budgets --json
+python3 scripts/runtime/session_latency_audit.py --session-key 'agent:main:telegram:direct:8705812936' --json
 python3 scripts/runtime/growware_policy_sync.py --write --json
 python3 scripts/runtime/growware_preflight.py --json
 python3 scripts/runtime/growware_openclaw_binding.py --json
-python3 -m unittest tests.test_growware_feedback_classifier tests.test_growware_policy_sync tests.test_growware_preflight tests.test_growware_project tests.test_openclaw_runtime_audit -v
+python3 -m unittest tests.test_growware_feedback_classifier tests.test_growware_policy_sync tests.test_growware_preflight tests.test_growware_project tests.test_openclaw_runtime_audit tests.test_session_latency_audit -v
 bash scripts/run_tests.sh
 python3 scripts/runtime/runtime_mirror.py --write
 python3 scripts/runtime/plugin_doctor.py --json

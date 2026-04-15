@@ -6,7 +6,7 @@
 
 - 项目名：`openclaw-task-system`
 - 工作区路径：`/Users/redcreen/Project/openclaw-task-system`
-- 当前阶段：`Milestone 3: system performance testing and optimization`
+- 当前阶段：`post-performance live pilot activation preparation`
 
 如果当前线程上下文和上面的项目信息不一致，优先以上面的工作区路径为准。
 
@@ -18,18 +18,17 @@
 
 ## 当前连续性
 
-- 当前 checkpoint：`define the benchmark surface, standardize measurement entrypoints, and capture the first baseline before any optimization`
-- 下一动作：`Start with PL-1: define the first benchmark surface, sample fixtures, and budget draft.`
+- 当前 checkpoint：`define activation entry criteria, decide install-sync intent, and stage the first bounded rehearsal without reopening broad tuning`
+- 下一动作：`Start with AP-1: define the activation entry criteria and operator evidence package.`
 - 下一动作来源：`status.next-3`
 
 收到这些恢复材料后，默认直接从“下一动作”切入，而不是重新开始一轮 resume 问答。
 
 ## 剩余执行任务
 
-- `PL-1`: define the benchmark surface and budgets
-- `PL-2`: standardize reproducible measurement entrypoints
-- `PL-3`: capture the first baseline and attribute hotspots
-- `PL-4`: land the first evidence-backed optimization and regression gate
+- `AP-1`: define the activation entry criteria and operator evidence package
+- `AP-2`: decide whether installed-runtime drift must be cleared before rehearsal
+- `AP-3`: define the first bounded rehearsal checkpoint, rollback boundary, and regression re-entry rule
 
 除非我明确说 `做完手上工作停止`，否则默认持续推进，不要停在“等下一句指令”。
 

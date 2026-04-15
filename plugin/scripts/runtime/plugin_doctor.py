@@ -112,6 +112,14 @@ def build_openclaw_plugin_entry() -> dict[str, object]:
         "pythonBin": detect_python_bin(),
         "defaultAgentId": "main",
         "taskMessagePrefix": "[wd] ",
+        "hostDeliveryPollMs": 10000,
+        "warmOutboundAdaptersOnStart": False,
+        "continuationPollMs": 10000,
+        "watchdogRecoveryPollMs": 60000,
+        "watchdogMaxResumesPerCycle": 1,
+        "debugLogMaxBytes": 8388608,
+        "debugLogMaxFiles": 4,
+        "debugVerbosePolling": False,
     }
 
 

@@ -1,9 +1,9 @@
 # PTL Supervision
 
 ## Current PTL Direction
-- Direction: `Milestone 3: system performance testing and optimization`
+- Direction: `post-performance live pilot activation preparation`
 - Status: `active`
-- Why Now: Growware foundation 已经完成，PTL 现在需要围绕 benchmark surface、baseline 证据和优化边界持续巡检
+- Why Now: Growware foundation 和性能里程碑都已完成，PTL 现在需要围绕 activation 入口条件、install-sync 决策和 rehearsal 边界持续巡检
 
 ## PTL Supervision Contract
 
@@ -19,7 +19,7 @@
 | --- | --- | --- | --- |
 | 周期巡检 | 到达下一次 checkpoint 节点 | 读取 strategy / program-board / delivery-supervision / status | 确认继续还是重排 |
 | worker 停下 | 当前 worker 正常结束、超时、失败或显式交接 | 接管剩余工作判断 | 决定继续 / 回流 / 升级 |
-| 验证变化 | gate、tests、benchmark baseline 或回归检查变化 | 重新判断升级边界 | 决定是否继续当前线 |
+| 验证变化 | gate、tests、benchmark baseline、install drift 或 rehearsal 条件变化 | 重新判断升级边界 | 决定是否继续当前线 |
 | 计划变化 | active slice 完成、主线切换或 supporting backlog 回流 | 重读 program board | 决定下一条线 |
 | 用户裁决 | 人类修改业务方向、优先级或重大取舍 | 更新监督基线 | 重新生成下一轮监督判断 |
 
@@ -38,7 +38,7 @@
 | 当前方向内、验证通过、无新 blocker | 继续 | 自动继续当前线 | 保持节奏不因人工缺席而中断 |
 | 黄色信号但仍在既定方向内 | 提醒后继续 | 记录风险并继续到下个 checkpoint | 保持可见性而不把项目停住 |
 | active slice 完成或优先级变化 | 重排 | 切换 program-board 顺序并刷新当前执行线 | 让主线和 supporting backlog 保持同一套调度真相 |
-| 出现业务方向 / 兼容性 / 成本边界变化 | 升级 | 停止自动继续并通知人类裁决 | 防止 PTL 越权 |
+| 出现真实 deploy、live rehearsal、业务方向 / 兼容性 / 成本边界变化 | 升级 | 停止自动继续并通知人类裁决 | 防止 PTL 越权 |
 
 ## Active Supervision Checks
 
@@ -47,9 +47,9 @@
 | 监督输入完整 | green | strategy / program-board / delivery-supervision / plan / status 都存在 |
 | 继续边界清楚 | green | 何时继续 / 提醒 / 升级已有 durable 规则 |
 | worker 停下后的接管入口 | green | handoff / re-entry contract 已收口成 durable 真相 |
-| 业务裁决越权防护 | green | 一旦跨到 live rollout、审批边界或兼容性承诺，PTL 只升级不代替决策 |
+| 业务裁决越权防护 | green | 一旦跨到 live rollout、本地 deploy、审批边界或兼容性承诺，PTL 只升级不代替决策 |
 
 ## Next PTL Checks
-1. 确认 worker 停下后，PTL 能从 durable 真相恢复当前 benchmark 切片，而不是退回聊天记忆。
-2. 继续观察 benchmark surface、budgets 和第一轮 hotspot attribution 是否还暴露新的 durable 缺口，需要回写到监督契约。
-3. 如果性能阶段反复出现单执行器瓶颈，再整理成后续多执行器候选。
+1. 确认 worker 停下后，PTL 能从 durable 真相恢复 activation-prep 切片，而不是退回聊天记忆。
+2. 继续观察 install-sync、evidence 包和 rollback 边界是否已经足够明确，可以支持第一次有界 rehearsal。
+3. 如果新的性能 regression 试图回流，先要求它以 measured blocker 的形式回到监督契约里。

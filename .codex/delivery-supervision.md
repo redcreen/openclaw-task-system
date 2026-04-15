@@ -1,9 +1,9 @@
 # Delivery Supervision
 
 ## Current Delivery Direction
-- Direction: `Milestone 3: system performance testing and optimization`
+- Direction: `reply-latency and context-weight governance`
 - Status: `active`
-- Why Now: Growware foundation 已经收口，当前交付监督的重点是先建立 benchmark 纪律，再允许性能优化进入写入线
+- Why Now: repo-local 性能里程碑已经收口，但 host-observed 回复慢重新成为用户可见 blocker，当前监督重点是治理证据、上下文减负顺序和 activation 恢复条件
 
 ## Supervised Delivery Contract
 
@@ -18,20 +18,20 @@
 | Order | Checkpoint | What Happens | Owner | When |
 | --- | --- | --- | --- | --- |
 | 1 | 对齐方向与输入 | 读取 strategy / program board / plan / status，确认当前工作流和 checkpoint 目标 | supervisor | 每轮开始前 |
-| 2 | 推进执行线 | 先定义 benchmark surface，再补 measurement entrypoints，最后才进入优化 | delivery worker | 每轮主体 |
-| 3 | 运行验证并刷新真相 | 运行 runtime-safety 验证和测量入口，并刷新 status / progress / continue / handoff | delivery worker | 每轮验证后 |
+| 2 | 推进执行线 | 先固定 slowdown 证据和 audit 命令，再排序 prompt/context 减负项，最后才写 activation 恢复条件 | delivery worker | 每轮主体 |
+| 3 | 运行验证并刷新真相 | 运行 runtime-safety 验证、session audit 和 benchmark guardrail，并刷新状态真相 | delivery worker | 每轮验证后 |
 | 4 | 决定继续 / 升级 / 暂停 | 根据信号、blocker 和升级边界决定下一轮动作 | supervisor | 每轮收口时 |
-| 5 | 记录性能阶段摩擦 | 把测量成本、样本不稳定或回归门禁设计问题沉淀出来 | supervisor + docs-and-release | 每个 benchmark checkpoint |
+| 5 | 记录阶段边界与恢复条件 | 把治理结论、resume gate 和后续 activation 风险沉淀出来 | supervisor + docs-and-release | 每个治理 checkpoint |
 
 ## Automatic Continue Boundaries
 
 | Situation | Gate | Why |
 | --- | --- | --- |
-| 已批准方向内的测量与验证 | continue automatically | 当前切片仍在既定方向内，且没有新的用户级取舍 |
+| 已批准方向内的 latency/context evidence、治理脚本、验证与文档对齐 | continue automatically | 当前切片仍在既定方向内，且没有新的用户级取舍 |
 | 黄色信号但可在既有方向内收口 | raise but continue | 保留风险可见性，继续当前 checkpoint，并要求下一轮复核 |
-| 预算、fixtures 或验证成本需要调整但未跨到业务裁决 | raise but continue | 先记进 strategy / program board / delivery-supervision，再继续 |
+| prompt budget、audit 阈值或验证成本需要调整但未跨到业务裁决 | raise but continue | 先记进 strategy / program board / delivery-supervision，再继续 |
 | 方向、兼容性、定位、成本 / 时间边界变化 | require user decision | 立即停止自动继续，升级给人类 |
-| 验证失败或 benchmark 结果不可复现 | raise but continue | 先停在当前 checkpoint，修复基线后再决定是否继续 |
+| 验证失败、benchmark 失绿、要做真实 deploy / launch，或要删除关键上下文能力 | require user decision | 先停在当前 checkpoint，再决定是否进入更高风险动作 |
 
 ## Escalation Timing
 
@@ -39,8 +39,8 @@
 | --- | --- | --- |
 | 开始新一轮长任务前 | 检查是否仍在已批准方向内；否则升级 | supervisor |
 | 每轮验证之后 | 根据 gate / blocker / benchmark signal 决定继续还是先提醒 | delivery worker + supervisor |
-| 出现重复测量摩擦时 | 考虑是否需要新的 benchmark tooling 或 fast / deep 分层 | supervisor |
-| 准备回到 activation rehearsal 之前 | 必须重新确认 benchmark、回归门禁、blockers 和监督状态都足够稳定 | docs-and-release |
+| 准备进入真实本地 deploy 或 live rehearsal 时 | 必须重新确认 install-sync intent、resume gate、rollback 边界和监督状态 | supervisor + docs-and-release |
+| 出现新的 measured slowdown 或治理 cuts 触发能力风险时 | 决定是否继续自动推进还是升级给人类 | supervisor |
 
 ## Executor Supervision Loop
 
@@ -54,11 +54,11 @@
 
 | Topic | Re-entry Rule | Current Position |
 | --- | --- | --- |
-| follow-up polish | 只有能明显降低测量摩擦、且不分叉真相时，才允许回流 | 先保持在 supporting backlog |
-| activation rehearsal prep | 只有性能基线已建立后，才允许并入主线 | 先记录为下一阶段候选 |
+| follow-up polish | 只有能明显降低 activation 准备摩擦、且不分叉真相时，才允许回流 | 先保持在 supporting backlog |
+| activation rehearsal prep | 只有治理专题给出 resume 条件后，才允许回主线 | 暂时保持在 supporting backlog |
 | host-side self-heal | 只有审计边界发生业务级变化时，才允许升级 | 继续留在 supporting backlog |
 
 ## Next Delivery Checks
-1. 确认每轮 checkpoint 都会刷新 status / progress / continue / handoff，而不是只更新其中一部分。
-2. 继续判断 benchmark surface 和 budgets 是否已经足够稳定，可以支持第一轮 baseline capture。
-3. 如果同类测量摩擦反复出现，再整理成 benchmark tooling 或 gate 分层提案。
+1. 确认每轮 checkpoint 都会刷新 status / plan / program-board / devlog，而不是只改一层。
+2. 继续判断 session-level audit、prompt/context 排序和 startup/transcript 规则是否已经足够明确，可以支持第一轮治理 cut。
+3. 只有在治理 topic 给出 resume 条件后，才把 activation prep 拉回主线。

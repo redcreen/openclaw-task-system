@@ -42,6 +42,16 @@
     "delivery": {
       "mode": "session-aware",
       "openclawBin": "openclaw"
+    },
+    "plugin": {
+      "hostDeliveryPollMs": 10000,
+      "continuationPollMs": 10000,
+      "watchdogRecoveryPollMs": 60000,
+      "watchdogMaxResumesPerCycle": 1,
+      "warmOutboundAdaptersOnStart": false,
+      "debugLogMaxBytes": 8388608,
+      "debugLogMaxFiles": 4,
+      "debugVerbosePolling": false
     }
   }
 }

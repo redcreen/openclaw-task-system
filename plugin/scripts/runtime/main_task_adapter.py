@@ -6,7 +6,7 @@ from typing import Optional
 
 from task_policy import TaskClassification, classify_main_task
 from task_config import TaskSystemConfig, load_task_system_config
-from task_state import TaskPaths, TaskState, TaskStore, default_paths, now_iso
+from task_state import STATUS_QUEUED, STATUS_RUNNING, TaskPaths, TaskState, TaskStore, default_paths, now_iso
 
 
 @dataclass(frozen=True)
@@ -106,9 +106,11 @@ def register_main_task(
     paths: Optional[TaskPaths] = None,
     config: Optional[TaskSystemConfig] = None,
     observe_only: bool = False,
+    store: Optional[TaskStore] = None,
+    has_running_task: Optional[bool] = None,
 ) -> TaskState:
     runtime_config = config or load_task_system_config()
-    store = TaskStore(paths=paths or runtime_config.build_paths() or default_paths())
+    store = store or TaskStore(paths=paths or runtime_config.build_paths() or default_paths())
     decision = decide_main_task(context, config=runtime_config)
     task = store.observe_task(
         agent_id=context.agent_id,
@@ -131,7 +133,21 @@ def register_main_task(
         },
     )
     if runtime_config.agent_config(context.agent_id).auto_start and not observe_only:
-        return store.claim_execution_slot(task.task_id)
+        if has_running_task is None:
+            return store.claim_execution_slot(task.task_id)
+        ts = now_iso()
+        if has_running_task:
+            task.status = STATUS_QUEUED
+            task.updated_at = ts
+            task.last_internal_touch_at = ts
+            return store.save_task(task)
+        task.status = STATUS_RUNNING
+        task.started_at = task.started_at or ts
+        task.updated_at = ts
+        task.last_internal_touch_at = ts
+        task.last_user_visible_update_at = ts
+        task.monitor_state = "normal"
+        return store.save_task(task)
     return task
 
 
@@ -141,8 +157,9 @@ def sync_main_progress(
     status: Optional[str] = None,
     progress_note: Optional[str] = None,
     paths: Optional[TaskPaths] = None,
+    store: Optional[TaskStore] = None,
 ) -> TaskState:
-    store = TaskStore(paths=paths or default_paths())
+    store = store or TaskStore(paths=paths or default_paths())
     note = str(progress_note or "").strip()
     meta = None
     if note:
@@ -166,8 +183,9 @@ def finish_main_task(
     result_summary: Optional[str] = None,
     meta: Optional[dict[str, Any]] = None,
     paths: Optional[TaskPaths] = None,
+    store: Optional[TaskStore] = None,
 ) -> TaskState:
-    store = TaskStore(paths=paths or default_paths())
+    store = store or TaskStore(paths=paths or default_paths())
     final_meta = dict(meta or {})
     if result_summary:
         final_meta["result_summary"] = result_summary
@@ -179,8 +197,9 @@ def block_main_task(
     reason: str,
     *,
     paths: Optional[TaskPaths] = None,
+    store: Optional[TaskStore] = None,
 ) -> TaskState:
-    store = TaskStore(paths=paths or default_paths())
+    store = store or TaskStore(paths=paths or default_paths())
     return store.block_task(task_id, reason)
 
 
@@ -189,9 +208,25 @@ def resume_main_task(
     *,
     progress_note: Optional[str] = None,
     paths: Optional[TaskPaths] = None,
+    store: Optional[TaskStore] = None,
+    has_running_task: Optional[bool] = None,
 ) -> TaskState:
-    store = TaskStore(paths=paths or default_paths())
-    return store.resume_task(task_id, progress_note=progress_note)
+    store = store or TaskStore(paths=paths or default_paths())
+    if has_running_task is None:
+        return store.resume_task(task_id, progress_note=progress_note)
+    task = store.load_task(task_id)
+    ts = now_iso()
+    task.status = STATUS_QUEUED if has_running_task else STATUS_RUNNING
+    task.block_reason = None
+    task.monitor_state = "normal"
+    task.updated_at = ts
+    task.last_internal_touch_at = ts
+    task.last_user_visible_update_at = ts
+    if progress_note:
+        task.meta["last_progress_note"] = progress_note
+    task.meta["resumed_at"] = ts
+    task.meta["resume_target_status"] = task.status
+    return store.save_task(task)
 
 
 def fail_main_task(
@@ -200,6 +235,7 @@ def fail_main_task(
     *,
     meta: Optional[dict[str, Any]] = None,
     paths: Optional[TaskPaths] = None,
+    store: Optional[TaskStore] = None,
 ) -> TaskState:
-    store = TaskStore(paths=paths or default_paths())
+    store = store or TaskStore(paths=paths or default_paths())
     return store.fail_task(task_id, reason, meta=meta)

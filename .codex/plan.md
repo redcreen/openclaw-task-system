@@ -2,81 +2,87 @@
 
 ## Current Phase
 
-`Milestone 3: system performance testing and optimization` is active.
+`reply-latency and context-weight governance` is active.
 
-Milestone 2 is closed: compiled `.policy/` is now the only live Growware policy truth, the reviewed activation baseline is green, and host-side audit is explicitly frozen as bootstrap-only evidence.
+Milestone 2 and Milestone 3 remain closed: compiled `.policy/` is the only live Growware policy truth, the reviewed repo-local performance baseline is green, and the host-side audit remains bootstrap-only evidence. The new active line is a measured governance topic for host-observed reply latency.
 
 ## Current Execution Line
 
-- Objective: establish a reproducible performance baseline for the shipped runtime and Growware operator surface without regressing the closed foundation milestone
-- Plan Link: `docs/reference/openclaw-task-system/development-plan.md#milestone-3-system-performance-testing-and-optimization`
-- Runway: define benchmark surfaces and budgets first, then add reproducible measurement entrypoints, capture the first baseline, and only then optimize the measured hotspots
-- Progress: `0/4`
-- Stop Conditions: measurement entrypoints are not reproducible, optimization starts before baseline capture, benchmark evidence depends on unstable host state, or runtime-safety validation regresses
-- Validation: `python3 scripts/runtime/growware_policy_sync.py --write --json`, `python3 scripts/runtime/growware_preflight.py --json`, `python3 scripts/runtime/growware_openclaw_binding.py --json`, `python3 -m unittest tests.test_growware_feedback_classifier tests.test_growware_policy_sync tests.test_growware_preflight tests.test_growware_project tests.test_openclaw_runtime_audit -v`, `bash scripts/run_tests.sh`, `python3 scripts/runtime/runtime_mirror.py --write`, `python3 scripts/runtime/plugin_doctor.py --json`, and `python3 scripts/runtime/plugin_smoke.py --json`
+- Objective: turn one measured Telegram slowdown into a durable governance topic, add repeatable latency/context audits, and only resume activation prep after the highest-cost prompt paths have an explicit reduction plan
+- Plan Link: `docs/reference/openclaw-task-system/development-plan.md#reply-latency-and-context-weight-governance`
+- Runway: keep `performance_baseline.py` as the repo-local guardrail, use session-level audits for host-observed slowdown evidence, and isolate prompt/context slimming work from host-only provider variance
+- Progress: `1/3`
+- Stop Conditions: the topic loses measured evidence, the proposed reductions change business or compatibility promises without review, or the team resumes activation prep before static / transcript cost is bounded
+- Validation: `python3 scripts/runtime/performance_baseline.py --profile-scenario hooks-cycle --profile-scenario same-session-routing-classifier --profile-scenario system-overview --profile-top 8 --enforce-budgets --json`, `python3 scripts/runtime/session_latency_audit.py --session-key 'agent:main:telegram:direct:8705812936' --json`, `python3 scripts/runtime/growware_preflight.py --json`, targeted tests for changed files, `bash scripts/run_tests.sh`, `python3 scripts/runtime/runtime_mirror.py --write`, `python3 scripts/runtime/plugin_doctor.py --json`, and `python3 scripts/runtime/plugin_smoke.py --json`
 
 ## Execution Tasks
 
-- [ ] PL-1 define the first benchmark surface, sample fixtures, and performance budgets for runtime, control-plane, and operator entrypoints
-- [ ] PL-2 add or standardize reproducible measurement entrypoints so the same commands produce comparable baseline output
-- [ ] PL-3 capture the initial benchmark / profile baseline and attribute the top hotspots before changing behavior
-- [ ] PL-4 land the first evidence-backed optimization and wire the improved path into a regression gate
+- [x] TG-1 freeze the slowdown trigger and add a repeatable `session_latency_audit.py` entrypoint for turn timing and context-weight evidence
+- [ ] TG-2 rank and reduce the largest prompt contributors: tool schema surface, system prompt weight, per-turn wrapper, and startup transcript carryover
+- [ ] TG-3 define activation-resume criteria, including what evidence proves the slowdown is no longer a mainline blocker
 
 ## Architecture Supervision
 
 - Signal: `yellow`
-- Signal Basis: the repo has real performance-sensitive paths, but there is still no durable benchmark surface, baseline sample set, or agreed budget to anchor optimization work
-- Problem Class: measurement-gap closure before optimization
-- Root Cause Hypothesis: earlier milestones focused on correctness, control-surface convergence, and pilot-safety boundaries, so performance evidence never became a first-class artifact
-- Correct Layer: milestone-level performance measurement and regression discipline across runtime, control-plane, and operator entrypoints
-- Rejected Shortcut: tuning whichever path feels slow first without fixed samples, command entrypoints, or before / after evidence
-- Automatic Review Trigger: any change to runtime hot paths, control-plane projections, SQLite / file-scan access, benchmark helpers, or operator entrypoints under measurement
-- Escalation Gate: raise but continue
+- Signal Basis: repo-local performance paths remain green, but host-observed reply latency is still user-visible and now has measured context-bloat evidence that must be governed before activation resumes
+- Problem Class: prompt-surface and transcript-growth governance on top of a closed repo-local performance milestone
+- Root Cause Hypothesis: the main user-visible slowdown is no longer task-system hook cost; it is oversized static prompt plus wrapper plus accumulated transcript driving slow LLM turns
+- Correct Layer: add repeatable session audit tooling, treat context slimming as a repo-owned governance topic, and keep host-provider variance visible but separate
+- Rejected Shortcut: jumping straight back into live activation prep without a durable explanation of where the extra latency is coming from
+- Automatic Review Trigger: any change to system prompt composition, workspace bootstrap files, tool surface exposure, session-startup reads, memory injection, or activation-resume criteria
+- Escalation Gate: continue automatically
 
 ## Escalation Model
 
-- Continue Automatically: benchmark-surface definition, measurement helpers, fixture prep, and evidence-backed optimization that preserve current product direction
-- Raise But Continue: changes that alter operator workflows, benchmark budgets, or validation cost while staying inside the approved performance milestone
-- Require User Decision: any live-rollout decision, approval-boundary relaxation, compatibility promise change, or performance tradeoff that meaningfully changes scope / cost / latency guarantees for users
+- Continue Automatically: repo-local audit tooling, control-surface updates, docs alignment, and prompt-surface measurements that stay inside the approved governance topic
+- Raise But Continue: reductions that change default prompt composition, audit thresholds, or operator expectations while staying inside current product boundaries
+- Require User Decision: any live rehearsal launch, local deploy meant to change installed runtime behavior, compatibility promise change, or product-facing tradeoff that deliberately removes user/agent context
 
 ## Slices
 
-- Slice: benchmark surface definition
-  - Objective: define what must be measured, with which fixtures, and against which budgets before optimization starts
-  - Dependencies: roadmap / development plan, runtime hot-path inventory, operator entrypoints, and current validation stack
-  - Risks: the team optimizes isolated code paths that do not represent user-visible latency or operational cost
-  - Validation: one durable benchmark-surface document or script contract covers runtime, control-plane, and operator entrypoints
-  - Exit Condition: maintainers share one measurement vocabulary instead of ad-hoc local timing
+- Slice: session-level latency evidence
+  - Objective: make host-observed slowdown reproducible through one durable audit command instead of manual log forensics
+  - Dependencies: session JSONL structure, session metadata, and the measured Telegram trigger case
+  - Risks: maintainers keep debating whether the slowdown is “really LLM” because the evidence is not rerunnable
+  - Validation: one command reports turn timing, LLM/tool shares, transcript growth, and static prompt weights on a real session
+  - Exit Condition: the repo owns a stable latency-attribution entrypoint for future incidents
 
-- Slice: reproducible measurement entrypoints
-  - Objective: make baseline capture runnable through repeatable commands and controlled sample inputs
-  - Dependencies: benchmark surface, fixture data, runtime scripts, and any helper harnesses needed for profiling
-  - Risks: baseline numbers drift because commands, sample data, or environment assumptions are not controlled
-  - Validation: the same reviewed commands can be rerun locally to produce comparable outputs
-  - Exit Condition: benchmark and profile capture no longer depends on a specific maintainer remembering the setup
+- Slice: prompt-surface diet
+  - Objective: rank and reduce the largest static contributors without deleting required capability blindly
+  - Dependencies: system prompt report, tool schema inventory, skill exposure, and workspace bootstrap contract
+  - Risks: reducing the wrong context may save tokens while breaking agent behavior or safety boundaries
+  - Validation: each proposed cut cites measured prompt weight and its expected latency impact
+  - Exit Condition: the top static contributors have an explicit keep / shrink / remove decision
 
-- Slice: hotspot attribution and first optimization
-  - Objective: rank the first real bottlenecks and change only the measured paths that matter
-  - Dependencies: captured baseline artifacts, code ownership in hot paths, and runtime-safety validation
-  - Risks: optimization changes behavior without proving impact, or gains in one path create regressions elsewhere
-  - Validation: before / after evidence plus runtime-safety validation on the same reviewed state
-  - Exit Condition: at least one optimized path is measurably faster and protected by regression checks
+- Slice: startup and transcript discipline
+  - Objective: stop the startup turn and later transcript from carrying avoidable weight into every business turn
+  - Dependencies: startup file-read path, transcript accumulation behavior, and per-turn wrapper shape
+  - Risks: startup convenience or memory quality is silently traded away without review
+  - Validation: startup carryover and transcript-growth rules are written down and measurable
+  - Exit Condition: the repo has explicit rules for what should not persist into later turns
+
+- Slice: activation resume gate
+  - Objective: define when activation prep is allowed back onto the mainline
+  - Dependencies: governance evidence, chosen reduction queue, and runtime-safety / performance guardrails
+  - Risks: the topic becomes an endless tuning bucket or activation resumes without closing the user-visible blocker
+  - Validation: resume criteria, required evidence, and fallback handling are recorded in durable docs
+  - Exit Condition: activation prep returns as a bounded next phase instead of an implicit default
 
 ## Next Phase Preview
 
-- Planned Phase: `post-performance live pilot activation`
-- Why Next: after the repo has a stable performance baseline, the next justified expansion is rehearsal and activation on top of measured, regression-protected foundations
-- Draft Scope: `feishu6-chat` live activation rehearsal, operator evidence capture, and only then any broader rollout or ergonomics expansion
-- Draft Rule: do not reopen alternate policy truths or expand host-side repair scope while activation prep is underway
+- Planned Phase: `bounded live pilot activation preparation`
+- Why Next: after the governance topic fixes or bounds the measured slowdown, activation prep becomes justified again on top of reviewed resume criteria
+- Draft Scope: `feishu6-chat` rehearsal entry criteria, explicit local-deploy intent if needed, operator evidence capture, and rollback handling
+- Draft Rule: do not resume activation prep until reply-latency evidence and context-budget decisions are explicit
 
 ## Development Log Capture
 
 - Trigger Level: high
 - Auto-Capture When:
-  - the benchmark surface or budget model changes
-  - a new measurement harness becomes a reusable repo capability
-  - an optimization changes architecture, operator workflow, or validation cost in a durable way
-  - the repo moves from baseline capture into optimization or activation rehearsal
+  - a new session-audit or latency-evidence command becomes a reusable repo capability
+  - prompt-surface governance changes durable activation or operator assumptions
+  - the repo changes what context is injected or persisted across turns
+  - the repo moves from activation prep into a governance topic or back again
 - Skip When:
   - the change is mechanical or formatting-only
   - no durable reasoning changed

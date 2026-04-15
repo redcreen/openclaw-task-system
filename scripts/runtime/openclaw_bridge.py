@@ -19,7 +19,7 @@ from main_task_adapter import (
 from session_state import SessionStateStore
 from same_session_routing import build_same_session_routing_decision, _is_stale_observed_takeover_candidate
 from task_config import TaskSystemConfig, load_task_system_config
-from task_state import TaskPaths, TaskState, TaskStore, default_paths, now_iso
+from task_state import ACTIVE_STATUSES, OBSERVED_STATUSES, RECOVERABLE_STATUSES, TaskPaths, TaskState, TaskStore, default_paths, now_iso
 
 SameSessionRoutingClassifier = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -77,13 +77,70 @@ def _queue_sort_key(task: TaskState) -> tuple[int, str, str]:
     return (priority, anchor, str(task.task_id))
 
 
+def _clone_task(task: TaskState) -> TaskState:
+    return TaskState(**task.to_dict())
+
+
+def _find_inflight_tasks(
+    inflight_tasks: list[TaskState],
+    *,
+    agent_id: Optional[str] = None,
+    session_key: Optional[str] = None,
+    statuses: Optional[set[str]] = None,
+) -> list[TaskState]:
+    matched: list[TaskState] = []
+    for task in inflight_tasks:
+        if agent_id is not None and task.agent_id != agent_id:
+            continue
+        if session_key is not None and task.session_key != session_key:
+            continue
+        if statuses is not None and task.status not in statuses:
+            continue
+        matched.append(_clone_task(task))
+    return sorted(matched, key=lambda item: item.updated_at, reverse=True)
+
+
+def _find_latest_inflight_task(
+    inflight_tasks: list[TaskState],
+    *,
+    agent_id: str,
+    session_key: str,
+    statuses: set[str],
+) -> Optional[TaskState]:
+    matches = _find_inflight_tasks(
+        inflight_tasks,
+        agent_id=agent_id,
+        session_key=session_key,
+        statuses=statuses,
+    )
+    return matches[0] if matches else None
+
+
+def _replace_inflight_task(
+    inflight_tasks: list[TaskState],
+    task: TaskState,
+) -> list[TaskState]:
+    updated = [_clone_task(existing) for existing in inflight_tasks if existing.task_id != task.task_id]
+    updated.append(_clone_task(task))
+    return updated
+
+
 def _queue_metrics(
     store: TaskStore,
     *,
     agent_id: str,
     task_id: Optional[str],
+    inflight_tasks: Optional[list[TaskState]] = None,
 ) -> tuple[Optional[int], int, int, int, int]:
-    queue_tasks = store.find_inflight_tasks(agent_id=agent_id, statuses={"received", "queued", "running"})
+    queue_tasks = (
+        _find_inflight_tasks(
+            inflight_tasks,
+            agent_id=agent_id,
+            statuses={"received", "queued", "running"},
+        )
+        if inflight_tasks is not None
+        else store.find_inflight_tasks(agent_id=agent_id, statuses={"received", "queued", "running"})
+    )
     ordered_queue = sorted(queue_tasks, key=_queue_sort_key)
     queue_position = None
     ahead_count = 0
@@ -98,8 +155,18 @@ def _queue_metrics(
     return queue_position, ahead_count, active_count, running_count, queued_count
 
 
-def _queue_state(store: TaskStore, *, agent_id: str) -> dict[str, int]:
-    _, _, active_count, running_count, queued_count = _queue_metrics(store, agent_id=agent_id, task_id=None)
+def _queue_state(
+    store: TaskStore,
+    *,
+    agent_id: str,
+    inflight_tasks: Optional[list[TaskState]] = None,
+) -> dict[str, int]:
+    _, _, active_count, running_count, queued_count = _queue_metrics(
+        store,
+        agent_id=agent_id,
+        task_id=None,
+        inflight_tasks=inflight_tasks,
+    )
     return {
         "active_count": active_count,
         "running_count": running_count,
@@ -254,21 +321,29 @@ def register_inbound_task(
     resolved_paths = paths or runtime_config.build_paths() or default_paths()
     store = TaskStore(paths=resolved_paths)
     session_store = SessionStateStore(paths=resolved_paths)
-    active_task = store.find_latest_active_task(
+    inflight_tasks = store.list_inflight_tasks()
+    has_running_task = any(task.agent_id == ctx.agent_id and task.status == "running" for task in inflight_tasks)
+    active_task = _find_latest_inflight_task(
+        inflight_tasks,
         agent_id=ctx.agent_id,
         session_key=ctx.session_key,
+        statuses=ACTIVE_STATUSES,
     )
-    observed_task = store.find_latest_observed_task(
+    observed_task = _find_latest_inflight_task(
+        inflight_tasks,
         agent_id=ctx.agent_id,
         session_key=ctx.session_key,
+        statuses=OBSERVED_STATUSES,
     )
-    recoverable = store.find_latest_recoverable_task(
+    recoverable = _find_latest_inflight_task(
+        inflight_tasks,
         agent_id=ctx.agent_id,
         session_key=ctx.session_key,
+        statuses=RECOVERABLE_STATUSES,
     )
     main_ctx = build_main_task_context(ctx)
     decision = decide_main_task(main_ctx, config=runtime_config)
-    routing_queue_state = _queue_state(store, agent_id=ctx.agent_id)
+    routing_queue_state = _queue_state(store, agent_id=ctx.agent_id, inflight_tasks=inflight_tasks)
     session_state = session_store.load_collecting_state(agent_id=ctx.agent_id, session_key=ctx.session_key)
     collecting_state = False
     if isinstance(session_state, dict):
@@ -401,7 +476,10 @@ def register_inbound_task(
             recoverable.task_id,
             progress_note=f"恢复执行：{ctx.user_request[:120]}",
             paths=store.paths,
+            store=store,
+            has_running_task=has_running_task,
         )
+        updated_inflight_tasks = _replace_inflight_task(inflight_tasks, resumed)
         routing_decision = build_same_session_routing_decision(
             session_key=ctx.session_key,
             user_request=ctx.user_request,
@@ -422,6 +500,7 @@ def register_inbound_task(
             store,
             agent_id=ctx.agent_id,
             task_id=resumed.task_id,
+            inflight_tasks=updated_inflight_tasks,
         )
         return BridgeDecision(
             should_register_task=True,
@@ -462,6 +541,8 @@ def register_inbound_task(
             paths=resolved_paths,
             config=runtime_config,
             observe_only=observe_only,
+            store=store,
+            has_running_task=has_running_task,
         )
     routing_decision = build_same_session_routing_decision(
         session_key=ctx.session_key,
@@ -479,10 +560,12 @@ def register_inbound_task(
     )
     task.meta["same_session_routing"] = routing_decision
     store.save_task(task)
+    updated_inflight_tasks = _replace_inflight_task(inflight_tasks, task)
     queue_position, ahead_count, active_count, running_count, queued_count = _queue_metrics(
         store,
         agent_id=ctx.agent_id,
         task_id=task.task_id,
+        inflight_tasks=updated_inflight_tasks,
     )
     return BridgeDecision(
         should_register_task=True,
@@ -606,13 +689,16 @@ def record_progress(
     paths: Optional[TaskPaths] = None,
     config: Optional[TaskSystemConfig] = None,
     config_path: Optional[Path] = None,
+    store: Optional[TaskStore] = None,
 ) -> TaskState:
     runtime_config = config or load_task_system_config(config_path=config_path)
+    store = store or TaskStore(paths=paths or runtime_config.build_paths() or default_paths())
     return sync_main_progress(
         task_id,
         progress_note=progress_note,
         status=status,
-        paths=paths or runtime_config.build_paths() or default_paths(),
+        paths=store.paths,
+        store=store,
     )
 
 
@@ -623,9 +709,11 @@ def record_blocked(
     paths: Optional[TaskPaths] = None,
     config: Optional[TaskSystemConfig] = None,
     config_path: Optional[Path] = None,
+    store: Optional[TaskStore] = None,
 ) -> TaskState:
     runtime_config = config or load_task_system_config(config_path=config_path)
-    return block_main_task(task_id, reason, paths=paths or runtime_config.build_paths() or default_paths())
+    store = store or TaskStore(paths=paths or runtime_config.build_paths() or default_paths())
+    return block_main_task(task_id, reason, paths=store.paths, store=store)
 
 
 def record_completed(
@@ -636,13 +724,16 @@ def record_completed(
     paths: Optional[TaskPaths] = None,
     config: Optional[TaskSystemConfig] = None,
     config_path: Optional[Path] = None,
+    store: Optional[TaskStore] = None,
 ) -> TaskState:
     runtime_config = config or load_task_system_config(config_path=config_path)
+    store = store or TaskStore(paths=paths or runtime_config.build_paths() or default_paths())
     return finish_main_task(
         task_id,
         result_summary=result_summary,
         meta=meta,
-        paths=paths or runtime_config.build_paths() or default_paths(),
+        paths=store.paths,
+        store=store,
     )
 
 
@@ -654,6 +745,8 @@ def record_failed(
     paths: Optional[TaskPaths] = None,
     config: Optional[TaskSystemConfig] = None,
     config_path: Optional[Path] = None,
+    store: Optional[TaskStore] = None,
 ) -> TaskState:
     runtime_config = config or load_task_system_config(config_path=config_path)
-    return fail_main_task(task_id, reason, meta=meta, paths=paths or runtime_config.build_paths() or default_paths())
+    store = store or TaskStore(paths=paths or runtime_config.build_paths() or default_paths())
+    return fail_main_task(task_id, reason, meta=meta, paths=store.paths, store=store)

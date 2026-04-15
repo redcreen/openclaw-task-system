@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from runtime_loader import load_runtime_module, task_state_module
 
@@ -207,6 +208,56 @@ class TaskStatusTests(unittest.TestCase):
         self.assertEqual(snapshot["items"][0]["task_id"], running.task_id)
         self.assertEqual(snapshot["items"][1]["task_id"], observed.task_id)
         self.assertEqual(snapshot["items"][1]["status"], task_state_module.STATUS_RECEIVED)
+
+    def test_list_inflight_statuses_loads_each_inflight_task_once(self) -> None:
+        task_ids = [
+            self.store.register_task(
+                agent_id="main",
+                session_key=f"session:list-load:{index}",
+                channel="feishu",
+                chat_id=f"chat:list-load:{index}",
+                task_label=f"list load task {index}",
+            ).task_id
+            for index in range(4)
+        ]
+        original = task_status.TaskStore.load_task
+        load_calls: list[tuple[str, bool]] = []
+
+        def counting_load(store: object, task_id: str, *, allow_archive: bool = True):
+            load_calls.append((task_id, allow_archive))
+            return original(store, task_id, allow_archive=allow_archive)
+
+        with patch.object(task_status.TaskStore, "load_task", autospec=True, side_effect=counting_load):
+            statuses = task_status.list_inflight_statuses(paths=self.paths)
+
+        self.assertEqual(len(statuses), 4)
+        self.assertEqual(len(load_calls), 4)
+        self.assertEqual({task_id for task_id, _allow_archive in load_calls}, set(task_ids))
+
+    def test_build_system_overview_loads_each_inflight_task_once(self) -> None:
+        task_ids = []
+        for index in range(5):
+            task = self.store.register_task(
+                agent_id="main",
+                session_key=f"session:overview-load:{index}",
+                channel="telegram",
+                chat_id=f"chat:overview-load:{index}",
+                task_label=f"overview load task {index}",
+            )
+            task_ids.append(task.task_id)
+        original = task_status.TaskStore.load_task
+        load_calls: list[tuple[str, bool]] = []
+
+        def counting_load(store: object, task_id: str, *, allow_archive: bool = True):
+            load_calls.append((task_id, allow_archive))
+            return original(store, task_id, allow_archive=allow_archive)
+
+        with patch.object(task_status.TaskStore, "load_task", autospec=True, side_effect=counting_load):
+            overview = task_status.build_system_overview(paths=self.paths)
+
+        self.assertEqual(overview["active_task_count"], 5)
+        self.assertEqual(len(load_calls), 5)
+        self.assertEqual({task_id for task_id, _allow_archive in load_calls}, set(task_ids))
 
     def test_build_status_summary_maps_waiting_queue_head_to_pending_start(self) -> None:
         queued = self.store.register_task(

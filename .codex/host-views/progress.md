@@ -5,33 +5,33 @@
 | 问题 | 当前答案 |
 | --- | --- |
 | 项目 | `OpenClaw Task System` |
-| 当前判断 | `Milestone 2: Growware Project 1 pilot foundation` 已完成；当前主线是 `Milestone 3: system performance testing and optimization`。 |
-| 当前阶段 | 性能基线阶段：先定义 benchmark surface、fixtures、预算和测量入口，再做热点归因与优化。 |
-| 当前工作域 | runtime / control-plane / operator 性能基线 |
-| 当前切片 | `performance baseline: measurement surface + reproducible entrypoints` |
-| 当前执行进度 | `0 / 4` |
-| 架构信号 | `黄色` |
-| 直接价值 | 把下一阶段从“感觉哪里慢”切到“有 baseline、有热点归因、有回归门禁”的工程线。 |
-| 当前主要风险 | benchmark surface、样本和预算还没冻结；如果过早优化，会重新制造不可比较的结果。 |
+| 当前判断 | `Milestone 2` 与 `Milestone 3` 已完成；当前主线是 `post-performance live pilot activation preparation`。 |
+| 当前阶段 | activation 准备阶段：先固定 evidence、install-sync 和 rollback 边界，再进入第一次有界 rehearsal。 |
+| 当前工作域 | activation prep / operator evidence / deploy boundary |
+| 当前切片 | `activation-prep entry criteria + install-sync decision` |
+| 当前执行进度 | `0 / 3` |
+| 架构信号 | `绿色` |
+| 直接价值 | 把下一阶段从“性能已优化但怎么启动 rehearsal 还模糊”切到“入口条件、证据和 rollback 都明确”的工程线。 |
+| 当前主要风险 | 如果 activation 入口条件和 install-sync 意图不先写清，rehearsal 会重新掉回模糊边界。 |
 
 ## 当前定位
 
 | 维度 | 当前状态 | 说明 | 入口 |
 | --- | --- | --- | --- |
-| 主线状态 | `Milestone 3: system performance testing and optimization` 进行中 | Growware foundation 已完成，当前主线已经切到性能基线。 | [路线图](/Users/redcreen/Project/openclaw-task-system/docs/roadmap.zh-CN.md) |
-| 当前阶段 | 基线定义、测量入口和热点归因 | 当前不做 live rollout，先把性能测量面收干净。 | [开发计划](/Users/redcreen/Project/openclaw-task-system/docs/reference/openclaw-task-system/development-plan.zh-CN.md) |
-| 当前切片 | 性能基线当前切片 | 原始切片名：`performance baseline: measurement surface + reproducible entrypoints` | [状态](/Users/redcreen/Project/openclaw-task-system/.codex/status.md) |
-| 当前执行线 | 先定义 benchmark surface，再采集 baseline，最后才允许优化 | 当前 checkpoint 重点是 PL-1 到 PL-4。 | [计划](/Users/redcreen/Project/openclaw-task-system/.codex/plan.md) |
-| 当前 Gate | `提醒后继续` | 方向明确，但 benchmark contract 仍需持续可见。 | [状态 / 当前升级状态](/Users/redcreen/Project/openclaw-task-system/.codex/status.md:35) |
+| 主线状态 | `post-performance live pilot activation preparation` 进行中 | Growware foundation 和性能里程碑都已完成，当前主线切到 activation 准备。 | [路线图](/Users/redcreen/Project/openclaw-task-system/docs/roadmap.zh-CN.md) |
+| 当前阶段 | activation entry criteria、install-sync 与 rehearsal 风险控制 | 当前不直接进入 live rehearsal，先把边界写清。 | [开发计划](/Users/redcreen/Project/openclaw-task-system/docs/reference/openclaw-task-system/development-plan.zh-CN.md) |
+| 当前切片 | activation 准备当前切片 | 原始切片名：`activation-prep entry criteria + install-sync decision` | [状态](/Users/redcreen/Project/openclaw-task-system/.codex/status.md) |
+| 当前执行线 | 先定 activation evidence 与 rollback，再决定 install-sync，最后才进入 rehearsal | 当前 checkpoint 重点是 AP-1 到 AP-3。 | [计划](/Users/redcreen/Project/openclaw-task-system/.codex/plan.md) |
+| 当前 Gate | `自动继续` | 方向明确；只有真实 deploy 或 live rehearsal 才升级。 | [状态 / 当前升级状态](/Users/redcreen/Project/openclaw-task-system/.codex/status.md:35) |
 
 ## 当前这轮到底在做什么
 
 | 当前工作 | 类型 | 对维护者的直接价值 | 当前状态 | 对应任务 |
 | --- | --- | --- | --- | --- |
-| 关闭 Growware pilot foundation，并把 `.policy/` 写实为唯一 live policy truth | 阶段收口 | 让 M2 不再处于“半迁移”状态 | 已完成 | `Milestone 2` |
-| 定义 runtime、control-plane 与 operator 的 benchmark surface、fixtures 和预算 | 基线定义 | 让性能工作有统一测量词汇和目标 | 进行中 | `PL-1` |
-| 建立可复现测量入口 | 测量基础设施 | 让 baseline 可以稳定复跑，而不是靠个人本地习惯 | 待执行 | `PL-2` |
-| 采集 baseline、归因热点并落第一轮有证据的优化 | 性能优化 | 让每次优化都有前后证据和回归保护 | 待执行 | `PL-3` / `PL-4` |
+| 收口 Growware pilot foundation，并把 `.policy/` 写实为唯一 live policy truth | 阶段收口 | 让 M2 不再处于“半迁移”状态 | 已完成 | `Milestone 2` |
+| 收口性能里程碑，并把 benchmark / 优化 / 回归门禁写实为已完成 | 阶段收口 | 让 M3 不再处于“永远还有下一个 hotspot”的状态 | 已完成 | `Milestone 3` |
+| 定义 activation 入口条件和 operator evidence 包 | rehearsal 准备 | 让首轮 rehearsal 有明确进入条件 | 进行中 | `AP-1` |
+| 决定 install-sync 路径与 rollback 规则 | 风险控制 | 让 rehearsal 不会在 deploy 边界上模糊推进 | 待执行 | `AP-2` / `AP-3` |
 
 ## 已完成的阶段产出
 
@@ -47,16 +47,16 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 信号 | `黄色` |
-| 根因假设 | 正确性与控制面此前已经收口，但性能证据还没有被定义成 durable 资产。 |
-| 正确落层 | 用 milestone 级别的 benchmark surface、baseline 产物和回归门禁来约束优化。 |
-| 自动触发 | runtime hot path、queue / delivery projection、SQLite / file-scan access、benchmark helpers 或 operator 入口发生变化时复核 |
-| 升级 Gate | `提醒后继续` |
+| 信号 | `绿色` |
+| 根因假设 | 当前风险已经从“没有 baseline”转成“activation 边界如果不写清，就会在下一阶段重新模糊”。 |
+| 正确落层 | 用 activation entry criteria、install-sync intent 和 rollback 规则来约束 rehearsal。 |
+| 自动触发 | live activation scope、install drift、local deploy intent、benchmark budget 或 operator 入口发生变化时复核 |
+| 升级 Gate | `自动继续` |
 
 ## 接下来要做什么
 
 | 下一步 | 为什么做 | 对应入口 |
 | --- | --- | --- |
-| 定义 benchmark surface、fixtures 和预算 | 让性能工作从一开始就可比较、可复核 | [计划](/Users/redcreen/Project/openclaw-task-system/.codex/plan.md) |
-| 建立可复现测量命令 | 避免 baseline 依赖临时命令和个人习惯 | [开发计划](/Users/redcreen/Project/openclaw-task-system/docs/reference/openclaw-task-system/development-plan.zh-CN.md:74) |
-| 在 baseline capture 前后保持 runtime-safety 验证栈全绿 | 防止性能阶段破坏刚收口的 Growware foundation | [路线图](/Users/redcreen/Project/openclaw-task-system/docs/roadmap.zh-CN.md:29) |
+| 定义 activation entry criteria 和 operator evidence 包 | 让第一次 rehearsal 不是“已经想开始了再补规则” | [计划](/Users/redcreen/Project/openclaw-task-system/.codex/plan.md) |
+| 判断 installed-runtime drift 是否需要先清掉 | 让 deploy 边界和 repo-only 边界继续保持清晰 | [开发计划](/Users/redcreen/Project/openclaw-task-system/docs/reference/openclaw-task-system/development-plan.zh-CN.md:121) |
+| 在 rehearsal 前继续保持 benchmark 与 runtime-safety 验证栈全绿 | 防止 activation 准备破坏刚收口的性能与 Growware foundation | [路线图](/Users/redcreen/Project/openclaw-task-system/docs/roadmap.zh-CN.md:69) |

@@ -269,10 +269,15 @@ def register_inbound_lifecycle(
     observe_only: bool = False,
     same_session_classifier: Optional[SameSessionRoutingClassifier] = None,
     same_session_classifier_min_confidence: float = 0.75,
+    config: Optional[TaskSystemConfig] = None,
+    store: Optional[TaskStore] = None,
 ) -> dict[str, Any]:
-    _, store = _resolve_store(config_path)
+    runtime_config = config or load_task_system_config(config_path=config_path)
+    store = store or TaskStore(paths=runtime_config.build_paths())
     decision = register_inbound_task(
         ctx,
+        paths=store.paths,
+        config=runtime_config,
         config_path=config_path,
         observe_only=observe_only,
         same_session_classifier=same_session_classifier,
@@ -317,8 +322,12 @@ def block_task_lifecycle(
     *,
     reason: str,
     config_path: Optional[Path] = None,
+    config: Optional[TaskSystemConfig] = None,
+    store: Optional[TaskStore] = None,
 ) -> dict[str, Any]:
-    task = record_blocked(task_id, reason, config_path=config_path)
+    runtime_config = config or load_task_system_config(config_path=config_path)
+    store = store or TaskStore(paths=runtime_config.build_paths())
+    task = record_blocked(task_id, reason, config=runtime_config, paths=store.paths, store=store)
     return {
         "updated": True,
         "task": task.to_dict(),
@@ -333,13 +342,19 @@ def complete_task_lifecycle(
     result_summary: Optional[str] = None,
     execution_source: Optional[str] = None,
     config_path: Optional[Path] = None,
+    config: Optional[TaskSystemConfig] = None,
+    store: Optional[TaskStore] = None,
 ) -> dict[str, Any]:
     normalized_source = _resolve_execution_source(None, execution_source)
+    runtime_config = config or load_task_system_config(config_path=config_path)
+    store = store or TaskStore(paths=runtime_config.build_paths())
     task = record_completed(
         task_id,
         result_summary=result_summary,
         meta={"execution_source": normalized_source},
-        config_path=config_path,
+        config=runtime_config,
+        paths=store.paths,
+        store=store,
     )
     return {
         "updated": True,
@@ -355,13 +370,19 @@ def fail_task_lifecycle(
     reason: str,
     execution_source: Optional[str] = None,
     config_path: Optional[Path] = None,
+    config: Optional[TaskSystemConfig] = None,
+    store: Optional[TaskStore] = None,
 ) -> dict[str, Any]:
     normalized_source = _resolve_execution_source(None, execution_source)
+    runtime_config = config or load_task_system_config(config_path=config_path)
+    store = store or TaskStore(paths=runtime_config.build_paths())
     task = record_failed(
         task_id,
         reason,
         meta={"execution_source": normalized_source},
-        config_path=config_path,
+        config=runtime_config,
+        paths=store.paths,
+        store=store,
     )
     return {
         "updated": True,
@@ -377,13 +398,18 @@ def progress_active_lifecycle(
     progress_note: Any = None,
     status: Any = None,
     config_path: Optional[Path] = None,
+    config: Optional[TaskSystemConfig] = None,
+    store: Optional[TaskStore] = None,
 ) -> dict[str, Any]:
-    runtime_config, store = _resolve_store(config_path)
+    runtime_config = config or load_task_system_config(config_path=config_path)
+    store = store or TaskStore(paths=runtime_config.build_paths())
     task = record_progress(
         task_id,
         progress_note=progress_note,
         status=status,
         config=runtime_config,
+        paths=store.paths,
+        store=store,
     )
     visible_summary = _sanitize_visible_text(progress_note)[:240]
     should_finalize = (
@@ -447,8 +473,11 @@ def finalize_active_lifecycle(
     active_task: Any,
     payload: dict[str, Any],
     config_path: Optional[Path] = None,
+    config: Optional[TaskSystemConfig] = None,
+    store: Optional[TaskStore] = None,
 ) -> dict[str, Any]:
-    _, store = _resolve_store(config_path)
+    runtime_config = config or load_task_system_config(config_path=config_path)
+    store = store or TaskStore(paths=runtime_config.build_paths())
     success = bool(payload.get("success", False))
     execution_source = _resolve_execution_source(active_task, payload.get("execution_source"))
     result_summary = _sanitize_visible_text(payload.get("result_summary") or payload.get("summary"))

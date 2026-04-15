@@ -360,6 +360,7 @@ export function createApi(runtimeRoot, sentMessages, pluginConfigOverrides = {})
   const handlers = new Map();
   const services = [];
   const registeredTools = new Map();
+  let outboundAdapterLoadCount = 0;
   const outboundAdapterLoadDelayMs = Number.isFinite(pluginConfigOverrides.outboundAdapterLoadDelayMs)
     ? Number(pluginConfigOverrides.outboundAdapterLoadDelayMs)
     : 0;
@@ -398,6 +399,7 @@ export function createApi(runtimeRoot, sentMessages, pluginConfigOverrides = {})
       channel: {
         outbound: {
           async loadAdapter() {
+            outboundAdapterLoadCount += 1;
             if (outboundAdapterLoadDelayMs > 0) {
               await new Promise((resolve) => setTimeout(resolve, outboundAdapterLoadDelayMs));
             }
@@ -459,6 +461,7 @@ export function createApi(runtimeRoot, sentMessages, pluginConfigOverrides = {})
     llmOutput: handlers.get("llm_output"),
     agentEnd: handlers.get("agent_end"),
     registeredTools,
+    getOutboundAdapterLoadCount: () => outboundAdapterLoadCount,
     start: async () => {
       for (const service of services) {
         if (typeof service.start === "function") {

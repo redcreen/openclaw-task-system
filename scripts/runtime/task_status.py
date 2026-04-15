@@ -13,6 +13,7 @@ from user_status import project_user_facing_status
 
 FINAL_INSTRUCTION_DIRS = ("processed-instructions", "failed-instructions")
 INTERMEDIATE_DELIVERY_DIRS = ("outbox", "sent", "delivery-ready", "send-instructions")
+DELIVERY_ARTIFACT_DIRS = (*INTERMEDIATE_DELIVERY_DIRS, "dispatch-results", *FINAL_INSTRUCTION_DIRS)
 PLANNING_HEALTH_SAMPLE_SIZE = 20
 
 
@@ -25,6 +26,17 @@ def _load_json_if_exists(path: Path) -> Optional[dict[str, object]]:
         return None
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle)
+
+
+def _build_artifact_index(paths: TaskPaths) -> dict[str, set[str]]:
+    index: dict[str, set[str]] = {}
+    for directory in DELIVERY_ARTIFACT_DIRS:
+        base = paths.data_dir / directory
+        if not base.exists():
+            index[directory] = set()
+            continue
+        index[directory] = {path.stem for path in base.glob("*.json")}
+    return index
 
 
 def _resolve_delivery_state(
@@ -72,6 +84,16 @@ def _stale_intermediate_paths(
 
 
 def build_delivery_summary(task_id: str, *, paths: TaskPaths) -> dict[str, object]:
+    artifact_index = _build_artifact_index(paths)
+    return build_delivery_summary_with_index(task_id, paths=paths, artifact_index=artifact_index)
+
+
+def build_delivery_summary_with_index(
+    task_id: str,
+    *,
+    paths: TaskPaths,
+    artifact_index: dict[str, set[str]],
+) -> dict[str, object]:
     outbox_path = _artifact_path(paths, "outbox", task_id)
     sent_path = _artifact_path(paths, "sent", task_id)
     delivery_ready_path = _artifact_path(paths, "delivery-ready", task_id)
@@ -79,36 +101,40 @@ def build_delivery_summary(task_id: str, *, paths: TaskPaths) -> dict[str, objec
     dispatch_result_path = _artifact_path(paths, "dispatch-results", task_id)
     processed_instruction_path = _artifact_path(paths, "processed-instructions", task_id)
     failed_instruction_path = _artifact_path(paths, "failed-instructions", task_id)
-    processed_instruction_exists = processed_instruction_path.exists()
-    failed_instruction_exists = failed_instruction_path.exists()
+    outbox_exists = task_id in artifact_index.get("outbox", set())
+    sent_exists = task_id in artifact_index.get("sent", set())
+    delivery_ready_exists = task_id in artifact_index.get("delivery-ready", set())
+    send_instruction_exists = task_id in artifact_index.get("send-instructions", set())
+    dispatch_result_exists = task_id in artifact_index.get("dispatch-results", set())
+    processed_instruction_exists = task_id in artifact_index.get("processed-instructions", set())
+    failed_instruction_exists = task_id in artifact_index.get("failed-instructions", set())
 
-    dispatch_result = _load_json_if_exists(dispatch_result_path)
+    dispatch_result = _load_json_if_exists(dispatch_result_path) if dispatch_result_exists else None
     delivery_state = _resolve_delivery_state(
-        outbox_exists=outbox_path.exists(),
-        sent_exists=sent_path.exists(),
-        delivery_ready_exists=delivery_ready_path.exists(),
-        send_instruction_exists=send_instruction_path.exists(),
+        outbox_exists=outbox_exists,
+        sent_exists=sent_exists,
+        delivery_ready_exists=delivery_ready_exists,
+        send_instruction_exists=send_instruction_exists,
         processed_instruction_exists=processed_instruction_exists,
         failed_instruction_exists=failed_instruction_exists,
         dispatch_result=dispatch_result,
     )
-    stale_paths = _stale_intermediate_paths(
-        task_id,
-        paths=paths,
-        processed_instruction_exists=processed_instruction_exists,
-        failed_instruction_exists=failed_instruction_exists,
+    stale_count = (
+        0
+        if not processed_instruction_exists and not failed_instruction_exists
+        else sum(1 for directory in INTERMEDIATE_DELIVERY_DIRS if task_id in artifact_index.get(directory, set()))
     )
     return {
         "state": delivery_state,
-        "outbox_exists": outbox_path.exists(),
-        "sent_exists": sent_path.exists(),
-        "delivery_ready_exists": delivery_ready_path.exists(),
-        "send_instruction_exists": send_instruction_path.exists(),
+        "outbox_exists": outbox_exists,
+        "sent_exists": sent_exists,
+        "delivery_ready_exists": delivery_ready_exists,
+        "send_instruction_exists": send_instruction_exists,
         "processed_instruction_exists": processed_instruction_exists,
         "failed_instruction_exists": failed_instruction_exists,
-        "dispatch_result_exists": dispatch_result_path.exists(),
-        "stale_intermediate_exists": bool(stale_paths),
-        "stale_intermediate_count": len(stale_paths),
+        "dispatch_result_exists": dispatch_result_exists,
+        "stale_intermediate_exists": stale_count > 0,
+        "stale_intermediate_count": stale_count,
         "dispatch_action": dispatch_result.get("action") if dispatch_result else None,
         "dispatch_reason": dispatch_result.get("reason") if dispatch_result else None,
         "dispatch_execution_context": dispatch_result.get("execution_context") if dispatch_result else None,
@@ -131,30 +157,61 @@ def _resolve_paths(
     return runtime_config.build_paths() or default_paths()
 
 
+def _build_base_status_summary_from_task(
+    task: object,
+    *,
+    paths: TaskPaths,
+    artifact_index: Optional[dict[str, set[str]]] = None,
+) -> dict[str, object]:
+    artifact_index = artifact_index or _build_artifact_index(paths)
+    return {
+        "task_id": getattr(task, "task_id"),
+        "task_label": getattr(task, "task_label"),
+        "agent_id": getattr(task, "agent_id"),
+        "status": getattr(task, "status"),
+        "session_key": getattr(task, "session_key"),
+        "channel": getattr(task, "channel"),
+        "chat_id": getattr(task, "chat_id"),
+        "created_at": getattr(task, "created_at"),
+        "started_at": getattr(task, "started_at"),
+        "updated_at": getattr(task, "updated_at"),
+        "last_user_visible_update_at": getattr(task, "last_user_visible_update_at"),
+        "last_internal_touch_at": getattr(task, "last_internal_touch_at"),
+        "last_monitor_notify_at": getattr(task, "last_monitor_notify_at"),
+        "notify_count": getattr(task, "notify_count"),
+        "block_reason": getattr(task, "block_reason"),
+        "failure_reason": getattr(task, "failure_reason"),
+        "monitor_state": getattr(task, "monitor_state"),
+        "meta": getattr(task, "meta"),
+        "delivery": build_delivery_summary_with_index(
+            str(getattr(task, "task_id")),
+            paths=paths,
+            artifact_index=artifact_index,
+        ),
+    }
+
+
 def _build_base_status_summary(task_id: str, *, paths: TaskPaths) -> dict[str, object]:
     store = TaskStore(paths=paths)
     task = store.load_task(task_id)
-    return {
-        "task_id": task.task_id,
-        "task_label": task.task_label,
-        "agent_id": task.agent_id,
-        "status": task.status,
-        "session_key": task.session_key,
-        "channel": task.channel,
-        "chat_id": task.chat_id,
-        "created_at": task.created_at,
-        "started_at": task.started_at,
-        "updated_at": task.updated_at,
-        "last_user_visible_update_at": task.last_user_visible_update_at,
-        "last_internal_touch_at": task.last_internal_touch_at,
-        "last_monitor_notify_at": task.last_monitor_notify_at,
-        "notify_count": task.notify_count,
-        "block_reason": task.block_reason,
-        "failure_reason": task.failure_reason,
-        "monitor_state": task.monitor_state,
-        "meta": task.meta,
-        "delivery": build_delivery_summary(task_id, paths=paths),
-    }
+    return _build_base_status_summary_from_task(task, paths=paths)
+
+
+def _load_inflight_base_statuses(
+    *,
+    paths: TaskPaths,
+    artifact_index: Optional[dict[str, set[str]]] = None,
+) -> list[dict[str, object]]:
+    store = TaskStore(paths=paths)
+    artifact_index = artifact_index or _build_artifact_index(paths)
+    return [
+        _build_base_status_summary_from_task(
+            store.load_task(path.stem, allow_archive=False),
+            paths=paths,
+            artifact_index=artifact_index,
+        )
+        for path in store.list_inflight()
+    ]
 
 
 def _parse_iso8601(value: object) -> Optional[datetime]:
@@ -419,12 +476,18 @@ def build_planning_health_summary(
     tasks: list[dict[str, object]],
     *,
     sample_size: int = PLANNING_HEALTH_SAMPLE_SIZE,
+    now_dt: Optional[datetime] = None,
 ) -> dict[str, object]:
+    now_dt = now_dt or datetime.now(timezone.utc).astimezone()
     candidates: list[dict[str, object]] = []
     for task in tasks:
         if not isinstance(task, dict):
             continue
-        planning = task.get("planning") if isinstance(task.get("planning"), dict) else _build_planning_summary(task)
+        planning = (
+            task.get("planning")
+            if isinstance(task.get("planning"), dict)
+            else _build_planning_summary(task, now_dt=now_dt)
+        )
         if not isinstance(planning, dict) or not bool(planning.get("tool_path_used")):
             continue
         if not _planning_health_candidate(planning):
@@ -523,13 +586,14 @@ def build_queue_snapshot(
     config: Optional[TaskSystemConfig] = None,
     config_path: Optional[Path] = None,
     agent_id: Optional[str] = None,
+    base_statuses: Optional[list[dict[str, object]]] = None,
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(paths, config=config, config_path=config_path)
-    store = TaskStore(paths=resolved_paths)
     queue_statuses = ACTIVE_STATUSES | OBSERVED_STATUSES
+    source_statuses = base_statuses if base_statuses is not None else _load_inflight_base_statuses(paths=resolved_paths)
     statuses = [
         status
-        for status in (_build_base_status_summary(path.stem, paths=resolved_paths) for path in store.list_inflight())
+        for status in source_statuses
         if str(status["status"]) in queue_statuses and (agent_id is None or status["agent_id"] == agent_id)
     ]
     ordered = sorted(statuses, key=_queue_sort_key)
@@ -557,6 +621,45 @@ def build_queue_snapshot(
     }
 
 
+def _queue_snapshot_index(queue_snapshot: dict[str, object]) -> dict[str, dict[str, object]]:
+    items = queue_snapshot.get("items") if isinstance(queue_snapshot.get("items"), list) else []
+    return {
+        str(item.get("task_id") or ""): item
+        for item in items
+        if isinstance(item, dict) and str(item.get("task_id") or "").strip()
+    }
+
+
+def _finalize_status_summary(
+    task: dict[str, object],
+    *,
+    queue_snapshot: dict[str, object],
+    queue_index: Optional[dict[str, dict[str, object]]] = None,
+    paths: TaskPaths,
+    now_dt: Optional[datetime] = None,
+) -> dict[str, object]:
+    summary = dict(task)
+    queue_entry = (queue_index or _queue_snapshot_index(queue_snapshot)).get(str(summary.get("task_id") or ""))
+    queue_summary = {
+        "task_id": summary["task_id"],
+        "position": queue_entry["position"] if queue_entry else None,
+        "ahead_count": queue_entry["ahead_count"] if queue_entry else 0,
+        "is_running": queue_entry["is_running"] if queue_entry else False,
+        "active_count": queue_snapshot["active_count"],
+        "running_count": queue_snapshot["running_count"],
+        "queued_count": queue_snapshot["queued_count"],
+    }
+    summary["queue"] = queue_summary
+    projection = project_user_facing_status(summary)
+    summary["user_facing_status_code"] = projection["code"]
+    summary["user_facing_status"] = projection["label"]
+    summary["user_facing_status_family"] = projection["family"]
+    summary["planning"] = _build_planning_summary(summary, now_dt=now_dt, paths=paths)
+    summary["planning"]["recovery_action"] = _build_planning_recovery_action(summary, summary["planning"])
+    summary["same_session_routing"] = _build_same_session_routing_summary(summary)
+    return summary
+
+
 def build_status_summary(
     task_id: str,
     *,
@@ -565,27 +668,24 @@ def build_status_summary(
     config_path: Optional[Path] = None,
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(paths, config=config, config_path=config_path)
-    task = _build_base_status_summary(task_id, paths=resolved_paths)
-    queue_snapshot = build_queue_snapshot(paths=resolved_paths)
-    queue_entry = next((entry for entry in queue_snapshot["items"] if entry["task_id"] == task["task_id"]), None)
-    queue_summary = {
-        "task_id": task["task_id"],
-        "position": queue_entry["position"] if queue_entry else None,
-        "ahead_count": queue_entry["ahead_count"] if queue_entry else 0,
-        "is_running": queue_entry["is_running"] if queue_entry else False,
-        "active_count": queue_snapshot["active_count"],
-        "running_count": queue_snapshot["running_count"],
-        "queued_count": queue_snapshot["queued_count"],
+    now_dt = datetime.now(timezone.utc).astimezone()
+    artifact_index = _build_artifact_index(resolved_paths)
+    inflight_base_statuses = _load_inflight_base_statuses(paths=resolved_paths, artifact_index=artifact_index)
+    base_by_id = {
+        str(item.get("task_id") or ""): item
+        for item in inflight_base_statuses
+        if str(item.get("task_id") or "").strip()
     }
-    task["queue"] = queue_summary
-    projection = project_user_facing_status(task)
-    task["user_facing_status_code"] = projection["code"]
-    task["user_facing_status"] = projection["label"]
-    task["user_facing_status_family"] = projection["family"]
-    task["planning"] = _build_planning_summary(task, paths=resolved_paths)
-    task["planning"]["recovery_action"] = _build_planning_recovery_action(task, task["planning"])
-    task["same_session_routing"] = _build_same_session_routing_summary(task)
-    return task
+    task = base_by_id.get(task_id) or _build_base_status_summary(task_id, paths=resolved_paths)
+    queue_snapshot = build_queue_snapshot(paths=resolved_paths, base_statuses=inflight_base_statuses)
+    queue_index = _queue_snapshot_index(queue_snapshot)
+    return _finalize_status_summary(
+        task,
+        queue_snapshot=queue_snapshot,
+        queue_index=queue_index,
+        paths=resolved_paths,
+        now_dt=now_dt,
+    )
 
 
 def list_inflight_statuses(
@@ -595,8 +695,21 @@ def list_inflight_statuses(
     config_path: Optional[Path] = None,
 ) -> list[dict[str, object]]:
     resolved_paths = _resolve_paths(paths, config=config, config_path=config_path)
-    store = TaskStore(paths=resolved_paths)
-    return [build_status_summary(path.stem, paths=resolved_paths) for path in store.list_inflight()]
+    now_dt = datetime.now(timezone.utc).astimezone()
+    artifact_index = _build_artifact_index(resolved_paths)
+    inflight_base_statuses = _load_inflight_base_statuses(paths=resolved_paths, artifact_index=artifact_index)
+    queue_snapshot = build_queue_snapshot(paths=resolved_paths, base_statuses=inflight_base_statuses)
+    queue_index = _queue_snapshot_index(queue_snapshot)
+    return [
+        _finalize_status_summary(
+            item,
+            queue_snapshot=queue_snapshot,
+            queue_index=queue_index,
+            paths=resolved_paths,
+            now_dt=now_dt,
+        )
+        for item in inflight_base_statuses
+    ]
 
 
 def build_system_overview(
@@ -606,8 +719,21 @@ def build_system_overview(
     config_path: Optional[Path] = None,
 ) -> dict[str, object]:
     resolved_paths = _resolve_paths(paths, config=config, config_path=config_path)
-    store = TaskStore(paths=resolved_paths)
-    inflight_statuses = [build_status_summary(path.stem, paths=resolved_paths) for path in store.list_inflight()]
+    now_dt = datetime.now(timezone.utc).astimezone()
+    artifact_index = _build_artifact_index(resolved_paths)
+    inflight_base_statuses = _load_inflight_base_statuses(paths=resolved_paths, artifact_index=artifact_index)
+    queue_snapshot = build_queue_snapshot(paths=resolved_paths, base_statuses=inflight_base_statuses)
+    queue_index = _queue_snapshot_index(queue_snapshot)
+    inflight_statuses = [
+        _finalize_status_summary(
+            item,
+            queue_snapshot=queue_snapshot,
+            queue_index=queue_index,
+            paths=resolved_paths,
+            now_dt=now_dt,
+        )
+        for item in inflight_base_statuses
+    ]
 
     inflight_counts = Counter(str(status["status"]) for status in inflight_statuses)
     delivery_counts = Counter(str(status["delivery"]["state"]) for status in inflight_statuses)
@@ -641,20 +767,14 @@ def build_system_overview(
 
     finalized_task_ids: set[str] = set()
     for directory in FINAL_INSTRUCTION_DIRS:
-        base = resolved_paths.data_dir / directory
-        if not base.exists():
-            continue
-        for path in base.glob("*.json"):
-            finalized_task_ids.add(path.stem)
+        finalized_task_ids.update(artifact_index.get(directory, set()))
     stale_delivery_task_count = 0
     stale_delivery_artifact_count = 0
     for task_id in finalized_task_ids:
-        has_final_artifact = any(_artifact_path(resolved_paths, directory, task_id).exists() for directory in FINAL_INSTRUCTION_DIRS)
+        has_final_artifact = any(task_id in artifact_index.get(directory, set()) for directory in FINAL_INSTRUCTION_DIRS)
         if not has_final_artifact:
             continue
-        stale_count = sum(
-            1 for directory in INTERMEDIATE_DELIVERY_DIRS if _artifact_path(resolved_paths, directory, task_id).exists()
-        )
+        stale_count = sum(1 for directory in INTERMEDIATE_DELIVERY_DIRS if task_id in artifact_index.get(directory, set()))
         if stale_count > 0:
             stale_delivery_task_count += 1
             stale_delivery_artifact_count += stale_count
@@ -665,7 +785,7 @@ def build_system_overview(
         archived_status = archived_payload.get("status")
         if archived_status:
             archived_counts[str(archived_status)] += 1
-    planning_health = build_planning_health_summary([*inflight_statuses, *archived_payloads])
+    planning_health = build_planning_health_summary([*inflight_statuses, *archived_payloads], now_dt=now_dt)
     planning_recovery_actions: list[dict[str, object]] = []
     for item in inflight_statuses:
         if (
@@ -677,7 +797,7 @@ def build_system_overview(
     for archived_payload in archived_payloads:
         if not isinstance(archived_payload, dict):
             continue
-        archived_planning = _build_planning_summary(archived_payload, paths=resolved_paths)
+        archived_planning = _build_planning_summary(archived_payload, now_dt=now_dt, paths=resolved_paths)
         archived_recovery_action = _build_planning_recovery_action(archived_payload, archived_planning)
         if str(archived_recovery_action.get("kind") or "") != "none":
             planning_recovery_actions.append(archived_recovery_action)

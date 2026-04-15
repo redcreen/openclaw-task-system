@@ -64,6 +64,21 @@ class SameSessionRoutingTests(unittest.TestCase):
         self.assertEqual(decision["execution_decision"], "handle-as-control-plane")
         self.assertEqual(decision["reason_code"], "same-session-control-plane-rule")
 
+    def test_same_session_status_probe_rule(self) -> None:
+        decision = same_session_routing.build_same_session_routing_decision(
+            session_key="agent:main:feishu:direct:test",
+            user_request="解决了么",
+            should_register_task=True,
+            classification_reason="observed-task",
+            active_task=self.make_task(request="帮我把今天的健康数据落到记录里"),
+            recoverable_task=None,
+            target_task=None,
+        )
+        self.assertEqual(decision["routing_status"], "decided")
+        self.assertEqual(decision["classification"], "control-plane")
+        self.assertEqual(decision["execution_decision"], "handle-as-control-plane")
+        self.assertEqual(decision["reason_code"], "same-session-status-probe-rule")
+
     def test_collect_more_rule(self) -> None:
         decision = same_session_routing.build_same_session_routing_decision(
             session_key="agent:main:feishu:direct:test",
@@ -135,6 +150,21 @@ class SameSessionRoutingTests(unittest.TestCase):
         self.assertEqual(decision["classification"], "queueing")
         self.assertEqual(decision["execution_decision"], "queue-as-new-task")
         self.assertEqual(decision["reason_code"], "same-session-obvious-independent-request")
+
+    def test_explicit_same_task_followup_rule(self) -> None:
+        decision = same_session_routing.build_same_session_routing_decision(
+            session_key="agent:main:feishu:direct:test",
+            user_request="需要记录啊",
+            should_register_task=True,
+            classification_reason="observed-task",
+            active_task=self.make_task(request="帮我把今天的健康数据落到记录里"),
+            recoverable_task=None,
+            target_task=None,
+        )
+        self.assertEqual(decision["routing_status"], "decided")
+        self.assertEqual(decision["classification"], "steering")
+        self.assertEqual(decision["execution_decision"], "interrupt-and-restart")
+        self.assertEqual(decision["reason_code"], "same-session-explicit-followup-rule")
 
     def test_refinement_does_not_misclassify_as_independent_request(self) -> None:
         decision = same_session_routing.build_same_session_routing_decision(

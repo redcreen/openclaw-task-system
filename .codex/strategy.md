@@ -1,9 +1,9 @@
 # Strategy
 
 ## Current Strategic Direction
-- Direction: `Milestone 3: system performance testing and optimization`
+- Direction: `reply-latency and context-weight governance`
 - Status: `active`
-- Why Now: Growware foundation is closed, so the highest-value next line is reproducible performance measurement before live activation or broader expansion
+- Why Now: the repo-local performance milestone is closed, but measured Telegram sessions still show 16s-50s reply latency driven by oversized context surfaces; activation prep should pause until that user-visible blocker is reduced and made measurable
 
 ## Strategy Evidence Contract
 
@@ -27,7 +27,7 @@
 
 | Topic | Current Position | Why It Is Not Mainline |
 | --- | --- | --- |
-| live pilot activation | supporting backlog | 只有性能基线稳定后，才适合恢复 activation rehearsal |
+| activation rehearsal prep | supporting backlog | 当前 measured slowdown 已重新成为用户可见 blocker，所以 activation 线先退回 supporting backlog，等治理专题给出 resume 条件再回主线 |
 | host-side self-heal / repair planning | supporting backlog | 只有 audit bootstrap 的边界需要被业务正式提升时，才升级优先级 |
 | maintainer-facing polish | supporting backlog | 只有它能明显降低接手成本或测量摩擦时，才回拉主线 |
 
@@ -51,6 +51,6 @@
 - 不要让战略层静默膨胀成全能调度器；编排仍应保留在 program-board。
 
 ## Next Strategic Checks
-1. 确认 benchmark surface、fixtures 和预算足够代表真实用户与 operator 代价，而不是只覆盖方便测的路径。
-2. 判断性能阶段是否需要单独的基线脚本 / 产物目录，而不是继续把性能证据散落在临时命令输出里。
-3. 如果 activation rehearsal、self-heal 或更强 planning 试图提前插队，先检查它们是否会破坏“先测量、后扩线”的当前顺序。
+1. 把 Telegram 会话里“慢”的证据冻结成可重复跑的 repo 命令，而不是继续依赖手工拆日志。
+2. 判断 prompt surface、startup transcript 和 per-turn wrapper 里，哪些属于必须保留的上下文，哪些属于纯负载。
+3. 给 activation 线定义明确的 resume 条件，避免治理专题长期悬空或 silently 吞回旧主线。

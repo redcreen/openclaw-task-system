@@ -206,14 +206,53 @@ def _build_context(payload: dict[str, Any]) -> OpenClawInboundContext:
     )
 
 
-def _build_same_session_classifier_from_config(agent_id: str, config_path: Optional[Path]) -> tuple[Optional[Any], float]:
+def _maybe_build_inprocess_same_session_classifier(command: tuple[str, ...]) -> Optional[Any]:
+    normalized = tuple(str(part).strip() for part in command if str(part).strip())
+    if not normalized:
+        return None
+
+    script_index: Optional[int] = None
+    executable_name = Path(normalized[0]).name.lower()
+    if executable_name.startswith("python") and len(normalized) >= 2:
+        script_index = 1
+    elif normalized[0].endswith(".py"):
+        script_index = 0
+    if script_index is None:
+        return None
+
+    script_candidate = Path(normalized[script_index]).expanduser()
+    runtime_root = Path(__file__).resolve().parents[2]
+    if not script_candidate.is_absolute():
+        script_candidate = (runtime_root / script_candidate).resolve()
+    else:
+        script_candidate = script_candidate.resolve()
+    local_classifier = Path(__file__).resolve().with_name("growware_feedback_classifier.py")
+    if script_candidate != local_classifier:
+        return None
+
+    import growware_feedback_classifier
+
+    def classifier(payload: dict[str, Any]) -> dict[str, Any]:
+        return growware_feedback_classifier.classify(payload, project_root=runtime_root)
+
+    return classifier
+
+
+def _build_same_session_classifier_from_config(
+    agent_id: str,
+    config_path: Optional[Path],
+) -> tuple[TaskSystemConfig, Optional[Any], float]:
     runtime_config = load_task_system_config(config_path=config_path)
     agent_config = runtime_config.agent_config(agent_id)
     routing_config = agent_config.same_session_routing
     classifier_config = routing_config.classifier
     min_confidence = float(classifier_config.min_confidence)
     if not routing_config.enabled or not classifier_config.enabled or not classifier_config.command:
-        return None, min_confidence
+        return runtime_config, None, min_confidence
+
+    inprocess_classifier = _maybe_build_inprocess_same_session_classifier(classifier_config.command)
+    if inprocess_classifier is not None:
+        return runtime_config, inprocess_classifier, min_confidence
 
     def classifier(payload: dict[str, Any]) -> dict[str, Any]:
         completed = subprocess.run(
@@ -231,7 +270,7 @@ def _build_same_session_classifier_from_config(agent_id: str, config_path: Optio
             raise ValueError("classifier output must be a JSON object")
         return parsed
 
-    return classifier, min_confidence
+    return runtime_config, classifier, min_confidence
 
 
 def register_from_payload(
@@ -239,12 +278,13 @@ def register_from_payload(
     *,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
-    same_session_classifier, same_session_classifier_min_confidence = _build_same_session_classifier_from_config(
+    runtime_config, same_session_classifier, same_session_classifier_min_confidence = _build_same_session_classifier_from_config(
         payload["agent_id"],
         config_path,
     )
     serialized = register_inbound_lifecycle(
         _build_context(payload),
+        config=runtime_config,
         config_path=config_path,
         observe_only=bool(payload.get("observe_only", False)),
         same_session_classifier=same_session_classifier,
@@ -1019,15 +1059,17 @@ def progress_active_from_payload(
     *,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
-    active = resolve_active_task_from_payload(payload, config_path=config_path)
-    task_id = active.get("task_id")
-    if not task_id:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    active = _resolve_target_task(store, payload)
+    if active is None:
         return {"updated": False, "reason": "no-active-task"}
     return progress_active_lifecycle(
-        task_id=str(task_id),
+        task_id=str(active.task_id),
         progress_note=payload.get("progress_note"),
         status=payload.get("status"),
-        config_path=config_path,
+        config=runtime_config,
+        store=store,
     )
 
 
@@ -1046,11 +1088,12 @@ def blocked_active_from_payload(
     *,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
-    active = resolve_active_task_from_payload(payload, config_path=config_path)
-    task_id = active.get("task_id")
-    if not task_id:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    active = _resolve_target_task(store, payload)
+    if active is None:
         return {"updated": False, "reason": "no-active-task"}
-    return block_task_lifecycle(str(task_id), reason=payload["reason"], config_path=config_path)
+    return block_task_lifecycle(str(active.task_id), reason=payload["reason"], config=runtime_config, store=store)
 
 
 def completed_from_payload(
@@ -1073,11 +1116,18 @@ def completed_active_from_payload(
     *,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
-    active = resolve_active_task_from_payload(payload, config_path=config_path)
-    task_id = active.get("task_id")
-    if not task_id:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    active = _resolve_target_task(store, payload)
+    if active is None:
         return {"updated": False, "reason": "no-active-task"}
-    return complete_task_lifecycle(str(task_id), result_summary=payload.get("result_summary"), execution_source=payload.get("execution_source"), config_path=config_path)
+    return complete_task_lifecycle(
+        str(active.task_id),
+        result_summary=payload.get("result_summary"),
+        execution_source=payload.get("execution_source"),
+        config=runtime_config,
+        store=store,
+    )
 
 
 def failed_from_payload(
@@ -1100,15 +1150,17 @@ def failed_active_from_payload(
     *,
     config_path: Optional[Path] = None,
 ) -> dict[str, Any]:
-    active = resolve_active_task_from_payload(payload, config_path=config_path)
-    task_id = active.get("task_id")
-    if not task_id:
+    runtime_config = load_task_system_config(config_path=config_path)
+    store = TaskStore(paths=runtime_config.build_paths())
+    active = _resolve_target_task(store, payload)
+    if active is None:
         return {"updated": False, "reason": "no-active-task"}
     return fail_task_lifecycle(
-        str(task_id),
+        str(active.task_id),
         reason=payload["reason"],
         execution_source=payload.get("execution_source"),
-        config_path=config_path,
+        config=runtime_config,
+        store=store,
     )
 
 
@@ -1122,7 +1174,7 @@ def finalize_active_from_payload(
     active = _resolve_target_task(store, payload)
     if not active:
         return {"updated": False, "reason": "no-active-task"}
-    return finalize_active_lifecycle(active_task=active, payload=payload, config_path=config_path)
+    return finalize_active_lifecycle(active_task=active, payload=payload, config=runtime_config, store=store)
 
 
 def should_send_short_followup_from_payload(

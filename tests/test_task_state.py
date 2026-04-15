@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from runtime_loader import task_state_module
 
@@ -133,6 +134,119 @@ class TaskStateTests(unittest.TestCase):
         self.assertEqual(cancelled.failure_reason, "stopped by user")
         self.assertEqual(cancelled.meta["cancel_reason"], "stopped by user")
         self.assertTrue(self.store.archive_path(task.task_id).exists())
+
+    def test_reuses_inflight_cache_across_repeated_find_operations(self) -> None:
+        running = self.store.register_task(
+            agent_id="main",
+            session_key="session:cache:running",
+            channel="feishu",
+            chat_id="chat:cache:running",
+            task_label="running task",
+        )
+        self.store.start_task(running.task_id)
+        queued = self.store.register_task(
+            agent_id="main",
+            session_key="session:cache:queued",
+            channel="feishu",
+            chat_id="chat:cache:queued",
+            task_label="queued task",
+        )
+        observed = self.store.observe_task(
+            agent_id="main",
+            session_key="session:cache:observed",
+            channel="feishu",
+            chat_id="chat:cache:observed",
+            task_label="observed task",
+        )
+        original = task_state_module.TaskStore.load_task
+        load_calls: list[tuple[str, bool]] = []
+
+        def counting_load(store: object, task_id: str, *, allow_archive: bool = True):
+            load_calls.append((task_id, allow_archive))
+            return original(store, task_id, allow_archive=allow_archive)
+
+        with patch.object(task_state_module.TaskStore, "load_task", autospec=True, side_effect=counting_load):
+            self.store.find_running_tasks(agent_id="main")
+            self.store.find_queued_tasks(agent_id="main")
+            self.store.find_latest_observed_task(agent_id="main", session_key=observed.session_key)
+
+        self.assertEqual(len(load_calls), 3)
+        self.assertEqual({task_id for task_id, _allow_archive in load_calls}, {running.task_id, queued.task_id, observed.task_id})
+
+    def test_write_paths_invalidate_inflight_cache(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:cache:first",
+            channel="feishu",
+            chat_id="chat:cache:first",
+            task_label="first task",
+        )
+        initial = self.store.find_inflight_tasks(agent_id="main")
+        self.assertEqual(len(initial), 1)
+
+        second = self.store.register_task(
+            agent_id="main",
+            session_key="session:cache:second",
+            channel="feishu",
+            chat_id="chat:cache:second",
+            task_label="second task",
+        )
+
+        refreshed = self.store.find_inflight_tasks(agent_id="main")
+        self.assertEqual({task.task_id for task in refreshed}, {first.task_id, second.task_id})
+
+    def test_cross_store_writes_invalidate_cached_inflight_snapshot(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:cache:cross:first",
+            channel="feishu",
+            chat_id="chat:cache:cross:first",
+            task_label="first cross-store task",
+        )
+        sibling_store = task_state_module.TaskStore(paths=self.paths)
+        initial = self.store.find_inflight_tasks(agent_id="main")
+        self.assertEqual([task.task_id for task in initial], [first.task_id])
+
+        second = sibling_store.register_task(
+            agent_id="main",
+            session_key="session:cache:cross:second",
+            channel="feishu",
+            chat_id="chat:cache:cross:second",
+            task_label="second cross-store task",
+        )
+
+        refreshed = self.store.find_inflight_tasks(agent_id="main")
+        self.assertEqual({task.task_id for task in refreshed}, {first.task_id, second.task_id})
+
+    def test_cross_store_reads_reuse_shared_inflight_snapshot(self) -> None:
+        first = self.store.register_task(
+            agent_id="main",
+            session_key="session:cache:shared:first",
+            channel="feishu",
+            chat_id="chat:cache:shared:first",
+            task_label="first shared task",
+        )
+        second = self.store.register_task(
+            agent_id="main",
+            session_key="session:cache:shared:second",
+            channel="feishu",
+            chat_id="chat:cache:shared:second",
+            task_label="second shared task",
+        )
+        self.store.find_inflight_tasks(agent_id="main")
+        sibling_store = task_state_module.TaskStore(paths=self.paths)
+        original = task_state_module.TaskStore.load_task
+        load_calls: list[str] = []
+
+        def counting_load(store: object, task_id: str, *, allow_archive: bool = True):
+            load_calls.append(task_id)
+            return original(store, task_id, allow_archive=allow_archive)
+
+        with patch.object(task_state_module.TaskStore, "load_task", autospec=True, side_effect=counting_load):
+            tasks = sibling_store.find_inflight_tasks(agent_id="main")
+
+        self.assertEqual({task.task_id for task in tasks}, {first.task_id, second.task_id})
+        self.assertEqual(load_calls, [])
 
 
 if __name__ == "__main__":

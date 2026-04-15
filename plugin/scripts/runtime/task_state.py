@@ -28,6 +28,8 @@ RECOVERABLE_STATUSES = {STATUS_BLOCKED, STATUS_PAUSED}
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
+_INFLIGHT_CACHE_GENERATIONS: dict[str, int] = {}
+_INFLIGHT_TASK_SNAPSHOTS: dict[str, tuple[int, list["TaskState"]]] = {}
 
 
 def now_iso() -> str:
@@ -119,6 +121,18 @@ class TaskStore:
     def __init__(self, paths: Optional[TaskPaths] = None) -> None:
         self.paths = paths or default_paths()
         self.paths.ensure_dirs()
+        self._inflight_tasks_cache: Optional[list[TaskState]] = None
+        self._inflight_tasks_cache_generation: Optional[int] = None
+
+    def _inflight_cache_key(self) -> str:
+        return str(self.paths.inflight_dir)
+
+    def _invalidate_inflight_cache(self) -> None:
+        self._inflight_tasks_cache = None
+        self._inflight_tasks_cache_generation = None
+        key = self._inflight_cache_key()
+        _INFLIGHT_CACHE_GENERATIONS[key] = _INFLIGHT_CACHE_GENERATIONS.get(key, 0) + 1
+        _INFLIGHT_TASK_SNAPSHOTS.pop(key, None)
 
     def new_task_id(self) -> str:
         return f"task_{uuid.uuid4().hex}"
@@ -143,6 +157,7 @@ class TaskStore:
         task.updated_at = task.updated_at or now_iso()
         path = self.archive_path(task.task_id) if archive else self.inflight_path(task.task_id)
         atomic_write_json(path, task.to_dict())
+        self._invalidate_inflight_cache()
         return task
 
     def register_task(
@@ -464,14 +479,28 @@ class TaskStore:
         archived = self.save_task(task, archive=True)
         if remove_inflight:
             self.inflight_path(task_id).unlink(missing_ok=True)
+        self._invalidate_inflight_cache()
         return archived
 
     def list_inflight(self) -> list[Path]:
         self.paths.ensure_dirs()
         return sorted(self.paths.inflight_dir.glob("*.json"))
 
+    def _cached_inflight_tasks(self) -> list[TaskState]:
+        cache_key = self._inflight_cache_key()
+        current_generation = _INFLIGHT_CACHE_GENERATIONS.get(cache_key, 0)
+        if self._inflight_tasks_cache is None or self._inflight_tasks_cache_generation != current_generation:
+            shared_snapshot = _INFLIGHT_TASK_SNAPSHOTS.get(cache_key)
+            if shared_snapshot is not None and shared_snapshot[0] == current_generation:
+                self._inflight_tasks_cache = shared_snapshot[1]
+            else:
+                self._inflight_tasks_cache = [self.load_task(path.stem, allow_archive=False) for path in self.list_inflight()]
+                _INFLIGHT_TASK_SNAPSHOTS[cache_key] = (current_generation, self._inflight_tasks_cache)
+            self._inflight_tasks_cache_generation = current_generation
+        return self._inflight_tasks_cache
+
     def list_inflight_tasks(self) -> list[TaskState]:
-        return [self.load_task(path.stem, allow_archive=False) for path in self.list_inflight()]
+        return list(self._cached_inflight_tasks())
 
     def find_inflight_tasks(
         self,
@@ -481,7 +510,7 @@ class TaskStore:
         statuses: Optional[set[str]] = None,
     ) -> list[TaskState]:
         matched: list[TaskState] = []
-        for task in self.list_inflight_tasks():
+        for task in self._cached_inflight_tasks():
             if agent_id is not None and task.agent_id != agent_id:
                 continue
             if session_key is not None and task.session_key != session_key:

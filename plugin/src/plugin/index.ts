@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { appendFile, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -32,12 +33,17 @@ type TaskSystemPluginConfig = {
   ignoreProgressPatterns?: string[];
   enableHostFeishuDelivery?: boolean;
   hostDeliveryPollMs?: number;
+  warmOutboundAdaptersOnStart?: boolean;
   enableContinuationRunner?: boolean;
   continuationPollMs?: number;
   enableWatchdogRecoveryRunner?: boolean;
   watchdogRecoveryPollMs?: number;
+  watchdogMaxResumesPerCycle?: number;
   outboundAdapterLoadTimeoutMs?: number;
   outboundSendTimeoutMs?: number;
+  debugLogMaxBytes?: number;
+  debugLogMaxFiles?: number;
+  debugVerbosePolling?: boolean;
 };
 
 type PlanningRuntimeConfig = {
@@ -74,12 +80,38 @@ function resolveBundledPath(...parts: string[]): string {
   return join(INSTALLED_PLUGIN_ROOT, ...parts);
 }
 
+function loadPluginRuntimeOverrides(configPath: string): Record<string, unknown> {
+  try {
+    const raw = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+    const taskSystem =
+      raw && typeof raw === "object" && !Array.isArray(raw) && raw.taskSystem && typeof raw.taskSystem === "object"
+        ? (raw.taskSystem as Record<string, unknown>)
+        : {};
+    const plugin =
+      taskSystem.plugin && typeof taskSystem.plugin === "object" && !Array.isArray(taskSystem.plugin)
+        ? (taskSystem.plugin as Record<string, unknown>)
+        : {};
+    return plugin;
+  } catch {
+    return {};
+  }
+}
+
 function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
-  const value = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const rawValue = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const runtimeRoot =
-    typeof value.runtimeRoot === "string" && value.runtimeRoot.trim()
-      ? value.runtimeRoot.trim()
+    typeof rawValue.runtimeRoot === "string" && rawValue.runtimeRoot.trim()
+      ? rawValue.runtimeRoot.trim()
       : INSTALLED_PLUGIN_ROOT;
+  const configPath =
+    typeof rawValue.configPath === "string" && rawValue.configPath.trim()
+      ? rawValue.configPath.trim()
+      : join(runtimeRoot, "config", "task_system.json");
+  const value = {
+    ...loadPluginRuntimeOverrides(configPath),
+    ...rawValue,
+    configPath,
+  } satisfies Record<string, unknown>;
   return {
     enabled: value.enabled !== false,
     taskMessagePrefix:
@@ -92,10 +124,7 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
         : process.env.OPENCLAW_BIN?.trim() || "openclaw",
     pythonBin: typeof value.pythonBin === "string" && value.pythonBin.trim() ? value.pythonBin.trim() : "python3",
     runtimeRoot,
-    configPath:
-      typeof value.configPath === "string" && value.configPath.trim()
-        ? value.configPath.trim()
-        : join(runtimeRoot, "config", "task_system.json"),
+    configPath,
     debugLogPath:
       typeof value.debugLogPath === "string" && value.debugLogPath.trim()
         ? value.debugLogPath.trim()
@@ -132,17 +161,22 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
     hostDeliveryPollMs:
       typeof value.hostDeliveryPollMs === "number" && Number.isFinite(value.hostDeliveryPollMs)
         ? Math.max(1000, Math.trunc(value.hostDeliveryPollMs))
-        : 3000,
+        : 10000,
+    warmOutboundAdaptersOnStart: value.warmOutboundAdaptersOnStart === true,
     enableContinuationRunner: value.enableContinuationRunner !== false,
     continuationPollMs:
       typeof value.continuationPollMs === "number" && Number.isFinite(value.continuationPollMs)
         ? Math.max(1000, Math.trunc(value.continuationPollMs))
-        : 3000,
+        : 10000,
     enableWatchdogRecoveryRunner: value.enableWatchdogRecoveryRunner !== false,
     watchdogRecoveryPollMs:
       typeof value.watchdogRecoveryPollMs === "number" && Number.isFinite(value.watchdogRecoveryPollMs)
         ? Math.max(1000, Math.trunc(value.watchdogRecoveryPollMs))
-        : 30000,
+        : 60000,
+    watchdogMaxResumesPerCycle:
+      typeof value.watchdogMaxResumesPerCycle === "number" && Number.isFinite(value.watchdogMaxResumesPerCycle)
+        ? Math.max(1, Math.trunc(value.watchdogMaxResumesPerCycle))
+        : 1,
     outboundAdapterLoadTimeoutMs:
       typeof value.outboundAdapterLoadTimeoutMs === "number" && Number.isFinite(value.outboundAdapterLoadTimeoutMs)
         ? Math.max(1000, Math.trunc(value.outboundAdapterLoadTimeoutMs))
@@ -151,6 +185,15 @@ function normalizeConfig(raw: unknown): Required<TaskSystemPluginConfig> {
       typeof value.outboundSendTimeoutMs === "number" && Number.isFinite(value.outboundSendTimeoutMs)
         ? Math.max(1000, Math.trunc(value.outboundSendTimeoutMs))
         : 10000,
+    debugLogMaxBytes:
+      typeof value.debugLogMaxBytes === "number" && Number.isFinite(value.debugLogMaxBytes)
+        ? Math.max(0, Math.trunc(value.debugLogMaxBytes))
+        : 8 * 1024 * 1024,
+    debugLogMaxFiles:
+      typeof value.debugLogMaxFiles === "number" && Number.isFinite(value.debugLogMaxFiles)
+        ? Math.max(1, Math.trunc(value.debugLogMaxFiles))
+        : 4,
+    debugVerbosePolling: value.debugVerbosePolling === true,
   };
 }
 
@@ -596,7 +639,11 @@ async function appendDebugLog(
     return;
   }
   try {
-    await mkdir(join(config.debugLogPath, ".."), { recursive: true });
+    if (shouldSuppressDebugLog(config, event, payload)) {
+      return;
+    }
+    await mkdir(dirname(config.debugLogPath), { recursive: true });
+    await rotateDebugLogIfNeeded(config);
     const line = JSON.stringify({
       ts: new Date().toISOString(),
       event,
@@ -606,6 +653,75 @@ async function appendDebugLog(
   } catch {
     return;
   }
+}
+
+async function rotateDebugLogIfNeeded(config: Required<TaskSystemPluginConfig>): Promise<void> {
+  if (!config.debugLogPath || config.debugLogMaxBytes <= 0 || config.debugLogMaxFiles <= 0) {
+    return;
+  }
+  let currentSize = 0;
+  try {
+    currentSize = (await stat(config.debugLogPath)).size;
+  } catch {
+    return;
+  }
+  if (currentSize < config.debugLogMaxBytes) {
+    return;
+  }
+  const maxFiles = Math.max(1, config.debugLogMaxFiles);
+  const lastPath = `${config.debugLogPath}.${maxFiles}`;
+  try {
+    await unlink(lastPath);
+  } catch {
+    // Ignore missing rotation targets.
+  }
+  for (let index = maxFiles - 1; index >= 1; index -= 1) {
+    const source = `${config.debugLogPath}.${index}`;
+    const target = `${config.debugLogPath}.${index + 1}`;
+    try {
+      await rename(source, target);
+    } catch {
+      // Ignore sparse rotation slots.
+    }
+  }
+  try {
+    await rename(config.debugLogPath, `${config.debugLogPath}.1`);
+  } catch {
+    return;
+  }
+}
+
+function shouldSuppressDebugLog(
+  config: Required<TaskSystemPluginConfig>,
+  event: string,
+  payload: Record<string, unknown>,
+): boolean {
+  if (config.debugVerbosePolling) {
+    return false;
+  }
+  if (event === "hook:claim-due-continuations:start" || event === "hook:claim-due-collecting-windows:start") {
+    return true;
+  }
+  if (event === "hook:watchdog-auto-recover:start" && payload.startup_recovery !== true) {
+    return true;
+  }
+  if (
+    (event === "hook:claim-due-continuations:ok" || event === "hook:claim-due-collecting-windows:ok") &&
+    Number(payload.claimed_count || 0) === 0
+  ) {
+    return true;
+  }
+  if (
+    event === "hook:watchdog-auto-recover:ok" &&
+    payload.startup_recovery !== true &&
+    String(payload.status || "") === "noop" &&
+    Number(payload.watchdog_findings_count || 0) === 0 &&
+    Number(payload.watchdog_blocked_count || 0) === 0 &&
+    Number(payload.startup_promoted_count || 0) === 0
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function enqueueDebugLog(
@@ -1639,11 +1755,16 @@ async function processWatchdogRecovery(
   if (!config.enableWatchdogRecoveryRunner) {
     return;
   }
-  const result = await callHook(api, config, "watchdog-auto-recover", { startup_recovery: startupRecovery });
+  const result = await callHook(api, config, "watchdog-auto-recover", {
+    startup_recovery: startupRecovery,
+    limit: config.watchdogMaxResumesPerCycle,
+  });
   if (!startupRecovery || !result) {
     return;
   }
-  const promoted = Array.isArray(result.startup_promoted) ? result.startup_promoted : [];
+  const promoted = Array.isArray(result.startup_promoted)
+    ? result.startup_promoted.slice(0, config.watchdogMaxResumesPerCycle)
+    : [];
   for (const item of promoted) {
     const sessionKey = normalizeText((item as Record<string, unknown>).session_key);
     if (!sessionKey) {
@@ -1709,6 +1830,30 @@ type PendingReceipt = {
   taskKind: "short" | "long";
   timer: ReturnType<typeof setTimeout> | null;
 };
+
+type RunnerState = {
+  running: boolean;
+};
+
+function startBackgroundTask(task: () => Promise<void>): void {
+  void task().catch(() => {
+    // The task itself is expected to log failures.
+  });
+}
+
+function runGuardedTask(state: RunnerState, task: () => Promise<void>): void {
+  if (state.running) {
+    return;
+  }
+  state.running = true;
+  startBackgroundTask(async () => {
+    try {
+      await task();
+    } finally {
+      state.running = false;
+    }
+  });
+}
 
 type ActiveTaskBinding = {
   taskId: string;
@@ -2647,6 +2792,9 @@ const taskSystemPlugin = {
     let continuationTimer: ReturnType<typeof setInterval> | null = null;
     let watchdogRecoveryTimer: ReturnType<typeof setInterval> | null = null;
     let startupWatchdogRecoveryRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    const hostDeliveryRunnerState: RunnerState = { running: false };
+    const continuationRunnerState: RunnerState = { running: false };
+    const watchdogRecoveryRunnerState: RunnerState = { running: false };
     const pendingReceipts = new Map<string, PendingReceipt>();
     const activeTaskBindings = new Map<string, ActiveTaskBinding>();
     const taskMonitorEnabledBySession = new Map<string, boolean>();
@@ -4296,10 +4444,21 @@ const taskSystemPlugin = {
     api.registerService({
       id: "openclaw-task-system-host-delivery",
       async start() {
-        await warmOutboundAdapters(api, ["telegram", "feishu"]);
+        const runHostDeliveryQueue = () => runGuardedTask(hostDeliveryRunnerState, () => processHostDeliveryQueue(api, config));
+        const runContinuationSweep = () =>
+          runGuardedTask(continuationRunnerState, async () => {
+            await processDueContinuations(api, config);
+            await processDueCollectingWindows(api, config);
+          });
+        const runWatchdogRecovery = (options: { startupRecovery?: boolean } = {}) =>
+          runGuardedTask(watchdogRecoveryRunnerState, () => processWatchdogRecovery(api, config, options));
+
+        if (config.warmOutboundAdaptersOnStart) {
+          startBackgroundTask(() => warmOutboundAdapters(api, ["telegram", "feishu"]));
+        }
         if (config.enableWatchdogRecoveryRunner) {
           watchdogRecoveryTimer = setInterval(() => {
-            void processWatchdogRecovery(api, config);
+            runWatchdogRecovery();
           }, config.watchdogRecoveryPollMs);
           await appendDebugLog(config, "watchdog-auto-recover:startup-kickoff", {
             startupRecovery: true,
@@ -4307,39 +4466,37 @@ const taskSystemPlugin = {
             schedulerDecision: "entered",
             reason: "startup-watchdog-recovery",
           });
-          await processWatchdogRecovery(api, config, { startupRecovery: true });
+          runWatchdogRecovery({ startupRecovery: true });
           startupWatchdogRecoveryRetryTimer = setTimeout(() => {
-            void appendDebugLog(config, "watchdog-auto-recover:startup-kickoff", {
-              startupRecovery: true,
-              attempt: "delayed-retry",
-              schedulerDecision: "entered",
-              reason: "startup-watchdog-recovery",
+            startBackgroundTask(async () => {
+              await appendDebugLog(config, "watchdog-auto-recover:startup-kickoff", {
+                startupRecovery: true,
+                attempt: "delayed-retry",
+                schedulerDecision: "entered",
+                reason: "startup-watchdog-recovery",
+              });
+              runWatchdogRecovery({ startupRecovery: true });
             });
-            void processWatchdogRecovery(api, config, { startupRecovery: true });
           }, 10000);
         }
         if (!config.enableHostFeishuDelivery) {
           if (config.enableContinuationRunner) {
             continuationTimer = setInterval(() => {
-              void processDueContinuations(api, config);
-              void processDueCollectingWindows(api, config);
+              runContinuationSweep();
             }, config.continuationPollMs);
-            await processDueContinuations(api, config);
-            await processDueCollectingWindows(api, config);
+            runContinuationSweep();
           }
           return;
         }
         hostDeliveryTimer = setInterval(() => {
-          void processHostDeliveryQueue(api, config);
+          runHostDeliveryQueue();
         }, config.hostDeliveryPollMs);
-        await processHostDeliveryQueue(api, config);
+        runHostDeliveryQueue();
         if (config.enableContinuationRunner) {
           continuationTimer = setInterval(() => {
-            void processDueContinuations(api, config);
-            void processDueCollectingWindows(api, config);
+            runContinuationSweep();
           }, config.continuationPollMs);
-          await processDueContinuations(api, config);
-          await processDueCollectingWindows(api, config);
+          runContinuationSweep();
         }
       },
       async stop() {

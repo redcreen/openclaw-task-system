@@ -73,11 +73,11 @@ same-session routing 现在已经是正式交付能力：
 - Phase 6 最小闭环：完成
 - Milestone 1：post-hardening 收口：完成
 - Milestone 2：Growware Project 1 pilot foundation：完成
-- Milestone 3：系统性能测试与优化：进行中
+- Milestone 3：系统性能测试与优化：完成
 
-当前主线不是继续模糊收尾。
+当前主线不再是继续无限期的性能调优。
 
-而是在已经收口的 Growware foundation 之上，进入“先测量、后优化”的性能阶段。
+而是在已经收口的性能基线上，进入 live pilot activation 的准备阶段。
 
 ## 快速开始
 
@@ -115,6 +115,7 @@ openclaw plugins install git+https://github.com/redcreen/openclaw-task-system.gi
 - [`docs/usage_guide.zh-CN.md`](./docs/usage_guide.zh-CN.md)：日常运维与命令入口
 - [`docs/testsuite.zh-CN.md`](./docs/testsuite.zh-CN.md)：详细自动化与验收清单
 - [`docs/reference/openclaw-task-system/growware-pilot.zh-CN.md`](./docs/reference/openclaw-task-system/growware-pilot.zh-CN.md)：Growware `Project 1` 接入、`feishu6-chat` 绑定和 `.growware/` 真相源
+- [`docs/reference/openclaw-task-system/performance-baseline.zh-CN.md`](./docs/reference/openclaw-task-system/performance-baseline.zh-CN.md)：Milestone 3 的 benchmark surface、预算、热点归因、优化结果与收口证据
 - [`docs/reference/session_message_routing/README.zh-CN.md`](./docs/reference/session_message_routing/README.zh-CN.md)：same-session routing 的正式 contract
 - [`docs/reference/README.zh-CN.md`](./docs/reference/README.zh-CN.md)：稳定参考资料
 - [`docs/archive/README.zh-CN.md`](./docs/archive/README.zh-CN.md)：历史记录与已退役文档
@@ -157,6 +158,12 @@ planning 验收：
 ```bash
 python3 scripts/runtime/planning_acceptance.py --json
 python3 scripts/runtime/planning_acceptance_suite.py --json
+```
+
+性能基线：
+
+```bash
+python3 scripts/runtime/performance_baseline.py --json
 ```
 
 runtime mirror 同步：

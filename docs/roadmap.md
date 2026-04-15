@@ -10,17 +10,17 @@ The milestone state has now shifted to:
 
 - `Milestone 2: Growware Project 1 pilot foundation` complete
 - `Milestone 3: system performance testing and optimization` complete
-- `post-performance live pilot activation preparation` active
+- `reply-latency and context-weight governance` active
 
 ## Overall Progress
 
 | Item | Current Value |
 | --- | --- |
-| Mainline Progress | Mainline is complete through `Milestone 3`; the repo has moved into bounded activation preparation |
-| Current Phase | `post-performance live pilot activation preparation` |
-| Current Objective | reopen live pilot activation preparation on top of the closed performance baseline instead of leaving Milestone 3 as an open-ended tuning bucket |
-| Clear Next Move | `AP-1` define activation rehearsal entry criteria and the required operator evidence package |
-| Next Candidate Move | run one bounded `feishu6-chat` live activation rehearsal after entry criteria, install-sync intent, and rollback boundaries are explicit |
+| Mainline Progress | Mainline is complete through `Milestone 3`; the repo has moved into reply-latency and context-weight governance before activation prep resumes |
+| Current Phase | `reply-latency and context-weight governance` |
+| Current Objective | turn the measured Telegram slowdown into durable repo truth, add repeatable session-latency audits, and bound the biggest context contributors before activation prep returns |
+| Clear Next Move | `TG-1` freeze the slowdown trigger and add a reusable session-latency audit command |
+| Next Candidate Move | resume bounded `feishu6-chat` activation preparation after context budgets and resume criteria are explicit |
 
 See the detailed execution plan: [reference/openclaw-task-system/development-plan.md](reference/openclaw-task-system/development-plan.md)
 
@@ -72,12 +72,30 @@ Milestone 3 is now closed with these durable outcomes:
 - structural regression checks and benchmark budgets now protect the improved paths without reopening runtime truth or control-surface drift
 - installed-runtime drift remains visible in `plugin_doctor.py`, but it stays a separate activation-prep decision instead of a hidden blocker inside the repo-local performance milestone
 
+## Current Governance Topic
+
+The active mainline is now a dedicated reply-latency governance topic, because a real Telegram session after `2026-04-15 23:44` still showed `16s-50s` reply latency even though the repo-local performance baseline remained green.
+
+The durable trigger evidence is:
+
+- dominant latency in LLM segments rather than task-system hooks
+- static context around `140,465 chars`
+- tool schema surface as the largest static block
+- per-turn wrapper payloads around `1.5k chars`
+- startup and transcript carryover that increase later-turn cost
+
+The repo now owns a repeatable audit entrypoint for that evidence:
+
+- `python3 scripts/runtime/session_latency_audit.py --session-key 'agent:main:telegram:direct:8705812936' --json`
+
+See the detailed governance plan: [reference/openclaw-task-system/reply-latency-governance.md](reference/openclaw-task-system/reply-latency-governance.md)
+
 ## Current / Next / Later
 
 | Horizon | Focus | Exit Signal |
 | --- | --- | --- |
-| Current | execute `post-performance live pilot activation preparation` on top of the closed benchmark baseline | activation entry criteria, operator evidence expectations, and install-sync decisions are explicit before any bounded live rehearsal |
-| Next | run a bounded live `feishu6-chat` activation rehearsal | rehearsal evidence is captured on top of green repo-local validation and explicit rollback boundaries |
+| Current | execute `reply-latency and context-weight governance` on top of the closed benchmark baseline | slowdown evidence is rerunnable, top prompt/context contributors are ranked, and activation resume criteria are explicit |
+| Next | return to bounded `feishu6-chat` activation preparation | activation entry criteria, operator evidence expectations, and install-sync decisions are explicit before any bounded live rehearsal |
 | Later | consider conservative self-heal, stronger planning / steering, and richer real-channel evidence | new work does not reopen policy-ownership drift or bypass runtime truth and approval boundaries |
 
 ## Milestones
@@ -94,7 +112,7 @@ Milestone 3 is now closed with these durable outcomes:
 
 ## Future Candidate Areas
 
-Potential later candidates after the current activation-prep line:
+Potential later candidates after the current governance line:
 
 - live Growware pilot activation and real end-to-end evidence capture across `feishu6-chat`
 - conservative host-side repair planning / self-heal on top of `openclaw_runtime_audit.py`

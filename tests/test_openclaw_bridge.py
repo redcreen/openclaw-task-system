@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from runtime_loader import load_runtime_module, task_state_module
 
@@ -133,6 +134,28 @@ class OpenClawBridgeTests(unittest.TestCase):
         task = store.load_task(decision.task_id)
         self.assertEqual(task.status, task_state_module.STATUS_RUNNING)
         self.assertEqual(task.chat_id, "oc_test_chat")
+
+    def test_register_inbound_task_reuses_single_store_snapshot_for_registration(self) -> None:
+        original = openclaw_bridge.TaskStore.list_inflight_tasks
+        store_ids: list[int] = []
+
+        def counting_list(store: object) -> list[task_state_module.TaskState]:
+            store_ids.append(id(store))
+            return original(store)
+
+        with patch.object(openclaw_bridge.TaskStore, "list_inflight_tasks", autospec=True, side_effect=counting_list):
+            decision = openclaw_bridge.register_inbound_task(
+                self.make_context(
+                    "帮我排查这个问题并修复，再验证结果",
+                    estimated_steps=4,
+                    needs_verification=True,
+                ),
+                paths=self.paths,
+            )
+
+        self.assertIsNotNone(decision.task_id)
+        self.assertLessEqual(len(store_ids), 2)
+        self.assertEqual(len(set(store_ids)), 1)
 
     def test_register_inbound_task_no_longer_auto_schedules_delayed_reply(self) -> None:
         decision = openclaw_bridge.register_inbound_task(

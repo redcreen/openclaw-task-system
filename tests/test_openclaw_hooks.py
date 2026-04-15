@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from runtime_loader import load_runtime_module, task_state_module
 
@@ -306,6 +307,70 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(routing["classification"], "steering")
         self.assertIn("wording-refinement", routing["reason_code"])
 
+    def test_register_from_payload_inprocess_growware_classifier_skips_subprocess_spawn(self) -> None:
+        classifier_script = Path(__file__).resolve().parents[1] / "scripts" / "runtime" / "growware_feedback_classifier.py"
+        self.config_path.write_text(
+            json.dumps(
+                {
+                    "taskSystem": {
+                        "storageDir": str(self.paths.data_dir),
+                        "agents": {
+                            "growware": {
+                                "sameSessionRouting": {
+                                    "enabled": True,
+                                    "classifier": {
+                                        "enabled": True,
+                                        "command": [sys.executable, str(classifier_script)],
+                                        "timeoutMs": 1000,
+                                        "minConfidence": 0.78,
+                                    },
+                                }
+                            }
+                        },
+                    }
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        openclaw_hooks.register_from_payload(
+            {
+                "agent_id": "growware",
+                "session_key": "session:growware-feedback-inprocess",
+                "channel": "feishu",
+                "account_id": "feishu6-chat",
+                "chat_id": "chat:growware-feedback-inprocess",
+                "user_id": "ou_test",
+                "user_request": "把 growware 的回复话术收自然一点",
+                "estimated_steps": 3,
+            },
+            config_path=self.config_path,
+        )
+
+        with patch.object(openclaw_hooks.subprocess, "run", side_effect=AssertionError("subprocess should not run")):
+            second = openclaw_hooks.register_from_payload(
+                {
+                    "agent_id": "growware",
+                    "session_key": "session:growware-feedback-inprocess",
+                    "channel": "feishu",
+                    "account_id": "feishu6-chat",
+                    "chat_id": "chat:growware-feedback-inprocess",
+                    "user_id": "ou_test",
+                    "user_request": "这段话再顺一点。",
+                    "observe_only": True,
+                },
+                config_path=self.config_path,
+            )
+
+        routing = second["routing_decision"]
+        self.assertEqual(routing["decision_source"], "classifier")
+        self.assertTrue(routing["classifier_invoked"])
+        self.assertEqual(routing["classification"], "steering")
+        self.assertIn("wording-refinement", routing["reason_code"])
+
     def test_register_from_payload_activates_collecting_window_without_registering_task(self) -> None:
         self.config_path.write_text(
             json.dumps(
@@ -548,6 +613,7 @@ class OpenClawHooksTests(unittest.TestCase):
     def test_watchdog_auto_recover_orchestrates_scan_and_auto_resume(self) -> None:
         original_scan = openclaw_hooks.process_overdue_tasks
         original_auto_resume = openclaw_hooks.auto_resume_watchdog_blocked_main_tasks_if_safe
+        captured: dict[str, object] = {}
 
         def fake_scan(*, paths=None, config=None, config_path=None):
             return [
@@ -560,6 +626,10 @@ class OpenClawHooksTests(unittest.TestCase):
             ]
 
         def fake_auto_resume(*, config_path=None, paths=None, session_key=None, limit=None, note=None, dry_run=False):
+            captured["session_key"] = session_key
+            captured["limit"] = limit
+            captured["note"] = note
+            captured["dry_run"] = dry_run
             return {
                 "status": "applied",
                 "session_filter": session_key or "all",
@@ -598,6 +668,10 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertEqual(result["watchdog_findings_count"], 1)
         self.assertEqual(result["watchdog_notified_count"], 1)
         self.assertEqual(result["watchdog_blocked_count"], 1)
+        self.assertEqual(captured["session_key"], "session:main:recover")
+        self.assertEqual(captured["limit"], 1)
+        self.assertEqual(captured["note"], "继续推进")
+        self.assertEqual(captured["dry_run"], False)
         self.assertEqual(result["focus_session_key"], "session:main:recover")
         self.assertEqual(result["control_plane_message"]["event_name"], "watchdog-auto-recover")
         self.assertEqual(result["control_plane_message"]["priority"], "p1-task-management")

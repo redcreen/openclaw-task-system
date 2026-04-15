@@ -536,6 +536,74 @@ test("hook failure carries operator-visible scheduler diagnostics", async () => 
   }
 });
 
+test("service start skips outbound adapter warmup by default", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot();
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages, {
+    outboundAdapterLoadDelayMs: 300,
+  });
+
+  try {
+    const startedAt = Date.now();
+    await plugin.start();
+    const elapsedMs = Date.now() - startedAt;
+    assert.equal(plugin.getOutboundAdapterLoadCount(), 0);
+    assert.ok(elapsedMs < 200, `expected non-blocking startup, got ${elapsedMs}ms`);
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("service start warmup stays asynchronous when explicitly enabled", async () => {
+  resetGlobalState();
+  const { runtimeRoot } = await createFakeRuntimeRoot();
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages, {
+    outboundAdapterLoadDelayMs: 300,
+    warmOutboundAdaptersOnStart: true,
+  });
+
+  try {
+    const startedAt = Date.now();
+    await plugin.start();
+    const elapsedMs = Date.now() - startedAt;
+    assert.ok(elapsedMs < 200, `expected non-blocking startup, got ${elapsedMs}ms`);
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    assert.equal(plugin.getOutboundAdapterLoadCount(), 2);
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
+test("continuation noop polling is suppressed from debug logs", async () => {
+  resetGlobalState();
+  const { runtimeRoot, callsPath } = await createFakeRuntimeRoot({
+    claimDueContinuationsResponse: { claimed_count: 0, tasks: [] },
+    claimDueCollectingWindowsResponse: { claimed_count: 0, tasks: [] },
+  });
+  const sentMessages = [];
+  const plugin = createApi(runtimeRoot, sentMessages, {
+    enableContinuationRunner: true,
+    continuationPollMs: 60000,
+  });
+
+  try {
+    await plugin.start();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const commands = await readHookCommands(callsPath);
+    assert.deepEqual(commands, ["claim-due-continuations", "claim-due-collecting-windows"]);
+
+    const debugEvents = await readDebugEvents(runtimeRoot);
+    assert.equal(debugEvents.some((entry) => entry.event === "hook:claim-due-continuations:start"), false);
+    assert.equal(debugEvents.some((entry) => entry.event === "hook:claim-due-continuations:ok"), false);
+    assert.equal(debugEvents.some((entry) => entry.event === "hook:claim-due-collecting-windows:start"), false);
+    assert.equal(debugEvents.some((entry) => entry.event === "hook:claim-due-collecting-windows:ok"), false);
+  } finally {
+    await cleanupRuntime(plugin, runtimeRoot);
+  }
+});
+
 test("gateway failure carries operator-visible scheduler diagnostics", async () => {
   resetGlobalState();
   const { runtimeRoot, openclawBin } = await createFakeRuntimeRoot({

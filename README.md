@@ -73,11 +73,11 @@ The repo is now in a cleaner phase boundary:
 - Phase 6 minimum closure: complete
 - Milestone 1: post-hardening closeout: complete
 - Milestone 2: Growware Project 1 pilot foundation: complete
-- Milestone 3: system performance testing and optimization: active
+- Milestone 3: system performance testing and optimization: complete
 
-The current repo direction is not another ambiguous cleanup pass.
+The current repo direction is no longer open-ended performance tuning.
 
-It is a measurement-first performance phase on top of the now-closed Growware foundation.
+It is post-performance live pilot activation preparation on top of a reviewed benchmark baseline and regression gate.
 
 ## Quick Start
 
@@ -115,6 +115,7 @@ Useful secondary docs:
 - [`docs/usage_guide.md`](./docs/usage_guide.md): daily operations and runtime commands
 - [`docs/testsuite.md`](./docs/testsuite.md): detailed automation and acceptance inventory
 - [`docs/reference/openclaw-task-system/growware-pilot.md`](./docs/reference/openclaw-task-system/growware-pilot.md): Growware `Project 1` onboarding, `feishu6-chat` binding, and `.growware/` truth
+- [`docs/reference/openclaw-task-system/performance-baseline.md`](./docs/reference/openclaw-task-system/performance-baseline.md): Milestone 3 benchmark surface, budgets, hotspot attribution, optimizations, and closeout evidence
 - [`docs/reference/session_message_routing/README.md`](./docs/reference/session_message_routing/README.md): shipped same-session routing contract
 - [`docs/reference/README.md`](./docs/reference/README.md): durable reference notes
 - [`docs/archive/README.md`](./docs/archive/README.md): historical records and superseded docs
@@ -157,6 +158,12 @@ Planning acceptance:
 ```bash
 python3 scripts/runtime/planning_acceptance.py --json
 python3 scripts/runtime/planning_acceptance_suite.py --json
+```
+
+Performance baseline:
+
+```bash
+python3 scripts/runtime/performance_baseline.py --json
 ```
 
 Runtime mirror sync:
