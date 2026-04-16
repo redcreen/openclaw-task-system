@@ -112,9 +112,6 @@ def _build_terminal_message_text(task: Any, *, success: bool, execution_source: 
         generic_summary = normalized_summary in GENERIC_SUCCESS_SUMMARIES or summary.startswith("{")
         if summary and not generic_summary:
             return f"当前任务已完成{source_suffix}：{summary}"
-        target = _compact_task_target(task)
-        if target:
-            return f"当前任务已完成{source_suffix}：{target}"
         return f"当前任务已完成{source_suffix}。"
     failure_reason = str(getattr(task, "failure_reason", "") or task.meta.get("failure_reason") or "").strip()
     if failure_reason:
@@ -187,30 +184,31 @@ def _build_queue_receipt_text(
 ) -> str:
     position = queue_position or max(ahead_count + 1, 1)
     suppress_short_eta = ahead_count > 0 and estimated_wait_seconds is not None and estimated_wait_seconds < 60
+    wait_suffix = ""
     if estimated_wait_seconds and not suppress_short_eta:
-        if ahead_count > 0 and running_count <= 0:
+        wait_suffix = f"，预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后给你结果。"
+    if ahead_count > 0:
+        return f"收到，这件事已进入队列；前面还有 {ahead_count} 条，你这边排第 {position} 位{wait_suffix or '。'}"
+    if running_count > 0:
+        return f"收到，这件事已进入队列；当前有 {running_count} 条任务正在处理，你是下一位{wait_suffix or '。'}"
+    if wait_suffix:
+        return f"收到，这件事已进入队列{wait_suffix}"
+    return "收到，这件事已进入队列；我开始处理后会先同步进展。"
+
+
+def _build_running_receipt_text(
+    *,
+    active_count: int,
+    estimated_wait_seconds: Optional[int],
+) -> str:
+    if active_count > 1:
+        if estimated_wait_seconds:
             return (
-                f"收到，这件事我先记下了；前面还有 {ahead_count} 条在处理，"
-                f"你这边排第 {position} 位，预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后给你结果。"
+                f"收到，这件事已经开始处理；当前还有 {active_count} 条活动任务，"
+                f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟内我先给你同步一版结果。"
             )
-        if running_count <= 0:
-            return (
-                f"收到，这件事我已经接着处理；你这边排第 {position} 位，"
-                f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后给你结果。"
-            )
-        return (
-            f"收到，我这边还有 {running_count} 条任务在处理；这件事已经接上了，"
-            f"前面还有 {ahead_count} 条，你这边排第 {position} 位，"
-            f"预计约 {max(1, (estimated_wait_seconds + 59) // 60)} 分钟后给你结果。"
-        )
-    if ahead_count > 0 and running_count <= 0:
-        return f"收到，这件事我先记下了；前面还有 {ahead_count} 条在处理，你这边排第 {position} 位。"
-    if running_count <= 0:
-        return f"收到，这件事我已经接着处理；你这边排第 {position} 位。"
-    return (
-        f"收到，我这边还有 {running_count} 条任务在处理；这件事已经接上了，"
-        f"前面还有 {ahead_count} 条，你这边排第 {position} 位。"
-    )
+        return f"收到，这件事已经开始处理；当前还有 {active_count} 条活动任务，我会继续同步真实进展。"
+    return "收到，这件事我先开始处理；如果暂时还没有新的阶段结果，我会继续同步进展。"
 
 
 def _build_blocked_control_plane_message(task: Any, *, reason: Optional[str] = None) -> dict[str, Any]:
@@ -293,18 +291,26 @@ def register_inbound_lifecycle(
         if wd_receipt:
             control_plane_message = _build_same_session_routing_control_plane_message(routing)
             if control_plane_message and str(routing.get("execution_decision") or "").strip() == "queue-as-new-task":
-                queue_text = _build_queue_receipt_text(
-                    queue_position=serialized.get("queue_position"),
-                    ahead_count=int(serialized.get("ahead_count") or 0),
-                    running_count=int(serialized.get("running_count") or 0),
-                    estimated_wait_seconds=(
-                        int(serialized["estimated_wait_seconds"])
-                        if serialized.get("estimated_wait_seconds") is not None
-                        else None
-                    ),
+                task_status = str(serialized.get("task_status") or "").strip().lower()
+                estimated_wait_seconds = (
+                    int(serialized["estimated_wait_seconds"]) if serialized.get("estimated_wait_seconds") is not None else None
                 )
-                wd_receipt["user_visible_wd"] = f"[wd] {queue_text}"
-                control_plane_message["text"] = queue_text
+                if task_status in {"queued", "received"}:
+                    queue_text = _build_queue_receipt_text(
+                        queue_position=serialized.get("queue_position"),
+                        ahead_count=int(serialized.get("ahead_count") or 0),
+                        running_count=int(serialized.get("running_count") or 0),
+                        estimated_wait_seconds=estimated_wait_seconds,
+                    )
+                    wd_receipt["user_visible_wd"] = f"[wd] {queue_text}"
+                    control_plane_message["text"] = queue_text
+                elif task_status == "running":
+                    running_text = _build_running_receipt_text(
+                        active_count=int(serialized.get("active_count") or 0),
+                        estimated_wait_seconds=estimated_wait_seconds,
+                    )
+                    wd_receipt["user_visible_wd"] = f"[wd] {running_text}"
+                    control_plane_message["text"] = running_text
             routing["wd_receipt"] = wd_receipt
             if control_plane_message and isinstance(control_plane_message.get("metadata"), dict):
                 control_plane_message["metadata"]["routing_decision"] = routing

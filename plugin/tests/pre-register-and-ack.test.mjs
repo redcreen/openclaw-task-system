@@ -299,7 +299,7 @@ test("before_dispatch immediate ack suppresses implausible second-level queue et
     assert.equal(sentMessages.length, 1);
     assert.equal(
       sentMessages[0]?.text,
-      "[wd] 收到，这件事我先记下了；前面还有 10 条在处理，你这边排第 11 位。",
+      "[wd] 收到，这件事已进入队列；前面还有 10 条，你这边排第 11 位。",
     );
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
@@ -356,7 +356,7 @@ test("before_dispatch runtime-owned queue receipt still includes queue position 
     assert.equal(sentMessages.length, 1);
     assert.equal(
       sentMessages[0]?.text,
-      "[wd] 收到，我这边还有 1 条任务在处理；这件事已经接上了，前面还有 3 条，你这边排第 4 位，预计约 3 分钟后给你结果。",
+      "[wd] 收到，这件事已进入队列；前面还有 3 条，你这边排第 4 位，预计约 3 分钟后给你结果。",
     );
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);
@@ -415,7 +415,7 @@ test("before_dispatch runtime-owned queue receipt still includes queue position 
     assert.equal(sentMessages.length, 1);
     assert.equal(
       sentMessages[0]?.text,
-      "[wd] 收到，这件事我先记下了；前面还有 6 条在处理，你这边排第 7 位，预计约 2 分钟后给你结果。",
+      "[wd] 收到，这件事已进入队列；前面还有 6 条，你这边排第 7 位，预计约 2 分钟后给你结果。",
     );
   } finally {
     await cleanupRuntime(plugin, runtimeRoot);

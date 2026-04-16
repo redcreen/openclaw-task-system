@@ -16,19 +16,19 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 主线进度 | 主线已经完成到 `Milestone 3`；当前工作先切到“回复时延与上下文负载治理”专题，再决定何时恢复 activation 准备 |
-| 当前阶段 | `回复时延与上下文负载治理` |
-| 当前目标 | 把已测得的 Telegram 回复慢问题冻结成 durable repo truth，补可重复跑的 session audit，并在恢复 activation 准备前先收敛最大的上下文负担 |
-| 明确下一步动作 | 在 `planning prompt` 和 `wrapper` 第一轮闭环之后继续推进 `TG-2` |
-| 下一候选动作 | 在上下文预算与恢复条件显式后，恢复有界的 `feishu6-chat` activation 准备 |
+| 主线进度 | 主线已经完成到 `Milestone 3`；当前工作已经切到有界 activation 准备，而不是继续无限期做性能调优 |
+| 当前阶段 | `性能基线收口后的 live pilot activation 准备` |
+| 当前目标 | 在已收口的性能基线上重新打开 live pilot activation 准备，而不是让 Milestone 3 继续停留在 open-ended tuning bucket |
+| 明确下一步动作 | `AP-1` 定义 activation rehearsal 入口条件与必须采集的 operator evidence 包 |
+| 下一候选动作 | 在入口条件、install-sync 意图和 rollback 边界都显式后，运行一轮有界的 `feishu6-chat` live activation rehearsal |
 
-## 专题治理进度
+## Activation 准备任务进度
 
 | 顺序 | 任务 | 状态 |
 | --- | --- | --- |
-| 1 | TG-1 冻结 slowdown trigger，并增加 `session_latency_audit.py` 用于回合耗时与上下文负载取证 | 已完成 |
-| 2 | TG-2 给主要上下文贡献者排优先级并收敛：tool schema、system prompt、per-turn wrapper、startup transcript carryover | 进行中 |
-| 3 | TG-3 定义 activation 恢复条件，以及证明 slowdown 不再是主线 blocker 的证据包 | 已排队 |
+| 1 | AP-1 定义 activation rehearsal 入口条件与基于已收口 benchmark baseline 的 operator evidence 包 | 下一步 |
+| 2 | AP-2 判断第一次有界 rehearsal 前是否需要显式执行 `growware_local_deploy.py --json` 清理 installed-runtime drift | 已排队 |
+| 3 | AP-3 定义第一次 live activation checkpoint、rollback 边界，以及新测得回归何时重新回流主线 | 已排队 |
 
 ## 当前定位
 
@@ -42,7 +42,7 @@
 
 当前激活中的项目级阶段是：
 
-- `回复时延与上下文负载治理`
+- `性能基线收口后的 live pilot activation 准备`
 
 Milestone 2 已经收口，因为 Growware pilot 的项目本地控制面、policy 编译层、验证入口、binding preview，以及只读宿主侧 audit bootstrap 都已经落到仓库真相里，而且遗留 `.growware/policies/*.json` 已从 live runtime / preflight 依赖中退役。
 
@@ -52,7 +52,7 @@ Milestone 3 现在也已经收口，因为仓库已经具备可复现 benchmark 
 
 | 下一步 | 为什么做 |
 | --- | --- |
-| 在第一轮 prompt / wrapper 减负后继续推进 `TG-2` | audit 入口已经落地，接下来最确定、最 repo-owned 的动作是继续压 prompt/context 负担，同时不破坏 planning contract，也不掩盖 startup carryover 风险。 |
+| `AP-1` 定义 activation rehearsal 入口条件与必须采集的 operator evidence 包 | 性能里程碑已经收口，下一类风险不再是“有没有继续调快”，而是没有显式入口条件就直接进入 rehearsal。 |
 
 ## 里程碑总览
 
@@ -137,79 +137,11 @@ Milestone 3 现在已经满足下面四条收口信号：
 3. 改进路径已经被 benchmark budget 和结构性回归检查保护起来
 4. 整个优化过程没有破坏 runtime truth、激活边界或已有验证栈
 
-## 回复时延与上下文负载治理
-
-### 触发证据
-
-这个专题之所以成立，是因为 `2026-04-15 23:44` 之后的一条真实 Telegram 会话虽然没有命中 repo-local 热点回归，却仍然出现了明显的用户可见回复慢。
-
-当前已测得的触发证据包括：
-
-- 单轮耗时大约在 `16s-50s`
-- 延迟大头在 LLM 段，而不是 task-system hook 时间
-- 静态上下文约 `140,465 chars`
-- 每轮 user payload wrapper 约 `1.5k chars`
-- startup 和 transcript 累积会把额外成本继续压到后续轮次
-
-### 当前执行线
-
-这个治理专题拆成三步：
-
-1. 先冻结证据
-   - 增加一条可复用命令，审计真实 session 的 turn timing、LLM/tool share、transcript growth 和静态 prompt 组成
-   - 不再依赖一次性的手工拆日志
-
-2. 给最大的上下文贡献者排优先级
-   - 把 tool schema、system prompt、workspace bootstrap、per-turn wrapper 和 transcript carryover 分开看
-   - 明确哪些必须保留，哪些可以缩，哪些应该移出后续 turn
-
-3. 定义 activation 恢复门槛
-   - 把“什么时候可以不再把回复慢当主线 blocker”写成真相
-   - 只有满足该条件后，activation 准备才回主线
-
-### 治理原则
-
-这条专题主线必须遵守四条约束：
-
-1. `performance_baseline.py` 继续保持全绿；repo-local hotspot 里程碑默认不重新打开
-2. 宿主真实会话的 slowdown 统一通过 `session_latency_audit.py` 取证，而不是继续靠体感争论
-3. 不允许盲目砍 prompt/context；每一刀都要说明它省掉了什么成本，又带来什么行为风险
-4. 在回复时延证据、恢复条件和 fallback 预期都显式之前，不恢复 activation 准备主线
-
-### 第一批优化队列
-
-- tool schema surface：当前测得 Telegram 会话里的最大静态贡献者
-- system prompt weight：第二大的静态贡献者，也是最大的 repo-owned 非工具块
-- per-turn wrapper tax：短问题目前会被包装成 `~1.5k` 字符的 payload
-- startup transcript carryover：启动轮读文件结果继续压在后续业务轮次上
-- transcript growth discipline：越聊越长的历史仍在持续放大后续轮次成本
-
-### 第一轮小闭环
-
-`TG-2` 的第一轮小闭环已经落地：
-
-- 默认 planning system prompt 从 `1531` chars 缩到 `954` chars
-- 默认 planning runtime wrapper 从 `1168` chars 缩到 `696` chars
-- `plugin/tests/tool-planning-flow.test.mjs` 与 `tests/test_task_config.py` 已经加上紧凑上限，防止这条线静默反弹
-
-这一刀刻意没有先动 tool schema。它优先削掉每一轮 planning 都会支付的 repo-owned 固定成本，同时保留现有 planning contract。
-
-### Activation 恢复条件
-
-只有当下面四条同时成立时，activation 准备才允许回主线：
-
-- slowdown trigger 已经可以通过受审阅的 audit 命令重复跑出来
-- 主要 prompt/context 贡献者已经有明确的 keep / shrink / remove 决策
-- 已选择的 cuts 不会破坏 runtime safety 和必须保留的 agent 能力
-- 仓库已经写清楚：什么证据足以证明回复时延已从“主线 blocker”降为“有界问题”
-
-## 有界的 Live Pilot Activation 准备
+## 性能基线收口后的 Live Pilot Activation 准备
 
 ### 当前执行原则
 
-这条线现在不再是当前主线，只有治理专题收口后才恢复。
-
-当它恢复时，仍然必须遵守三个约束：
+这条新主线必须遵守三个约束：
 
 1. 继续把 `performance_baseline.py` 当作 guardrail；没有测量回归就不重新打开大范围性能调优
 2. 在第一次有界 rehearsal 之前，显式决定 installed-runtime drift 是否需要通过本地 deploy 清掉
@@ -239,15 +171,14 @@ Milestone 3 现在已经满足下面四条收口信号：
 
 ## 验证栈
 
-运行治理专题以及后续重新进入 activation 准备阶段时，都要同时保持 repo-local 性能基线和 Growware runtime 安全基线全绿：
+进入 activation 准备阶段时，同时保持 repo-local 性能基线和 Growware runtime 安全基线全绿：
 
 ```bash
 python3 scripts/runtime/performance_baseline.py --profile-scenario hooks-cycle --profile-scenario same-session-routing-classifier --profile-scenario system-overview --profile-top 8 --enforce-budgets --json
-python3 scripts/runtime/session_latency_audit.py --session-key 'agent:main:telegram:direct:8705812936' --json
 python3 scripts/runtime/growware_policy_sync.py --write --json
 python3 scripts/runtime/growware_preflight.py --json
 python3 scripts/runtime/growware_openclaw_binding.py --json
-python3 -m unittest tests.test_growware_feedback_classifier tests.test_growware_policy_sync tests.test_growware_preflight tests.test_growware_project tests.test_openclaw_runtime_audit tests.test_session_latency_audit -v
+python3 -m unittest tests.test_growware_feedback_classifier tests.test_growware_policy_sync tests.test_growware_preflight tests.test_growware_project tests.test_openclaw_runtime_audit -v
 bash scripts/run_tests.sh
 python3 scripts/runtime/runtime_mirror.py --write
 python3 scripts/runtime/plugin_doctor.py --json

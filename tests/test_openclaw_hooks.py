@@ -55,6 +55,10 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertIn("register_decision", result)
         self.assertIsInstance(result["register_decision"], dict)
         self.assertEqual(result["register_decision"]["task_id"], result["task_id"])
+        self.assertEqual(
+            result["wd_receipt"]["user_visible_wd"],
+            "[wd] 收到，这件事我先开始处理；如果暂时还没有新的阶段结果，我会继续同步进展。",
+        )
 
     def test_register_from_payload_includes_structured_register_decision(self) -> None:
         result = openclaw_hooks.register_from_payload(
@@ -85,8 +89,8 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertIsInstance(result["control_plane_message"], dict)
         self.assertEqual(result["control_plane_message"]["event_name"], "same-session-routing-receipt")
         self.assertEqual(result["control_plane_message"]["priority"], "p0-receive-ack")
-        self.assertIn("排第", str(result["control_plane_message"]["text"]))
-        self.assertIn("排第", str(result["wd_receipt"]["user_visible_wd"]))
+        self.assertIn("进入队列", str(result["control_plane_message"]["text"]))
+        self.assertIn("进入队列", str(result["wd_receipt"]["user_visible_wd"]))
 
     def test_register_from_payload_records_same_session_followup_routing_context(self) -> None:
         first = openclaw_hooks.register_from_payload(
@@ -2096,7 +2100,7 @@ class OpenClawHooksTests(unittest.TestCase):
         self.assertTrue(finalized["updated"])
         self.assertEqual(
             finalized["control_plane_message"]["text"],
-            "当前任务已完成：帮我继续排查这个问题并回我结果",
+            "当前任务已完成。",
         )
 
     def test_finalize_active_marks_done_after_progress_even_with_generic_summary(self) -> None:

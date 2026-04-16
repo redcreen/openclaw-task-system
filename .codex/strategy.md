@@ -1,9 +1,9 @@
 # Strategy
 
 ## Current Strategic Direction
-- Direction: `reply-latency and context-weight governance`
+- Direction: `wd reliability and task usefulness convergence`
 - Status: `active`
-- Why Now: the repo-local performance milestone is closed, but measured Telegram sessions still show 16s-50s reply latency driven by oversized context surfaces; activation prep should pause until that user-visible blocker is reduced and made measurable
+- Why Now: today's host logs still show user-visible `wd` behavior that is inaccurate or low-value, while the recent performance/documentation side-track has been explicitly de-scoped from this project
 
 ## Strategy Evidence Contract
 
@@ -27,8 +27,8 @@
 
 | Topic | Current Position | Why It Is Not Mainline |
 | --- | --- | --- |
-| activation rehearsal prep | supporting backlog | 当前 measured slowdown 已重新成为用户可见 blocker，所以 activation 线先退回 supporting backlog，等治理专题给出 resume 条件再回主线 |
-| host-side self-heal / repair planning | supporting backlog | 只有 audit bootstrap 的边界需要被业务正式提升时，才升级优先级 |
+| performance side-track | dropped from current project line | 用户已明确要求忽略这一项，且不再通过本项目 public docs 继续推进 |
+| host-side self-heal / repair planning | supporting backlog | 只有 runtime usefulness 和 `wd` 主路径收口后，才值得回拉 |
 | maintainer-facing polish | supporting backlog | 只有它能明显降低接手成本或测量摩擦时，才回拉主线 |
 
 ## Human Review Boundary
@@ -51,6 +51,6 @@
 - 不要让战略层静默膨胀成全能调度器；编排仍应保留在 program-board。
 
 ## Next Strategic Checks
-1. 把 Telegram 会话里“慢”的证据冻结成可重复跑的 repo 命令，而不是继续依赖手工拆日志。
-2. 判断 prompt surface、startup transcript 和 per-turn wrapper 里，哪些属于必须保留的上下文，哪些属于纯负载。
-3. 给 activation 线定义明确的 resume 条件，避免治理专题长期悬空或 silently 吞回旧主线。
+1. 从今天的宿主日志里固定 `wd` 的失真模式，而不是继续凭体感修文案。
+2. 优先修复首条 receipt、队列反馈和终态 `wd` 的低价值输出，让 control-plane 真正有用。
+3. 保持 public docs 收敛，不再把性能 side-track 继续挂在这个项目里。

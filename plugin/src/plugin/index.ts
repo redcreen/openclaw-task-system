@@ -2358,22 +2358,22 @@ function buildImmediateReceiptMessage(
 
   const buildQueuedReceipt = (): string => {
     const position = queuePosition ?? aheadCount + 1;
-    if (runningCount <= 0 && aheadCount > 0) {
+    if (aheadCount > 0) {
       if (estimatedWaitLabel) {
-        return `收到，这件事我先记下了；前面还有 ${aheadCount} 条在处理，你这边排第 ${position} 位，${estimatedWaitLabel}给你结果。`;
+        return `收到，这件事已进入队列；前面还有 ${aheadCount} 条，你这边排第 ${position} 位，${estimatedWaitLabel}给你结果。`;
       }
-      return `收到，这件事我先记下了；前面还有 ${aheadCount} 条在处理，你这边排第 ${position} 位。`;
+      return `收到，这件事已进入队列；前面还有 ${aheadCount} 条，你这边排第 ${position} 位。`;
     }
-    if (runningCount <= 0) {
+    if (runningCount > 0) {
       if (estimatedWaitLabel) {
-        return `收到，这件事我已经接着处理；你这边排第 ${position} 位，${estimatedWaitLabel}给你结果。`;
+        return `收到，这件事已进入队列；当前有 ${runningCount} 条任务正在处理，你是下一位，${estimatedWaitLabel}给你结果。`;
       }
-      return `收到，这件事我已经接着处理；你这边排第 ${position} 位。`;
+      return `收到，这件事已进入队列；当前有 ${runningCount} 条任务正在处理，你是下一位。`;
     }
     if (estimatedWaitLabel) {
-      return `收到，我这边还有 ${runningCount} 条任务在处理；这件事已经接上了，前面还有 ${aheadCount} 条，你这边排第 ${position} 位，${estimatedWaitLabel}给你结果。`;
+      return `收到，这件事已进入队列；${estimatedWaitLabel}给你结果。`;
     }
-    return `收到，我这边还有 ${runningCount} 条任务在处理；这件事已经接上了，前面还有 ${aheadCount} 条，你这边排第 ${position} 位。`;
+    return "收到，这件事已进入队列；我开始处理后会先同步进展。";
   };
 
   if (runtimeOwnedQueueReceipt) {

@@ -2,7 +2,7 @@
 
 ## Delivery Tier
 - Tier: `large`
-- Why this tier: the repo now needs one durable control surface across runtime code, host-observed latency evidence, prompt-surface governance, and activation-resume gating
+- Why this tier: the repo now needs one durable control surface across runtime code, user-visible task usefulness, and runtime-owned control-plane behavior
 - Last reviewed: 2026-04-16
 
 ## Outcome
@@ -32,7 +32,7 @@ Turn OpenClaw from a chat-only flow into a task-supervised runtime that can acce
 ## Definition of Done
 
 - architecture retrofit notes, plan, and status match the actual repo boundary decisions
-- topic-governance evidence, optimization queue, and activation-resume criteria stay aligned across `.codex/` and public docs
+- public docs do not carry side-track work that is outside this project's runtime scope
 - `./scripts/run_tests.sh` passes
 - Public docs provide a clear English/Chinese landing path
 - current runtime boundaries, execution line, and next maintenance slice are visible from `.codex/status.md`

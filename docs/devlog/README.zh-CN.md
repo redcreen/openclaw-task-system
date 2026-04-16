@@ -22,13 +22,6 @@
 ## 条目
 
 - 建议按日期命名，例如 `2026-04-12-control-surface-convergence.md`
-- [Shrink planning prompt and wrapper](2026-04-16-shrink-planning-prompt-and-wrapper.md)
-- [Launch reply latency governance topic](2026-04-16-launch-reply-latency-governance-topic.md)
-- [Close Milestone 3 performance optimization](2026-04-14-close-milestone3-performance-optimization.md)
-- [Inline Growware same-session classifier](2026-04-14-inline-growware-same-session-classifier.md)
-- [Stabilize runtime hotspot budgets](2026-04-14-stabilize-runtime-hotspot-budgets.md)
-- [Reduce runtime registration rescans](2026-04-14-reduce-runtime-registration-rescans.md)
-- [Establish Milestone 3 performance baseline](2026-04-14-establish-milestone3-performance-baseline.md)
 - [Close Growware pilot foundation](2026-04-14-close-growware-pilot-foundation.md)
 - [Close runtime source of truth convergence](2026-04-12-close-runtime-source-of-truth-convergence.md)
 - [Expand planning anomaly acceptance](2026-04-12-expand-planning-anomaly-acceptance.md)

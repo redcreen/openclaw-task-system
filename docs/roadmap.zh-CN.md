@@ -10,17 +10,17 @@
 
 - `Milestone 2：Growware Project 1 pilot foundation` 已完成
 - `Milestone 3：系统性能测试与优化` 已完成
-- `回复时延与上下文负载治理` 已激活
+- `性能基线收口后的 live pilot activation 准备` 已激活
 
 ## 总体进展
 
 | 项目 | 当前值 |
 | --- | --- |
-| 主线进度 | 主线已经完成到 `Milestone 3`；仓库当前先进入“回复时延与上下文负载治理”专题，再决定何时恢复 activation 准备 |
-| 当前阶段 | `回复时延与上下文负载治理` |
-| 当前目标 | 把测得的 Telegram 回复慢冻结成 durable repo truth，补可复用的 session audit，并在恢复 activation 准备前先收敛最大的上下文负担 |
-| 明确下一步动作 | `TG-1` 冻结 slowdown trigger，并增加可复用的 session latency audit 命令 |
-| 下一候选动作 | 在上下文预算和恢复条件显式后，恢复有界的 `feishu6-chat` activation 准备 |
+| 主线进度 | 主线已经完成到 `Milestone 3`；仓库当前进入有界 activation 准备，而不是继续无限期做性能调优 |
+| 当前阶段 | `性能基线收口后的 live pilot activation 准备` |
+| 当前目标 | 在已收口的性能基线上重新打开 live pilot activation 准备，而不是让 Milestone 3 继续停留在 open-ended tuning bucket |
+| 明确下一步动作 | `AP-1` 定义 activation rehearsal 入口条件与必须采集的 operator evidence 包 |
+| 下一候选动作 | 在入口条件、install-sync 意图和 rollback 边界都显式后，运行一轮有界的 `feishu6-chat` live activation rehearsal |
 
 查看详细执行计划：[reference/openclaw-task-system/development-plan.zh-CN.md](reference/openclaw-task-system/development-plan.zh-CN.md)
 
@@ -70,30 +70,12 @@ Milestone 3 已经正式收口，当前结论是：
 - 结构性回归测试和 benchmark budget 已经保护这些改进路径，而且没有重新打开 runtime truth 或控制面漂移
 - `plugin_doctor.py` 里的 installed-runtime drift 仍然保持可见，但它被留在 activation 准备阶段单独决策，而不是被混进 repo-local 性能里程碑里当隐形 blocker
 
-## 当前治理专题
-
-当前主线已经切到专门的回复时延治理专题，因为 `2026-04-15 23:44` 之后的一条真实 Telegram 会话虽然没有命中 repo-local 性能回归，却仍然出现了 `16s-50s` 的明显回复慢。
-
-目前已经冻结下来的触发证据包括：
-
-- 延迟大头在 LLM 段，而不是 task-system hooks
-- 静态上下文约 `140,465 chars`
-- tool schema surface 是最大的静态块
-- 每轮 wrapper payload 约 `1.5k chars`
-- startup 和 transcript carryover 会继续抬高后续轮次成本
-
-仓库现在已经有一条可重复跑的审计入口：
-
-- `python3 scripts/runtime/session_latency_audit.py --session-key 'agent:main:telegram:direct:8705812936' --json`
-
-详细治理计划见：[reference/openclaw-task-system/reply-latency-governance.zh-CN.md](reference/openclaw-task-system/reply-latency-governance.zh-CN.md)
-
 ## 当前 / 下一步 / 更后面
 
 | 时间层级 | 重点 | 退出信号 |
 | --- | --- | --- |
-| 当前 | 执行 `回复时延与上下文负载治理` | slowdown 证据可重复跑、主要 prompt/context 贡献者已排优先级、activation 恢复条件已显式 |
-| 下一步 | 恢复有界的 `feishu6-chat` activation 准备 | 在任何有界 rehearsal 之前，把激活入口条件、operator evidence 预期和 install-sync 决策写成显式真相 |
+| 当前 | 执行 `性能基线收口后的 live pilot activation 准备` | 在任何有界 rehearsal 之前，把激活入口条件、operator evidence 预期和 install-sync 决策写成显式真相 |
+| 下一步 | 运行有界的 `feishu6-chat` live activation rehearsal | rehearsal evidence 建立在 repo-local 验证全绿和明确 rollback 边界之上 |
 | 更后面 | 再考虑保守 self-heal、更强 planning / steering 与更高保真的 real-channel evidence | 新工作不会重新打开 policy ownership drift，也不会绕过 runtime truth 和审批边界 |
 
 ## 里程碑
@@ -110,7 +92,7 @@ Milestone 3 已经正式收口，当前结论是：
 
 ## 后续候选方向
 
-当前治理线之后的潜在候选包括：
+当前 activation 准备线之后的潜在候选包括：
 
 - Growware pilot 的真实激活，以及围绕 `feishu6-chat` 的端到端证据捕获
 - 基于 `openclaw_runtime_audit.py` 的保守 repair planning / self-heal
